@@ -1,0 +1,40 @@
+module.exports = {
+  name: 'TreadTrail',
+  slug: 'TreadTrail',
+  version: '1.0.0',
+  orientation: 'portrait',
+  icon: './src/assets/images/icon.png',
+  userInterfaceStyle: 'automatic',
+  splash: {
+    image: './src/assets/images/splash.png',
+    resizeMode: 'contain',
+    backgroundColor: '#ffffff'
+  },
+  assetBundlePatterns: [
+    '**/*'
+  ],
+  ios: {
+    supportsTablet: true,
+    bundleIdentifier: 'com.treadtrail.app'
+  },
+  android: {
+    adaptiveIcon: {
+      foregroundImage: './src/assets/images/adaptive-icon.png',
+      backgroundColor: '#ffffff'
+    },
+    package: 'com.treadtrail.app'
+  },
+  web: {
+    favicon: './src/assets/images/favicon.png'
+  },
+  extra: {
+    eas: {
+      projectId: 'treadtrail-app'
+    }
+  },
+  sdkVersion: '50.0.0',
+  runtimeVersion: {
+    policy: "sdkVersion"
+  },
+  plugins: []
+};
