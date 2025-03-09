@@ -19,28 +19,20 @@ type Props = NativeStackScreenProps<RootStackParamList, 'EditPace'>;
 
 const PaceTypeInfo = {
   recovery: {
-    title: 'Recovery',
-    description: 'Very light effort, used for active recovery between intervals or for warm-up/cool-down.',
-    speedRange: '2-4 mph | 3-6.5 kph',
-    inclineRange: '0-2%',
+    title: 'Recovery Pace',
+    description: 'Easy, recovery walking or light jogging',
   },
   base: {
-    title: 'Base',
-    description: 'Moderate effort that feels sustainable. You can hold a conversation at this pace.',
-    speedRange: '4-6 mph | 6.5-9.5 kph',
-    inclineRange: '1-3%',
+    title: 'Base Pace',
+    description: 'Comfortable pace you can maintain for 30+ minutes',
   },
   run: {
-    title: 'Run',
-    description: 'Challenging but sustainable pace. Conversation becomes more difficult.',
-    speedRange: '6-8 mph | 9.5-13 kph',
-    inclineRange: '1-4%',
+    title: 'Run Pace',
+    description: 'Challenging pace you can sustain for several minutes',
   },
   sprint: {
-    title: 'Sprint',
-    description: 'Maximum effort for short durations. Conversation is not possible.',
-    speedRange: '8-12 mph | 13-19 kph',
-    inclineRange: '1-5%',
+    title: 'Sprint Pace',
+    description: 'Maximum effort for short intervals',
   },
 };
 
@@ -49,27 +41,26 @@ const EditPaceScreen: React.FC<Props> = ({ navigation }) => {
   
   // Initialize pace settings from user context or use defaults
   const [paceSettings, setPaceSettings] = useState<Record<PaceType, PaceSetting>>({
-    recovery: { speed: 3.0, incline: 1.0 },
-    base: { speed: 5.0, incline: 1.0 },
-    run: { speed: 7.0, incline: 1.0 },
-    sprint: { speed: 9.0, incline: 1.0 },
+    recovery: { speed: 4.5, incline: 1.0 },
+    base: { speed: 5.5, incline: 1.5 },
+    run: { speed: 7.0, incline: 2.0 },
+    sprint: { speed: 9.0, incline: 2.5 },
   });
   
-  // Track which pace type is being edited
-  const [editingPace, setEditingPace] = useState<PaceType | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  // Toggle between mph and km/h
+  const [useMetric, setUseMetric] = useState(false);
   
   // Load user settings when component mounts
   useEffect(() => {
     if (userSettings?.paceSettings) {
       setPaceSettings(userSettings.paceSettings);
     }
+    // If the user has a preference for metric units, use that
+    if (userSettings?.preferences?.useMetric !== undefined) {
+      setUseMetric(userSettings.preferences.useMetric);
+    }
   }, [userSettings]);
-  
-  // Start editing a pace type
-  const handleEditPace = (paceType: PaceType) => {
-    setEditingPace(paceType);
-  };
   
   // Update pace setting value
   const handleUpdateValue = (
@@ -84,6 +75,40 @@ const EditPaceScreen: React.FC<Props> = ({ navigation }) => {
       [paceType]: {
         ...prev[paceType],
         [field]: numValue,
+      },
+    }));
+  };
+  
+  // Toggle between miles and kilometers
+  const toggleUnits = (useMetricUnits: boolean) => {
+    setUseMetric(useMetricUnits);
+  };
+  
+  // Convert mph to km/h for display
+  const convertToMetric = (speed: number) => {
+    return (speed * 1.60934).toFixed(1);
+  };
+  
+  // Convert km/h back to mph for storage
+  const convertFromMetric = (speed: number) => {
+    return speed / 1.60934;
+  };
+  
+  // Get displayed speed value based on current unit setting
+  const getDisplaySpeed = (paceType: PaceType) => {
+    const speedValue = paceSettings[paceType].speed;
+    return useMetric ? convertToMetric(speedValue) : speedValue.toFixed(1);
+  };
+  
+  // Handle input change with unit conversion
+  const handleSpeedChange = (paceType: PaceType, value: string) => {
+    const numValue = parseFloat(value) || 0;
+    
+    setPaceSettings(prev => ({
+      ...prev,
+      [paceType]: {
+        ...prev[paceType],
+        speed: useMetric ? convertFromMetric(numValue) : numValue,
       },
     }));
   };
@@ -128,99 +153,71 @@ const EditPaceScreen: React.FC<Props> = ({ navigation }) => {
     }
   };
   
-  // Render pace setting card
-  const renderPaceCard = (paceType: PaceType) => {
-    const { title, description, speedRange, inclineRange } = PaceTypeInfo[paceType];
-    const { speed, incline } = paceSettings[paceType];
-    const isEditing = editingPace === paceType;
-    
-    return (
-      <View 
-        key={paceType}
-        style={[
-          styles.paceCard,
-          { backgroundColor: PACE_COLORS[paceType] }
-        ]}
-      >
-        <Text style={styles.paceTitle}>{title}</Text>
-        <Text style={styles.paceDescription}>{description}</Text>
-        
-        <View style={styles.paceRanges}>
-          <Text style={styles.paceRangeText}>
-            <Text style={styles.bold}>Speed:</Text> {speedRange}
-          </Text>
-          <Text style={styles.paceRangeText}>
-            <Text style={styles.bold}>Incline:</Text> {inclineRange}
-          </Text>
-        </View>
-        
-        <View style={styles.paceSettings}>
-          <View style={styles.settingGroup}>
-            <Text style={styles.settingLabel}>Speed (mph)</Text>
-            {isEditing ? (
-              <TextInput
-                style={styles.settingInput}
-                value={speed.toString()}
-                onChangeText={value => handleUpdateValue(paceType, 'speed', value)}
-                keyboardType="decimal-pad"
-                selectTextOnFocus
-              />
-            ) : (
-              <Text style={styles.settingValue}>{speed.toFixed(1)}</Text>
-            )}
-          </View>
-          
-          <View style={styles.settingGroup}>
-            <Text style={styles.settingLabel}>Incline (%)</Text>
-            {isEditing ? (
-              <TextInput
-                style={styles.settingInput}
-                value={incline.toString()}
-                onChangeText={value => handleUpdateValue(paceType, 'incline', value)}
-                keyboardType="decimal-pad"
-                selectTextOnFocus
-              />
-            ) : (
-              <Text style={styles.settingValue}>{incline.toFixed(1)}</Text>
-            )}
-          </View>
-          
-          <TouchableOpacity 
-            style={styles.editButton} 
-            onPress={() => isEditing ? setEditingPace(null) : handleEditPace(paceType)}
-          >
-            <Text style={styles.editButtonText}>
-              {isEditing ? 'Done' : 'Edit'}
-            </Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-    );
+  // Handle cancel
+  const handleCancel = () => {
+    navigation.goBack();
   };
   
   return (
     <SafeAreaView style={styles.container}>
       <ScrollView contentContainerStyle={styles.scrollContent}>
-        <Text style={styles.header}>Personalize Your Pace Settings</Text>
+        {/* Header with Cancel button and title */}
+        <View style={styles.navRow}>
+          <TouchableOpacity onPress={handleCancel}>
+            <Text style={styles.cancelButton}>Cancel</Text>
+          </TouchableOpacity>
+          <View style={styles.emptySpace} />
+        </View>
+        
+        <Text style={styles.screenTitle}>Set Your Pace Levels</Text>
+        
+        {/* Description text */}
         <Text style={styles.description}>
-          Set your preferred treadmill speeds and inclines for each pace level. 
-          These will be used during workouts to guide your intensity.
+          Define your personal pace levels for this and future workouts.
+          <Text style={styles.note}> — you can always adjust it later as you improve!</Text>
         </Text>
         
-        {/* Pace setting cards */}
-        {(['recovery', 'base', 'run', 'sprint'] as PaceType[]).map(renderPaceCard)}
+        {/* Units toggle */}
+        <View style={styles.unitsToggleContainer}>
+          <Text style={styles.unitsLabel}>Units:</Text>
+          <View style={styles.toggleSwitchText}>
+            <TouchableOpacity onPress={() => toggleUnits(false)}>
+              <Text style={useMetric ? styles.toggleOptionInactive : styles.toggleOptionActive}>mi</Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => toggleUnits(true)}>
+              <Text style={useMetric ? styles.toggleOptionActive : styles.toggleOptionInactive}>km</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+        
+        {/* Pace setting inputs */}
+        {(['recovery', 'base', 'run', 'sprint'] as PaceType[]).map(paceType => (
+          <View key={paceType} style={styles.paceSection}>
+            <Text style={styles.paceLabel}>{PaceTypeInfo[paceType].title}</Text>
+            <Text style={styles.paceDescription}>{PaceTypeInfo[paceType].description}</Text>
+            <View style={styles.inputContainer}>
+              <TextInput
+                style={[styles.paceInput, styles[`${paceType}Input`]]}
+                value={getDisplaySpeed(paceType)}
+                onChangeText={(value) => handleSpeedChange(paceType, value)}
+                keyboardType="decimal-pad"
+                selectTextOnFocus
+              />
+              <Text style={styles.unitLabel}>{useMetric ? 'km/h' : 'mph'}</Text>
+            </View>
+          </View>
+        ))}
         
         {/* Save button */}
-        <View style={styles.buttonContainer}>
-          <Button 
-            title="Save Pace Settings" 
-            onPress={handleSaveSettings}
-            type="accent"
-            size="large"
-            fullWidth
-            loading={isSubmitting}
-          />
-        </View>
+        <Button 
+          title="Save" 
+          onPress={handleSaveSettings}
+          type="accent"
+          size="large"
+          fullWidth
+          loading={isSubmitting}
+          style={styles.saveButton}
+        />
       </ScrollView>
     </SafeAreaView>
   );
@@ -233,90 +230,121 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     padding: SPACING.medium,
+    paddingBottom: 100, // Extra padding at the bottom
   },
-  header: {
-    color: COLORS.white,
-    fontSize: FONT_SIZES.xxl,
-    fontWeight: 'bold',
+  navRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
     marginBottom: SPACING.small,
+  },
+  cancelButton: {
+    color: COLORS.accent,
+    fontSize: FONT_SIZES.medium,
+    fontWeight: 'normal',
+  },
+  emptySpace: {
+    width: 60,
+  },
+  screenTitle: {
+    fontSize: 22,
+    fontWeight: 'bold',
+    color: COLORS.white,
+    textAlign: 'center',
+    marginBottom: SPACING.medium,
   },
   description: {
     color: COLORS.white,
     fontSize: FONT_SIZES.medium,
     marginBottom: SPACING.large,
-    opacity: 0.8,
+    lineHeight: 22,
+    opacity: 0.87,
   },
-  paceCard: {
-    borderRadius: BORDER_RADIUS.card,
-    padding: SPACING.medium,
+  note: {
+    fontStyle: 'italic',
+    color: 'rgba(255, 255, 255, 0.6)',
+  },
+  unitsToggleContainer: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    alignItems: 'center',
     marginBottom: SPACING.medium,
   },
-  paceTitle: {
-    fontSize: FONT_SIZES.xl,
+  unitsLabel: {
+    fontSize: FONT_SIZES.small,
+    color: 'rgba(255, 255, 255, 0.7)',
+    marginRight: SPACING.small,
+  },
+  toggleSwitchText: {
+    flexDirection: 'row',
+    gap: 10,
+    alignItems: 'center',
+  },
+  toggleOptionActive: {
+    fontSize: FONT_SIZES.small,
+    fontWeight: '600',
+    color: COLORS.accent,
+    padding: 2,
+    borderBottomWidth: 2,
+    borderBottomColor: COLORS.accent,
+  },
+  toggleOptionInactive: {
+    fontSize: FONT_SIZES.small,
+    fontWeight: '600',
+    color: 'rgba(255, 255, 255, 0.5)',
+    padding: 2,
+  },
+  paceSection: {
+    marginBottom: SPACING.large,
+  },
+  paceLabel: {
     fontWeight: 'bold',
+    fontSize: FONT_SIZES.medium,
+    color: COLORS.white,
     marginBottom: SPACING.xs,
-    color: COLORS.black,
   },
   paceDescription: {
-    fontSize: FONT_SIZES.medium,
-    marginBottom: SPACING.small,
-    color: COLORS.black,
-  },
-  paceRanges: {
-    backgroundColor: 'rgba(0, 0, 0, 0.1)',
-    borderRadius: BORDER_RADIUS.small,
-    padding: SPACING.small,
+    fontSize: FONT_SIZES.small,
+    color: 'rgba(255, 255, 255, 0.6)',
     marginBottom: SPACING.small,
   },
-  paceRangeText: {
-    fontSize: FONT_SIZES.small,
-    marginBottom: SPACING.xs,
-    color: COLORS.black,
+  inputContainer: {
+    position: 'relative',
   },
-  bold: {
-    fontWeight: 'bold',
-  },
-  paceSettings: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  settingGroup: {
-    flex: 1,
-  },
-  settingLabel: {
-    fontSize: FONT_SIZES.small,
-    color: COLORS.black,
-    opacity: 0.8,
-    marginBottom: 2,
-  },
-  settingValue: {
+  paceInput: {
+    width: '100%',
+    padding: 12,
     fontSize: FONT_SIZES.large,
-    fontWeight: 'bold',
-    color: COLORS.black,
-  },
-  settingInput: {
-    fontSize: FONT_SIZES.large,
-    fontWeight: 'bold',
-    color: COLORS.black,
-    backgroundColor: 'rgba(255, 255, 255, 0.3)',
-    padding: SPACING.xs,
-    borderRadius: BORDER_RADIUS.small,
-  },
-  editButton: {
-    backgroundColor: 'rgba(0, 0, 0, 0.2)',
-    paddingVertical: SPACING.small,
-    paddingHorizontal: SPACING.medium,
+    borderWidth: 1,
     borderRadius: BORDER_RADIUS.medium,
+    color: COLORS.white,
+    paddingRight: 50, // Space for the unit label
   },
-  editButtonText: {
-    color: COLORS.black,
-    fontSize: FONT_SIZES.small,
-    fontWeight: 'bold',
+  recoveryInput: {
+    borderColor: COLORS.recovery,
+    backgroundColor: COLORS.recoveryMuted,
   },
-  buttonContainer: {
+  baseInput: {
+    borderColor: COLORS.base,
+    backgroundColor: COLORS.baseMuted,
+  },
+  runInput: {
+    borderColor: COLORS.run,
+    backgroundColor: COLORS.runMuted,
+  },
+  sprintInput: {
+    borderColor: COLORS.sprint,
+    backgroundColor: COLORS.sprintMuted,
+  },
+  unitLabel: {
+    position: 'absolute',
+    right: 15,
+    top: '50%',
+    transform: [{ translateY: -10 }], // Manual adjustment to center text
+    color: 'rgba(255, 255, 255, 0.6)',
+  },
+  saveButton: {
     marginTop: SPACING.large,
-    marginBottom: SPACING.xxl,
   },
 });
 

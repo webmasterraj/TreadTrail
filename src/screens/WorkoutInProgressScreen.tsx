@@ -26,13 +26,6 @@ const WorkoutInProgressScreen: React.FC<Props> = ({ route, navigation }) => {
   const [isTransitioning, setIsTransitioning] = useState(false);
   const progressAnimation = useRef(new Animated.Value(0)).current;
   const overlayAnimation = useRef(new Animated.Value(0)).current;
-  const [testProgress, setTestProgress] = useState(0);
-  const [debugInfo, setDebugInfo] = useState({
-    progress: 0,
-    totalDuration: 0,
-    currentTime: 0,
-    isAnimating: false
-  });
 
   const { 
     activeWorkout,
@@ -85,17 +78,7 @@ const WorkoutInProgressScreen: React.FC<Props> = ({ route, navigation }) => {
     };
   }, []);
 
-  // Log workout state changes for debugging
-  useEffect(() => {
-    console.log('[WorkoutScreen] Workout state updated:', {
-      isActive: isWorkoutActive,
-      isPaused,
-      currentSegmentIndex,
-      elapsedTime,
-      segmentTimeRemaining
-    });
-  }, [isWorkoutActive, isPaused, currentSegmentIndex, elapsedTime, segmentTimeRemaining]);
-
+  // Show transition effect when segment changes
   useEffect(() => {
     if (currentSegmentIndex > 0 && isWorkoutActive) {
       setIsTransitioning(true);
@@ -106,88 +89,38 @@ const WorkoutInProgressScreen: React.FC<Props> = ({ route, navigation }) => {
     }
   }, [currentSegmentIndex, isWorkoutActive]);
 
-  const getTotalDuration = () => {
+  // Calculate total workout duration
+  const getTotalDuration = useCallback(() => {
     return activeWorkout?.segments.reduce((total, segment) => total + segment.duration, 0) || 1;
-  };
+  }, [activeWorkout]);
 
+  // Update progress animation when elapsed time changes
   useEffect(() => {
-    if (!activeWorkout) return;
-    
-    console.log('[WorkoutScreen] Animating progress marker. ElapsedTime:', elapsedTime);
-    console.log('[WorkoutScreen] Total workout duration:', getTotalDuration());
+    if (!activeWorkout || !isWorkoutActive) return;
     
     // Calculate progress as a percentage (0-1)
-    const progress = elapsedTime / getTotalDuration();
-    console.log('[WorkoutScreen] Progress calculated:', progress);
+    const progress = Math.min(elapsedTime / getTotalDuration(), 1);
     
-    // Update debug info
-    setDebugInfo({
-      ...debugInfo,
-      progress,
-      totalDuration: getTotalDuration(),
-      currentTime: elapsedTime,
-      isAnimating: true
-    });
+    // Don't animate if paused
+    if (isPaused) return;
     
-    // Animate the progress marker
-    Animated.timing(progressAnimation, {
-      toValue: progress,
-      duration: 500,
-      useNativeDriver: false,
-      easing: Easing.linear,
-    }).start(() => {
-      console.log('[WorkoutScreen] Progress animation completed to:', progress);
-      setDebugInfo(prev => ({
-        ...prev,
-        isAnimating: false
-      }));
-    });
-    
-  }, [elapsedTime, activeWorkout]);
-
-  const animateProgress = useCallback((toValue: number) => {
-    const currentProgress = elapsedTime / (activeWorkout?.segments.reduce((total, segment) => total + segment.duration, 0) || 1);
-    progressAnimation.setValue(currentProgress);
-    overlayAnimation.setValue(currentProgress);
-    
+    // Animate the progress marker and overlay
     Animated.parallel([
       Animated.timing(progressAnimation, {
-        toValue,
-        duration: 500,
-        easing: Easing.linear,
+        toValue: progress,
+        duration: 1000, // Smooth animation over 1 second
         useNativeDriver: false,
+        easing: Easing.linear,
       }),
       Animated.timing(overlayAnimation, {
-        toValue,
-        duration: 500,
-        easing: Easing.linear,
+        toValue: progress,
+        duration: 1000, // Smooth animation over 1 second
         useNativeDriver: false,
+        easing: Easing.linear,
       })
     ]).start();
-  }, [progressAnimation, overlayAnimation, elapsedTime, activeWorkout]);
-
-  const updateAnimations = useCallback(() => {
-    if (activeWorkout && isWorkoutActive) {
-      const totalDuration = activeWorkout.segments.reduce((total, segment) => total + segment.duration, 0);
-      
-      const progress = Math.min(elapsedTime / totalDuration, 1);
-      
-      setDebugInfo({
-        progress,
-        totalDuration,
-        currentTime: elapsedTime,
-        isAnimating: !isPaused
-      });
-      
-      animateProgress(progress);
-    }
-  }, [elapsedTime, activeWorkout, isWorkoutActive, isPaused, animateProgress]);
-
-  useEffect(() => {
-    if (activeWorkout && isWorkoutActive) {
-      updateAnimations();
-    }
-  }, [updateAnimations, activeWorkout, isWorkoutActive]);
+    
+  }, [elapsedTime, isPaused, isWorkoutActive, activeWorkout, getTotalDuration]);
 
   const handlePause = () => {
     pauseWorkout();
@@ -199,31 +132,12 @@ const WorkoutInProgressScreen: React.FC<Props> = ({ route, navigation }) => {
     setIsPauseModalVisible(false);
   };
 
-  const handleEndWorkout = async () => {
-    const sessionId = await endWorkout(true);
-    
-    if (sessionId) {
-      navigation.replace('WorkoutComplete', { sessionId });
-    } else {
-      navigation.goBack();
-    }
+  const handleEndWorkout = () => {
+    endWorkout();
+    navigation.navigate('WorkoutLibrary');
   };
 
-  const runTestAnimation = () => {
-    console.log('[WorkoutScreen] Running test animation');
-    const newProgress = testProgress + 0.1 > 1 ? 0 : testProgress + 0.1;
-    setTestProgress(newProgress);
-    
-    Animated.timing(progressAnimation, {
-      toValue: newProgress,
-      duration: 500,
-      useNativeDriver: false,
-      easing: Easing.linear,
-    }).start(() => {
-      console.log('[WorkoutScreen] Test animation completed');
-    });
-  };
-
+  // If no active workout yet, show loading
   if (!isWorkoutActive || !activeWorkout) {
     return (
       <SafeAreaView style={styles.container}>
@@ -238,37 +152,67 @@ const WorkoutInProgressScreen: React.FC<Props> = ({ route, navigation }) => {
     ? activeWorkout.segments[currentSegmentIndex + 1] 
     : null;
   
-  const totalDuration = activeWorkout.segments.reduce((sum, segment) => sum + segment.duration, 0);
+  const totalDuration = getTotalDuration();
   
-  const progressPercentage = Math.min((elapsedTime / totalDuration) * 100, 100);
-  
+  // Render the timeline visualization with individual bars for each segment
   const renderTimelineBars = () => {
-    return activeWorkout.segments.map((segment, index) => {
-      const segmentWidth = (segment.duration / totalDuration) * 100;
-      const barHeight = getPaceHeight(segment.type as PaceType);
+    // Create an array of uniformly-sized bars to represent the workout
+    // Each bar represents a small time slice - we'll use 40 bars total
+    const totalBars = 40;
+    const bars = [];
+    
+    // Calculate each segment's contribution to the total bars
+    let position = 0;
+    let segmentIndex = 0;
+    let segmentBarsRemaining = 0;
+    let currentSegmentType = activeWorkout.segments[0].type as PaceType;
+    
+    // Distribute the bars among segments based on duration proportion
+    for (let i = 0; i < totalBars; i++) {
+      // If we've used all the bars for the current segment, move to the next one
+      if (segmentBarsRemaining <= 0 && segmentIndex < activeWorkout.segments.length) {
+        const segment = activeWorkout.segments[segmentIndex];
+        const segmentDuration = segment.duration;
+        const segmentProportion = segmentDuration / totalDuration;
+        segmentBarsRemaining = Math.round(segmentProportion * totalBars);
+        currentSegmentType = segment.type as PaceType;
+        segmentIndex++;
+      }
       
-      return (
+      // Ensure we have at least one bar for each segment
+      if (segmentBarsRemaining <= 0) segmentBarsRemaining = 1;
+      
+      // Create the bar
+      const barHeight = getPaceHeight(currentSegmentType);
+      
+      bars.push(
         <View 
-          key={index}
+          key={i}
           style={[
             styles.timelineBar, 
             { 
               height: barHeight, 
-              backgroundColor: PACE_COLORS[segment.type as PaceType],
-              width: `${segmentWidth}%`
+              backgroundColor: PACE_COLORS[currentSegmentType],
+              marginHorizontal: 1, // Add small gap between bars
             }
           ]} 
         />
       );
-    });
+      
+      segmentBarsRemaining--;
+      position++;
+    }
+    
+    return bars;
   };
   
+  // Determine height based on pace type (matching the mockup)
   const getPaceHeight = (paceType: PaceType): number => {
     switch(paceType) {
-      case 'recovery': return 8;
-      case 'base': return 12;
-      case 'run': return 20;
-      case 'sprint': return 24;
+      case 'recovery': return 8;  // Shortest bars for recovery
+      case 'base': return 12;     // Medium-short bars for base
+      case 'run': return 18;      // Medium-tall bars for run
+      case 'sprint': return 24;   // Tallest bars for sprint
       default: return 12;
     }
   };
@@ -554,7 +498,8 @@ const styles = StyleSheet.create({
     left: 0,
     backgroundColor: 'rgba(0, 0, 0, 0.7)', // Exact value from mockup
     zIndex: 1,
-    borderRadius: 12, // Match container radius
+    borderTopLeftRadius: 12,
+    borderBottomLeftRadius: 12,
   },
   progressMarker: {
     position: 'absolute',
@@ -566,18 +511,18 @@ const styles = StyleSheet.create({
   },
   timelineBarContainer: {
     flexDirection: 'row',
-    height: 32, // Exact value from mockup
+    height: '100%',
     width: '100%',
     alignItems: 'flex-end',
     padding: 4, // Exact value from mockup (padding top/bottom)
-    justifyContent: 'space-between',
+    justifyContent: 'center',
     position: 'relative',
     zIndex: 0,
   },
   timelineBar: {
     width: 4, // Exact value from mockup
     borderRadius: 2, // Exact value from mockup
-    margin: 0,
+    margin: 1,
   },
   timelineTimes: {
     flexDirection: 'row',
@@ -590,7 +535,7 @@ const styles = StyleSheet.create({
     fontSize: 11, // Exact value from mockup
   },
   controlButtonsContainer: {
-    marginTop: 'auto', // Auto margin to push to bottom
+    marginTop: 20, // Add more space above controls
   },
   controlButtonsRow: {
     flexDirection: 'row',
