@@ -33,6 +33,8 @@ function MockWorkoutScreen() {
   );
 }
 
+// We're using a simple mock component for testing
+
 // Mock the real component
 jest.mock('../src/screens/WorkoutInProgressScreen', () => MockWorkoutScreen);
 
@@ -81,3 +83,5 @@ describe('WorkoutInProgressScreen', () => {
     expect(getByTestId('segment-index').props.children).toBe(2);
   });
 });
+
+// Redux integration tests are now in a separate file (WorkoutSlice.test.ts)
