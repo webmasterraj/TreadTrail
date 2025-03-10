@@ -200,11 +200,16 @@ const WorkoutDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
   
   // Render difficulty stars
   const renderDifficultyStars = () => {
-    const stars = [];
-    for (let i = 0; i < difficulty; i++) {
-      stars.push('★');
+    switch(difficulty) {
+      case 'beginner':
+        return '★';
+      case 'intermediate':
+        return '★★';
+      case 'advanced':
+        return '★★★';
+      default:
+        return '★';
     }
-    return stars.join('');
   };
   
   return (
@@ -266,12 +271,24 @@ const WorkoutDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
             </View>
           </View>
           
-          <TouchableOpacity 
-            style={styles.startButton}
-            onPress={handleStartWorkout}
-          >
-            <Text style={styles.startButtonText}>Start Workout</Text>
-          </TouchableOpacity>
+          {/* Only show the Start Workout button for logged-in users */}
+          {authState && authState.isAuthenticated && (
+            <TouchableOpacity 
+              style={styles.startButton}
+              onPress={handleStartWorkout}
+            >
+              <Text style={styles.startButtonText}>Start Workout</Text>
+            </TouchableOpacity>
+          )}
+          {/* Show sign-in prompt for logged-out users */}
+          {(!authState || !authState.isAuthenticated) && (
+            <TouchableOpacity 
+              style={styles.signInButton}
+              onPress={() => navigation.navigate('Signup')}
+            >
+              <Text style={styles.signInButtonText}>Sign In to Start Workouts</Text>
+            </TouchableOpacity>
+          )}
         </ScrollView>
       </SafeAreaView>
     </View>
@@ -433,6 +450,21 @@ const styles = StyleSheet.create({
   },
   startButtonText: {
     color: COLORS.black,
+    fontSize: 16, // Exact value from mockup
+    fontWeight: 'bold',
+  },
+  signInButton: {
+    backgroundColor: COLORS.darkGray,
+    borderRadius: 25, // Exact value from mockup
+    padding: 16, // Exact value from mockup
+    alignItems: 'center',
+    marginTop: 20, // Exact value from mockup
+    marginBottom: 30, // Add space at bottom
+    borderWidth: 1,
+    borderColor: COLORS.accent,
+  },
+  signInButtonText: {
+    color: COLORS.accent,
     fontSize: 16, // Exact value from mockup
     fontWeight: 'bold',
   },

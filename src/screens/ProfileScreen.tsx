@@ -228,6 +228,7 @@ const ProfileScreen: React.FC<Props> = ({ navigation }) => {
                   onPress={() => handleWorkoutPress(workout.id)}
                   onFavoriteToggle={() => handleFavoriteToggle(workout.id)}
                   showVisualization={true}
+                  showFavoriteButton={authState.isAuthenticated}
                 />
               ))
             ) : (

@@ -9,13 +9,15 @@ interface WorkoutCardProps {
   onPress: () => void;
   onFavoriteToggle: () => void;
   showVisualization?: boolean;
+  showFavoriteButton?: boolean;
 }
 
 const WorkoutCard: React.FC<WorkoutCardProps> = ({ 
   workout, 
   onPress, 
   onFavoriteToggle,
-  showVisualization = false
+  showVisualization = false,
+  showFavoriteButton = true
 }) => {
   const { 
     name, 
@@ -155,16 +157,18 @@ const WorkoutCard: React.FC<WorkoutCardProps> = ({
       onPress={onPress}
       activeOpacity={0.7}
     >
-      {/* Favorite Heart Icon */}
-      <TouchableOpacity 
-        style={styles.favoriteHeart} 
-        onPress={onFavoriteToggle}
-        testID="favorite-button"
-      >
-        <Text style={[styles.heartIcon, Boolean(favorite) && styles.activeHeart]}>
-          {Boolean(favorite) ? '♥' : '♡'}
-        </Text>
-      </TouchableOpacity>
+      {/* Favorite Heart Icon - Only shown if showFavoriteButton is true */}
+      {showFavoriteButton && (
+        <TouchableOpacity 
+          style={styles.favoriteHeart} 
+          onPress={onFavoriteToggle}
+          testID="favorite-button"
+        >
+          <Text style={[styles.heartIcon, Boolean(favorite) && styles.activeHeart]}>
+            {Boolean(favorite) ? '♥' : '♡'}
+          </Text>
+        </TouchableOpacity>
+      )}
       
       {/* Workout Name */}
       <Text style={styles.title}>{name}</Text>

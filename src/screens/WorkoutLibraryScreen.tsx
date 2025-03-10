@@ -230,66 +230,70 @@ const WorkoutLibraryScreen: React.FC<Props> = ({ navigation }) => {
       
       <SafeAreaView style={styles.safeArea}>
         <View style={styles.content}>
-          {/* Pace Settings Section */}
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Pace Settings</Text>
-            <Text style={styles.unitsIndicator}>({isMetric ? 'km/h' : 'mph'})</Text>
-          </View>
-          
-          <View style={styles.paceSettingsCard}>
-            <View key={`pace-circles-${updateKey}`} style={styles.paceCircles}>
-              {/* Recovery Pace */}
-              <View style={styles.paceCircle}>
-                <View style={[styles.circle, { backgroundColor: COLORS.recovery }]}>
-                  <Text style={styles.circleText}>
-                    {getDisplaySpeed(paceSettings?.recovery?.speed || 4.5)}
-                  </Text>
-                </View>
-                <Text style={styles.circleLabel}>Recovery</Text>
+          {/* Pace Settings Section - Only shown for logged-in users */}
+          {authState.isAuthenticated && (
+            <>
+              <View style={styles.sectionHeader}>
+                <Text style={styles.sectionTitle}>Pace Settings</Text>
+                <Text style={styles.unitsIndicator}>({isMetric ? 'km/h' : 'mph'})</Text>
               </View>
               
-              {/* Base Pace */}
-              <View style={styles.paceCircle}>
-                <View style={[styles.circle, { backgroundColor: COLORS.base }]}>
-                  <Text style={styles.circleText}>
-                    {getDisplaySpeed(paceSettings?.base?.speed || 5.5)}
-                  </Text>
+              <View style={styles.paceSettingsCard}>
+                <View key={`pace-circles-${updateKey}`} style={styles.paceCircles}>
+                  {/* Recovery Pace */}
+                  <View style={styles.paceCircle}>
+                    <View style={[styles.circle, { backgroundColor: COLORS.recovery }]}>
+                      <Text style={styles.circleText}>
+                        {getDisplaySpeed(paceSettings?.recovery?.speed || 4.5)}
+                      </Text>
+                    </View>
+                    <Text style={styles.circleLabel}>Recovery</Text>
+                  </View>
+                  
+                  {/* Base Pace */}
+                  <View style={styles.paceCircle}>
+                    <View style={[styles.circle, { backgroundColor: COLORS.base }]}>
+                      <Text style={styles.circleText}>
+                        {getDisplaySpeed(paceSettings?.base?.speed || 5.5)}
+                      </Text>
+                    </View>
+                    <Text style={styles.circleLabel}>Base</Text>
+                  </View>
+                  
+                  {/* Run Pace */}
+                  <View style={styles.paceCircle}>
+                    <View style={[styles.circle, { backgroundColor: COLORS.run }]}>
+                      <Text style={styles.circleText}>
+                        {getDisplaySpeed(paceSettings?.run?.speed || 7.0)}
+                      </Text>
+                    </View>
+                    <Text style={styles.circleLabel}>Run</Text>
+                  </View>
+                  
+                  {/* Sprint Pace */}
+                  <View style={styles.paceCircle}>
+                    <View style={[styles.circle, { backgroundColor: COLORS.sprint }]}>
+                      <Text style={styles.circleText}>
+                        {getDisplaySpeed(paceSettings?.sprint?.speed || 9.0)}
+                      </Text>
+                    </View>
+                    <Text style={styles.circleLabel}>Sprint</Text>
+                  </View>
+                  
+                  {/* Edit Button */}
+                  <View style={styles.paceCircle}>
+                    <TouchableOpacity 
+                      style={styles.editButton}
+                      onPress={handleEditPacePress}
+                    >
+                      <Text style={styles.editButtonText}>✎</Text>
+                    </TouchableOpacity>
+                    <Text style={styles.circleLabel}>Edit</Text>
+                  </View>
                 </View>
-                <Text style={styles.circleLabel}>Base</Text>
               </View>
-              
-              {/* Run Pace */}
-              <View style={styles.paceCircle}>
-                <View style={[styles.circle, { backgroundColor: COLORS.run }]}>
-                  <Text style={styles.circleText}>
-                    {getDisplaySpeed(paceSettings?.run?.speed || 7.0)}
-                  </Text>
-                </View>
-                <Text style={styles.circleLabel}>Run</Text>
-              </View>
-              
-              {/* Sprint Pace */}
-              <View style={styles.paceCircle}>
-                <View style={[styles.circle, { backgroundColor: COLORS.sprint }]}>
-                  <Text style={styles.circleText}>
-                    {getDisplaySpeed(paceSettings?.sprint?.speed || 9.0)}
-                  </Text>
-                </View>
-                <Text style={styles.circleLabel}>Sprint</Text>
-              </View>
-              
-              {/* Edit Button */}
-              <View style={styles.paceCircle}>
-                <TouchableOpacity 
-                  style={styles.editButton}
-                  onPress={handleEditPacePress}
-                >
-                  <Text style={styles.editButtonText}>✎</Text>
-                </TouchableOpacity>
-                <Text style={styles.circleLabel}>Edit</Text>
-              </View>
-            </View>
-          </View>
+            </>
+          )}
           
           {/* Workout Library Section */}
           <View style={styles.librarySection}>
@@ -317,6 +321,7 @@ const WorkoutLibraryScreen: React.FC<Props> = ({ navigation }) => {
                     onPress={() => handleWorkoutPress(reduxWorkout.id)}
                     onFavoriteToggle={() => dispatch(toggleWorkoutFavorite(reduxWorkout.id))}
                     showVisualization={true}
+                    showFavoriteButton={authState.isAuthenticated}
                   />
                 );
               }}
