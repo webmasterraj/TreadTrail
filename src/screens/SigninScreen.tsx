@@ -51,8 +51,19 @@ const SigninScreen: React.FC<Props> = ({navigation}) => {
 
     try {
       setIsLoading(true);
-      await signIn(email, password);
-      // Navigation will happen in the useEffect when authState updates
+      
+      // Call signIn and capture the return value (true/false)
+      const signInResult = await signIn(email, password);
+      
+      // If sign in failed, manually handle the failure
+      if (!signInResult) {
+        Alert.alert(
+          'Sign In Failed',
+          'Invalid email or password. Please try again.'
+        );
+        setIsLoading(false);
+      }
+      // If successful, navigation will happen in the useEffect when authState updates
     } catch (error) {
       Alert.alert(
         'Sign In Failed',
@@ -251,7 +262,7 @@ const styles = StyleSheet.create({
     marginTop: SPACING.xlarge,
   },
   signUpText: {
-    color: COLORS.lightGray,
+    color: COLORS.white,
     fontSize: FONT_SIZES.small,
   },
   signUpLink: {

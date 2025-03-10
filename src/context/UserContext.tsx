@@ -302,12 +302,10 @@ export const UserProvider: React.FC<UserProviderProps> = ({ children }) => {
       
       if (userSpecificSettings) {
         // Use user's previously saved settings
-        console.log(`[DEBUG-SIGNIN] Found user-specific settings for ${userData.id}`);
         const parsedUserSettings = JSON.parse(userSpecificSettings);
         setUserSettings(parsedUserSettings);
       } else if (userSettings) {
         // Otherwise update current settings with user info
-        console.log(`[DEBUG-SIGNIN] No user-specific settings found for ${userData.id}, updating current settings`);
         const now = new Date().toISOString();
         const updatedSettings = {
           ...userSettings,

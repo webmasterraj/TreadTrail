@@ -304,11 +304,39 @@ const ProfileScreen: React.FC<Props> = ({ navigation, route }) => {
                     month === today.getMonth() && 
                     year === today.getFullYear();
                   
-                  // Only show workout dots on past days (up to today)
-                  const pastDays = [3, 4, 10, 15, 18]; // Example days with workouts
-                  const isPastDay = 
-                    new Date(year, month, day) <= today;
-                  const hasWorkout = pastDays.includes(day) && isPastDay;
+                  // Create date in local timezone (not UTC)
+                  // Create the date without using toISOString() which converts to UTC
+                  const currentDate = new Date(year, month, day);
+                  
+                  // Format date as YYYY-MM-DD in local timezone
+                  const dateString = 
+                    currentDate.getFullYear() + '-' + 
+                    String(currentDate.getMonth() + 1).padStart(2, '0') + '-' + 
+                    String(currentDate.getDate()).padStart(2, '0');
+                  
+                  // Check if there's a workout on this specific date in the history
+                  const hasWorkout = workoutHistory.some(session => {
+                    try {
+                      // Skip sessions without a date
+                      if (!session || !session.date) {
+                        return false;
+                      }
+                      
+                      // Get the session date - it may need normalization
+                      let sessionDate = session.date;
+                      
+                      // If the session date includes time part, extract just the date
+                      if (sessionDate && typeof sessionDate === 'string' && sessionDate.includes('T')) {
+                        sessionDate = sessionDate.split('T')[0];
+                      }
+                      
+                      // Check if the dates match 
+                      return sessionDate === dateString;
+                    } catch (err) {
+                      console.error('Error processing workout date:', err);
+                      return false;
+                    }
+                  });
                   
                   days.push(
                     <View 

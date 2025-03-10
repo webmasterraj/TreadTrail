@@ -520,14 +520,19 @@ const WorkoutInProgressScreen: React.FC<Props> = ({ route, navigation }) => {
       });
       
       // Create the session object
-      const now = new Date().toISOString();
+      const now = new Date();
+      const localDateString = 
+        now.getFullYear() + '-' + 
+        String(now.getMonth() + 1).padStart(2, '0') + '-' + 
+        String(now.getDate()).padStart(2, '0');
+        
       const session = {
         id: sessionId,
         workoutId: activeWorkout.id,
         workoutName: activeWorkout.name,
-        date: now.split('T')[0], // Just the date part
-        startTime: new Date().toISOString(), // In a real implementation, track the actual start time
-        endTime: now,
+        date: localDateString, // Local date string in YYYY-MM-DD format
+        startTime: now.toISOString(), // Keep ISO string for full timestamp
+        endTime: now.toISOString(),
         duration: elapsedTime,
         completed: currentSegmentIndex >= activeWorkout.segments.length - 1,
         pauses: [], // Could track pauses in a real implementation
