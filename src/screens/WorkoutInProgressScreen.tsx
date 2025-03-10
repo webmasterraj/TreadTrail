@@ -795,25 +795,50 @@ const WorkoutInProgressScreen: React.FC<Props> = ({ route, navigation }) => {
         animationType="fade"
       >
         <View style={styles.modalContainer}>
-          <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Workout Paused</Text>
-            <Text style={styles.modalTime}>{formatTime(workoutPosition)}</Text>
+          <View style={styles.pauseOverlay}>
+            <View style={styles.pauseIcon}>
+              <Text style={styles.pauseIconSymbol}>II</Text>
+            </View>
             
-            <View style={styles.modalButtonsContainer}>
+            <Text style={styles.pauseTitle}>Workout Paused</Text>
+            <Text style={styles.workoutName}>{activeWorkout?.name || "Workout"}</Text>
+            
+            <View style={styles.workoutProgress}>
+              <Text style={styles.progressText}>{formatTime(elapsedTime)}</Text>
+              <View style={styles.progressBarContainer}>
+                <View style={[styles.progressBar, { width: `${Math.min(100, (elapsedTime / workoutTotalTime) * 100)}%` }]} />
+              </View>
+              <Text style={styles.progressText}>{formatTime(workoutTotalTime)}</Text>
+            </View>
+            
+            <View style={styles.actionButtons}>
               <TouchableOpacity 
-                style={styles.resumeButton} 
+                style={[styles.button, styles.resumeButton]} 
                 onPress={handleResume}
               >
-                <Text style={styles.resumeButtonText}>Resume</Text>
+                <Text style={styles.resumeButtonText}>Resume Workout</Text>
               </TouchableOpacity>
+              
               <TouchableOpacity 
-                style={styles.modalEndButton} 
+                style={[styles.button, styles.restartButton]}
+                onPress={() => {
+                  // For now just restart from beginning by end and then navigating
+                  setIsPauseModalVisible(false);
+                  dispatch(endWorkoutAction());
+                  navigation.replace('WorkoutDetails', { workoutId: activeWorkout.id });
+                }}
+              >
+                <Text style={styles.restartButtonText}>Restart Workout</Text>
+              </TouchableOpacity>
+              
+              <TouchableOpacity 
+                style={[styles.button, styles.endButtonModal]} 
                 onPress={() => {
                   setIsPauseModalVisible(false);
                   handleEndWorkout();
                 }}
               >
-                <Text style={styles.modalEndButtonText}>End Workout</Text>
+                <Text style={styles.endButtonModalText}>End Workout</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -1067,49 +1092,112 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  modalContent: {
-    backgroundColor: COLORS.darkGray,
-    borderRadius: 12,
-    padding: SPACING.large,
-    width: '80%',
+  pauseOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+    display: 'flex',
+    flexDirection: 'column',
+    justifyContent: 'center',
     alignItems: 'center',
+    padding: 20,
+    zIndex: 10,
   },
-  modalTitle: {
-    fontSize: FONT_SIZES.xl,
+  pauseIcon: {
+    width: 100,
+    height: 100,
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    borderRadius: 50,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  pauseIconSymbol: {
+    fontSize: 40,
+    color: COLORS.white,
+    fontWeight: 'bold',
+  },
+  pauseTitle: {
+    fontSize: 28,
     fontWeight: 'bold',
     color: COLORS.white,
-    marginBottom: SPACING.medium,
+    marginBottom: 10,
+    textAlign: 'center',
   },
-  modalTime: {
-    fontSize: FONT_SIZES.xxl,
-    fontWeight: 'bold',
+  workoutName: {
+    fontSize: 22,
     color: COLORS.accent,
-    marginBottom: SPACING.large,
+    marginBottom: 20,
+    textAlign: 'center',
   },
-  modalButtonsContainer: {
+  workoutProgress: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 30,
     width: '100%',
+    maxWidth: 250,
+  },
+  progressBarContainer: {
+    flex: 1,
+    height: 6,
+    backgroundColor: COLORS.mediumGray || '#222222',
+    borderRadius: 3,
+    marginHorizontal: 10,
+  },
+  progressBar: {
+    height: '100%',
+    backgroundColor: COLORS.accent,
+    borderRadius: 3,
+  },
+  progressText: {
+    fontSize: 14,
+    color: COLORS.white,
+    opacity: 0.8,
+    fontWeight: '500',
+  },
+  actionButtons: {
+    display: 'flex',
+    flexDirection: 'column',
+    width: '100%',
+    maxWidth: 250,
+    gap: 15,
   },
   resumeButton: {
     backgroundColor: COLORS.accent,
     borderRadius: 25,
-    padding: 15,
+    padding: 16,
     alignItems: 'center',
-    marginBottom: 10,
   },
   resumeButtonText: {
     color: COLORS.black,
     fontWeight: 'bold',
     fontSize: 16,
   },
-  modalEndButton: {
-    backgroundColor: 'rgba(255, 0, 0, 0.15)',
+  restartButton: {
+    backgroundColor: COLORS.mediumGray || '#222222',
     borderRadius: 25,
-    padding: 15,
+    padding: 16,
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: 'rgba(255, 0, 0, 0.3)',
+    borderColor: 'rgba(255, 255, 255, 0.1)',
   },
-  modalEndButtonText: {
+  restartButtonText: {
+    color: COLORS.white,
+    fontWeight: 'bold',
+    fontSize: 16,
+  },
+  endButtonModal: {
+    backgroundColor: 'rgba(255, 0, 0, 0.1)',
+    borderRadius: 25,
+    padding: 16,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 0, 0, 0.2)',
+  },
+  endButtonModalText: {
     color: '#ff6b6b',
     fontWeight: 'bold',
     fontSize: 16,
