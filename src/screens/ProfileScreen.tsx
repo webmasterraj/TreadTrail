@@ -7,19 +7,53 @@ import {
   TouchableOpacity,
   SafeAreaView,
   StatusBar,
+  Animated,
 } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../types';
-import { COLORS, FONT_SIZES, SPACING, BORDER_RADIUS } from '../styles/theme';
-import { UserContext, DataContext } from '../context';
+import { COLORS, FONT_SIZES, SPACING, BORDER_RADIUS, PACE_COLORS } from '../styles/theme';
+import { UserContext } from '../context';
 import { formatDuration } from '../utils/timeUtils';
 import BottomTabBar from '../components/common/BottomTabBar';
+import WorkoutCard from '../components/workout/WorkoutCard';
+import { useAppDispatch, useAppSelector } from '../redux/store';
+import { 
+  fetchWorkoutPrograms, 
+  fetchWorkoutHistory, 
+  fetchStats,
+  selectWorkoutPrograms,
+  selectWorkoutHistory,
+  selectStats,
+  toggleWorkoutFavorite
+} from '../redux/slices/workoutProgramsSlice';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Profile'>;
 
 const ProfileScreen: React.FC<Props> = ({ navigation }) => {
-  const { authState } = useContext(UserContext);
-  const { workoutPrograms, stats, workoutHistory } = useContext(DataContext);
+  const { authState, userSettings } = useContext(UserContext);
+  const dispatch = useAppDispatch();
+  const workoutPrograms = useAppSelector(selectWorkoutPrograms);
+  const workoutHistory = useAppSelector(selectWorkoutHistory);
+  const stats = useAppSelector(selectStats);
+  
+  // Animation value for gradient border effect
+  const animatedValue = React.useRef(new Animated.Value(0)).current;
+
+  // Initialize data when component mounts
+  useEffect(() => {
+    dispatch(fetchWorkoutPrograms());
+    dispatch(fetchWorkoutHistory());
+    dispatch(fetchStats());
+    
+    // Start animation for gradient effect
+    Animated.loop(
+      Animated.timing(animatedValue, {
+        toValue: 1,
+        duration: 3000,
+        useNativeDriver: false
+      })
+    ).start();
+  }, [dispatch, animatedValue]);
 
   // Redirect to signup if not authenticated
   useEffect(() => {
@@ -29,7 +63,7 @@ const ProfileScreen: React.FC<Props> = ({ navigation }) => {
   }, [authState.isAuthenticated, navigation]);
 
   // Get favorite workouts
-  const favoriteWorkouts = workoutPrograms.filter(workout => workout.favorite);
+  const favoriteWorkouts = workoutPrograms.filter(workout => Boolean(workout.favorite));
 
   // Format duration for display (e.g., "30 min")
   const formatWorkoutDuration = (seconds: number): string => {
@@ -55,6 +89,20 @@ const ProfileScreen: React.FC<Props> = ({ navigation }) => {
   const handleWorkoutPress = (workoutId: string) => {
     navigation.navigate('WorkoutDetails', { workoutId });
   };
+  
+  // Toggle workout favorite status
+  const handleFavoriteToggle = (workoutId: string) => {
+    try {
+      if (!workoutId) {
+        return;
+      }
+      
+      // Dispatch the toggle action
+      dispatch(toggleWorkoutFavorite(workoutId));
+    } catch (error) {
+      console.error('Error toggling favorite:', error);
+    }
+  };
 
   // Navigate to settings
   const handleSettingsPress = () => {
@@ -75,7 +123,8 @@ const ProfileScreen: React.FC<Props> = ({ navigation }) => {
       <StatusBar barStyle="light-content" backgroundColor={COLORS.black} />
 
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>Your Profile</Text>
+        <View style={styles.headerSpacer} />
+        <Text style={styles.headerTitle}>Profile</Text>
         <TouchableOpacity
           onPress={handleSettingsPress}
           style={styles.settingsButton}>
@@ -86,34 +135,80 @@ const ProfileScreen: React.FC<Props> = ({ navigation }) => {
       <ScrollView
         style={styles.scrollView}
         showsVerticalScrollIndicator={false}>
-        {/* User Info */}
-        <View style={styles.userInfo}>
-          <Text style={styles.userName}>
-            {authState.user?.name || 'Runner'}
-          </Text>
-          <Text style={styles.userEmail}>{authState.user?.email || ''}</Text>
-        </View>
 
         {/* Lifetime Stats */}
         <View style={styles.lifetimeStats}>
           <View style={styles.statsRow}>
             <View style={styles.statCard}>
+              <Animated.View 
+                style={[
+                  styles.gradientBorder,
+                  {
+                    borderColor: animatedValue.interpolate({
+                      inputRange: [0, 0.25, 0.5, 0.75, 1],
+                      outputRange: [
+                        COLORS.run, 
+                        COLORS.accent, 
+                        COLORS.base, 
+                        COLORS.run, 
+                        COLORS.run
+                      ]
+                    })
+                  }
+                ]} 
+              />
               <Text style={styles.statValue}>{stats.stats.totalWorkouts}</Text>
               <Text style={styles.statLabel}>Workouts</Text>
             </View>
 
             <View style={styles.statCard}>
+              <Animated.View 
+                style={[
+                  styles.gradientBorder,
+                  {
+                    borderColor: animatedValue.interpolate({
+                      inputRange: [0, 0.25, 0.5, 0.75, 1],
+                      outputRange: [
+                        COLORS.accent, 
+                        COLORS.base, 
+                        COLORS.run, 
+                        COLORS.accent, 
+                        COLORS.accent
+                      ]
+                    })
+                  }
+                ]} 
+              />
               <Text style={styles.statValue}>
                 {formatDuration(stats.stats.totalDuration, 'hours')}
               </Text>
-              <Text style={styles.statLabel}>Hours</Text>
+              <Text style={styles.statLabel}>Total Time</Text>
             </View>
 
             <View style={styles.statCard}>
+              <Animated.View 
+                style={[
+                  styles.gradientBorder,
+                  {
+                    borderColor: animatedValue.interpolate({
+                      inputRange: [0, 0.25, 0.5, 0.75, 1],
+                      outputRange: [
+                        COLORS.base, 
+                        COLORS.run, 
+                        COLORS.accent, 
+                        COLORS.base, 
+                        COLORS.base
+                      ]
+                    })
+                  }
+                ]} 
+              />
               <Text style={styles.statValue}>
-                {stats.stats.totalSegmentsCompleted}
+                {(stats.stats.totalSegmentsCompleted / 5).toFixed(1)}
               </Text>
-              <Text style={styles.statLabel}>Segments</Text>
+              <Text style={styles.statLabel}>
+                {userSettings?.preferences?.units === 'metric' ? 'Kms' : 'Miles'}
+              </Text>
             </View>
           </View>
         </View>
@@ -127,40 +222,13 @@ const ProfileScreen: React.FC<Props> = ({ navigation }) => {
           <View style={styles.favoritesList}>
             {favoriteWorkouts.length > 0 ? (
               favoriteWorkouts.map(workout => (
-                <TouchableOpacity
-                  key={workout.id}
-                  style={styles.favoriteItem}
-                  onPress={() => handleWorkoutPress(workout.id)}>
-                  <Text style={styles.favoriteType}>
-                    {workout.focus.replace('_', ' ').toUpperCase()}
-                  </Text>
-                  <Text style={styles.favoriteName}>{workout.name}</Text>
-                  <View style={styles.favoriteMeta}>
-                    <Text style={styles.metaItem}>
-                      {formatWorkoutDuration(workout.duration)}
-                    </Text>
-                    <Text style={styles.metaItem}>
-                      {workout.difficulty.charAt(0).toUpperCase() +
-                        workout.difficulty.slice(1)}
-                    </Text>
-                  </View>
-
-                  {/* Visualization of workout segments */}
-                  <View style={styles.visualizationContainer}>
-                    {workout.segments.map((segment, index) => (
-                      <View
-                        key={index}
-                        style={[
-                          styles.segmentBar,
-                          {
-                            backgroundColor: COLORS[segment.type],
-                            flex: segment.duration / workout.duration,
-                          },
-                        ]}
-                      />
-                    ))}
-                  </View>
-                </TouchableOpacity>
+                <WorkoutCard
+                  key={`workout-${workout.id}-${workout.favorite ? 'fav' : 'notfav'}`}
+                  workout={workout}
+                  onPress={() => handleWorkoutPress(workout.id)}
+                  onFavoriteToggle={() => handleFavoriteToggle(workout.id)}
+                  showVisualization={true}
+                />
               ))
             ) : (
               <View style={styles.emptyState}>
@@ -177,69 +245,6 @@ const ProfileScreen: React.FC<Props> = ({ navigation }) => {
           </View>
         </View>
 
-        {/* Recent Workouts */}
-        <View style={styles.recentSection}>
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Recent Workouts</Text>
-          </View>
-
-          <View style={styles.recentList}>
-            {workoutHistory.length > 0 ? (
-              workoutHistory.slice(0, 3).map(session => {
-                const workout = workoutPrograms.find(
-                  w => w.id === session.workoutId,
-                );
-                if (!workout) {
-                  return null;
-                }
-
-                return (
-                  <TouchableOpacity
-                    key={session.id}
-                    style={styles.recentItem}
-                    onPress={() => handleWorkoutPress(workout.id)}>
-                    <View style={styles.recentHeader}>
-                      <Text style={styles.recentName}>
-                        {session.workoutName}
-                      </Text>
-                      <Text style={styles.recentDate}>
-                        {new Date(session.date).toLocaleDateString()}
-                      </Text>
-                    </View>
-                    <View style={styles.recentMeta}>
-                      <Text style={styles.metaItem}>
-                        {formatWorkoutDuration(session.duration)}
-                      </Text>
-                      <Text
-                        style={[
-                          styles.difficultyTag,
-                          {
-                            backgroundColor: getDifficultyColor(
-                              workout.difficulty,
-                            ),
-                          },
-                        ]}>
-                        {workout.difficulty.charAt(0).toUpperCase() +
-                          workout.difficulty.slice(1)}
-                      </Text>
-                    </View>
-                  </TouchableOpacity>
-                );
-              })
-            ) : (
-              <View style={styles.emptyState}>
-                <Text style={styles.emptyStateText}>
-                  You haven't completed any workouts yet.
-                </Text>
-                <TouchableOpacity
-                  style={styles.browseButton}
-                  onPress={() => navigation.navigate('WorkoutLibrary')}>
-                  <Text style={styles.browseButtonText}>Start a Workout</Text>
-                </TouchableOpacity>
-              </View>
-            )}
-          </View>
-        </View>
 
         {/* Bottom padding */}
         <View style={styles.bottomPadding} />
@@ -268,12 +273,17 @@ const styles = StyleSheet.create({
     paddingBottom: SPACING.small,
   },
   headerTitle: {
-    fontSize: FONT_SIZES.xlarge,
+    fontSize: FONT_SIZES.large,
     fontWeight: '700',
     color: COLORS.white,
+    textAlign: 'center',
+  },
+  headerSpacer: {
+    width: 40,
   },
   settingsButton: {
     padding: SPACING.small,
+    width: 40,
   },
   settingsIcon: {
     fontSize: FONT_SIZES.large,
@@ -293,7 +303,7 @@ const styles = StyleSheet.create({
     color: COLORS.lightGray,
   },
   lifetimeStats: {
-    marginBottom: SPACING.xlarge,
+    marginBottom: SPACING.xxlarge,
     paddingHorizontal: SPACING.large,
   },
   statsRow: {
@@ -304,25 +314,41 @@ const styles = StyleSheet.create({
   statCard: {
     flex: 1,
     backgroundColor: COLORS.darkGray,
-    borderRadius: BORDER_RADIUS.large,
-    padding: SPACING.large,
+    borderRadius: 18,
+    paddingTop: SPACING.large,
+    paddingBottom: SPACING.large,
+    paddingHorizontal: SPACING.small,
     alignItems: 'center',
     position: 'relative',
     overflow: 'hidden',
+    marginHorizontal: 5,
+  },
+  gradientBorder: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    borderWidth: 2,
+    borderRadius: 18,
   },
   statValue: {
-    fontSize: FONT_SIZES.xxlarge,
+    fontSize: 26,
     fontWeight: '800',
     color: COLORS.white,
     marginBottom: SPACING.xsmall,
+    // Gradient text effect in React Native is not easily applied with standard styles,
+    // but we can get close with the accent color
+    color: COLORS.accent,
   },
   statLabel: {
-    fontSize: FONT_SIZES.xsmall,
+    fontSize: 12,
     fontWeight: '500',
-    color: COLORS.lightGray,
+    color: 'rgba(255, 255, 255, 0.7)',
     textAlign: 'center',
   },
   favoritesSection: {
+    marginTop: SPACING.large,
     marginBottom: SPACING.large,
     paddingHorizontal: SPACING.large,
   },
@@ -342,49 +368,11 @@ const styles = StyleSheet.create({
     color: COLORS.white,
   },
   favoritesList: {
-    gap: SPACING.medium,
-  },
-  favoriteItem: {
-    padding: SPACING.medium,
-    borderRadius: BORDER_RADIUS.medium,
-    backgroundColor: COLORS.darkGray,
-    borderWidth: 1,
-    borderColor: COLORS.lightGray,
-    marginBottom: SPACING.medium,
-  },
-  favoriteType: {
-    fontSize: FONT_SIZES.xsmall,
-    color: COLORS.accent,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-    marginBottom: 2,
-  },
-  favoriteName: {
-    fontSize: FONT_SIZES.large,
-    fontWeight: '700',
-    color: COLORS.accent,
-    marginBottom: 3,
-    letterSpacing: -0.5,
-  },
-  favoriteMeta: {
-    flexDirection: 'row',
-    gap: SPACING.medium,
-    marginBottom: SPACING.small,
+    paddingBottom: SPACING.medium,
   },
   metaItem: {
     color: COLORS.lightGray,
     fontSize: FONT_SIZES.xsmall,
-  },
-  visualizationContainer: {
-    height: 25,
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    width: '100%',
-    borderRadius: BORDER_RADIUS.small,
-    overflow: 'hidden',
-  },
-  segmentBar: {
-    height: '100%',
   },
   recentList: {
     gap: SPACING.medium,
@@ -448,7 +436,7 @@ const styles = StyleSheet.create({
     fontSize: FONT_SIZES.small,
   },
   bottomPadding: {
-    height: 20,
+    height: 60,
   },
 });
 

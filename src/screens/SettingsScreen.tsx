@@ -136,8 +136,7 @@ const SettingsScreen: React.FC<Props> = ({navigation}) => {
         </View>
       </ScrollView>
 
-      {/* Use the shared BottomTabBar component */}
-      <BottomTabBar activeTab="Settings" />
+      {/* No bottom tab bar in settings */}
     </SafeAreaView>
   );
 };

@@ -213,13 +213,6 @@ const WorkoutDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
       <SafeAreaView style={styles.safeArea}>
         <ScrollView contentContainerStyle={styles.scrollContent}>
           <View style={styles.header}>
-            <TouchableOpacity 
-              style={styles.backButton} 
-              onPress={() => navigation.goBack()}
-              hitSlop={{top: 20, bottom: 20, left: 20, right: 20}}
-            >
-              <Text style={styles.backButtonText}>←</Text>
-            </TouchableOpacity>
             <Text style={styles.title}>{name}</Text>
           </View>
           
@@ -300,13 +293,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     marginBottom: 15, // Exact value from mockup
-  },
-  backButton: {
-    marginRight: 10, // Exact value from mockup
-  },
-  backButtonText: {
-    fontSize: 24, // Exact value from mockup
-    color: COLORS.accent,
   },
   title: {
     color: COLORS.accent,
