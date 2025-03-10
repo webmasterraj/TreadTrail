@@ -13,8 +13,6 @@ const useWorkoutTimer = () => {
   const timerRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
-    console.log('[useWorkoutTimer] Setting up timer, isRunning:', isRunning);
-    
     // Clear any existing timer
     if (timerRef.current) {
       clearInterval(timerRef.current);
@@ -28,7 +26,7 @@ const useWorkoutTimer = () => {
         try {
           dispatch(timerTick({ timestamp: Date.now() }));
         } catch (error) {
-          console.error('[useWorkoutTimer] Error in timer tick:', error);
+          console.error('Error in timer tick:', error);
         }
       };
       
@@ -39,7 +37,6 @@ const useWorkoutTimer = () => {
     // Cleanup on unmount or when isRunning changes
     return () => {
       if (timerRef.current) {
-        console.log('[useWorkoutTimer] Cleaning up timer');
         clearInterval(timerRef.current);
         timerRef.current = null;
       }

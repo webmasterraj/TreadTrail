@@ -22,6 +22,7 @@ export interface WorkoutState {
   // UI state
   isSkipping: boolean;             // Whether skip operation is in progress
   isTransitioning: boolean;        // Whether segment transition is happening
+  isCompleted: boolean;            // Whether the workout has been completed
   
   // Debug state
   debugInfo: {
@@ -44,6 +45,7 @@ const initialState: WorkoutState = {
   segmentElapsedTime: 0,
   isSkipping: false,
   isTransitioning: false,
+  isCompleted: false,
   debugInfo: {
     lastAction: '',
     actionTimestamp: 0,
@@ -155,6 +157,13 @@ const workoutSlice = createSlice({
             state.isTransitioning = false;
             state.debugInfo.lastAction = 'auto-advance';
             state.debugInfo.actionTimestamp = timestamp;
+          } else {
+            // This is the last segment and it's complete - mark the workout as complete
+            // We don't actually end the workout here, as that would lose state
+            // Instead, we set a new state flag that the component can check
+            state.isCompleted = true;
+            state.debugInfo.lastAction = 'auto-complete';
+            state.debugInfo.actionTimestamp = timestamp;
           }
         }
       }
@@ -259,6 +268,7 @@ export const selectElapsedTime = (state: { workout: WorkoutState }) => state.wor
 export const selectCurrentSegmentIndex = (state: { workout: WorkoutState }) => state.workout.currentSegmentIndex;
 export const selectSegmentElapsedTime = (state: { workout: WorkoutState }) => state.workout.segmentElapsedTime;
 export const selectIsSkipping = (state: { workout: WorkoutState }) => state.workout.isSkipping;
+export const selectIsCompleted = (state: { workout: WorkoutState }) => state.workout.isCompleted;
 export const selectDebugInfo = (state: { workout: WorkoutState }) => state.workout.debugInfo;
 
 // Computed selectors

@@ -125,18 +125,7 @@ export const DataProvider: React.FC<DataProviderProps> = ({ children }) => {
 
   // Get workout by ID
   const getWorkoutById = (id: string): WorkoutProgram | undefined => {
-    console.log('[DataContext] Getting workout by ID:', id);
-    console.log('[DataContext] Available workouts:', workoutPrograms.length);
-    
-    const workout = workoutPrograms.find(workout => workout.id === id);
-    
-    if (workout) {
-      console.log('[DataContext] Found workout:', workout.name);
-    } else {
-      console.log('[DataContext] Workout not found for ID:', id);
-    }
-    
-    return workout;
+    return workoutPrograms.find(workout => workout.id === id);
   };
 
   // Get session by ID
@@ -147,73 +136,38 @@ export const DataProvider: React.FC<DataProviderProps> = ({ children }) => {
   // Toggle workout favorite status
   const toggleFavorite = async (id: string): Promise<void> => {
     try {
-      console.log('[DataContext] toggleFavorite START for workout ID:', id);
-      console.log('[DataContext] Current workoutPrograms array length:', workoutPrograms.length);
-      console.log('[DataContext] Current workoutPrograms:', JSON.stringify(workoutPrograms.map(w => ({id: w.id, name: w.name, favorite: w.favorite}))));
-      
       // Check if workout exists
       const workoutExists = workoutPrograms.some(workout => workout.id === id);
-      console.log('[DataContext] Workout exists check:', workoutExists);
       
       if (!workoutExists) {
-        console.error('[DataContext] Cannot toggle favorite - workout not found:', id);
         return;
       }
       
-      // Log the current workout before modification
-      const currentWorkout = workoutPrograms.find(w => w.id === id);
-      console.log('[DataContext] Current workout before toggle:', 
-        currentWorkout ? 
-          `${currentWorkout.name} (favorite: ${currentWorkout.favorite})` : 
-          'Not found');
-      
       // Create a deep copy to avoid mutation issues
-      console.log('[DataContext] Creating deep copy of workout programs');
       const programsCopy = JSON.parse(JSON.stringify(workoutPrograms));
       
       const updatedPrograms = programsCopy.map(workout => {
         if (workout.id === id) {
-          // IMPORTANT FIX: Ensure we're actually toggling the value
+          // Ensure we're actually toggling the value
           // Cast to boolean to handle any undefined/null cases
           const currentFavorite = Boolean(workout.favorite);
           const newFavoriteStatus = !currentFavorite;
           
-          console.log(`[DataContext] Setting workout ${workout.name} favorite status from ${currentFavorite} to ${newFavoriteStatus}`);
           return { ...workout, favorite: newFavoriteStatus };
         }
         return workout;
       });
       
-      // Log the changes that will be made
-      console.log('[DataContext] Updating state with modified workout programs');
-      const updatedWorkout = updatedPrograms.find(w => w.id === id);
-      console.log('[DataContext] Updated workout after toggle:', 
-        updatedWorkout ? 
-          `${updatedWorkout.name} (favorite: ${updatedWorkout.favorite})` : 
-          'Not found');
-      
-      // Verify that the state is actually changing
-      if (updatedWorkout?.favorite === currentWorkout?.favorite) {
-        console.error('[DataContext] ERROR: Favorite status did not change after toggle!');
-      }
-      
       // Update state first - IMPORTANT: Force a new array reference
       setWorkoutPrograms([...updatedPrograms]);
-      console.log('[DataContext] State updated, now saving to AsyncStorage');
       
       // Then persist to storage
       try {
         await AsyncStorage.setItem(WORKOUT_PROGRAMS_KEY, JSON.stringify(updatedPrograms));
-        console.log('[DataContext] Successfully saved updated favorites to storage');
       } catch (storageError) {
-        console.error('[DataContext] AsyncStorage error:', storageError);
         throw storageError; // Re-throw to be caught by outer catch
       }
-      
-      console.log('[DataContext] toggleFavorite COMPLETED successfully for workout ID:', id);
     } catch (err) {
-      console.error('[DataContext] Error toggling favorite status:', err);
-      console.error('[DataContext] Error details:', err instanceof Error ? err.message : 'Unknown error');
       setError('Failed to update favorite status');
       throw err; // Re-throw so the calling component knows there was an error
     }

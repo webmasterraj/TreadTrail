@@ -13,7 +13,7 @@ import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../types';
 import { COLORS, FONT_SIZES, SPACING, BORDER_RADIUS, PACE_COLORS } from '../styles/theme';
 import { UserContext } from '../context';
-import { formatDuration } from '../utils/timeUtils';
+import { formatDuration, milesToKm, kmToMiles } from '../utils/helpers';
 import BottomTabBar from '../components/common/BottomTabBar';
 import WorkoutCard from '../components/workout/WorkoutCard';
 import { useAppDispatch, useAppSelector } from '../redux/store';
@@ -29,12 +29,18 @@ import {
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Profile'>;
 
-const ProfileScreen: React.FC<Props> = ({ navigation }) => {
+const ProfileScreen: React.FC<Props> = ({ navigation, route }) => {
   const { authState, userSettings } = useContext(UserContext);
   const dispatch = useAppDispatch();
   const workoutPrograms = useAppSelector(selectWorkoutPrograms);
   const workoutHistory = useAppSelector(selectWorkoutHistory);
   const stats = useAppSelector(selectStats);
+  
+  // Check if we need to force reload stats (coming from WorkoutComplete screen)
+  const forceReload = route.params?.forceReload || false;
+  
+  // State for tracking the current month in the calendar
+  const [currentMonth, setCurrentMonth] = React.useState(new Date());
   
   // Animation value for gradient border effect
   const animatedValue = React.useRef(new Animated.Value(0)).current;
@@ -54,6 +60,23 @@ const ProfileScreen: React.FC<Props> = ({ navigation }) => {
       })
     ).start();
   }, [dispatch, animatedValue]);
+  
+  // Force reload stats when coming from workout completion
+  useEffect(() => {
+    if (forceReload) {
+      // Use async function to ensure we can await these calls
+      const reloadData = async () => {
+        try {
+          await dispatch(fetchWorkoutHistory()).unwrap();
+          await dispatch(fetchStats()).unwrap();
+        } catch (error) {
+          console.error('Error reloading stats:', error);
+        }
+      };
+      
+      reloadData();
+    }
+  }, [forceReload, dispatch]);
 
   // Redirect to signup if not authenticated
   useEffect(() => {
@@ -112,6 +135,16 @@ const ProfileScreen: React.FC<Props> = ({ navigation }) => {
   // Handle navigation to workouts screen
   const handleWorkoutsPress = () => {
     navigation.navigate('WorkoutLibrary');
+  };
+  
+  // Go to the previous month
+  const goToPreviousMonth = () => {
+    setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() - 1, 1));
+  };
+  
+  // Go to the next month
+  const goToNextMonth = () => {
+    setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 1));
   };
 
   if (!authState.isAuthenticated) {
@@ -180,7 +213,7 @@ const ProfileScreen: React.FC<Props> = ({ navigation }) => {
                 ]} 
               />
               <Text style={styles.statValue}>
-                {formatDuration(stats.stats.totalDuration, 'hours')}
+                {formatDuration(stats.stats.totalDuration, 'auto')}
               </Text>
               <Text style={styles.statLabel}>Total Time</Text>
             </View>
@@ -204,11 +237,97 @@ const ProfileScreen: React.FC<Props> = ({ navigation }) => {
                 ]} 
               />
               <Text style={styles.statValue}>
-                {(stats.stats.totalSegmentsCompleted / 5).toFixed(1)}
+                {userSettings?.preferences?.units === 'metric' 
+                  ? milesToKm(stats.stats.totalSegmentsCompleted / 5).toFixed(1)
+                  : (stats.stats.totalSegmentsCompleted / 5).toFixed(1)
+                }
               </Text>
               <Text style={styles.statLabel}>
                 {userSettings?.preferences?.units === 'metric' ? 'Kms' : 'Miles'}
               </Text>
+            </View>
+          </View>
+        </View>
+
+        {/* Calendar View */}
+        <View style={styles.calendarSection}>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>Your Workouts</Text>
+          </View>
+          
+          <View style={styles.calendar}>
+            <View style={styles.monthHeader}>
+              <TouchableOpacity onPress={goToPreviousMonth}>
+                <Text style={styles.navButton}>←</Text>
+              </TouchableOpacity>
+              <Text style={styles.monthName}>
+                {currentMonth.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
+              </Text>
+              <TouchableOpacity onPress={goToNextMonth}>
+                <Text style={styles.navButton}>→</Text>
+              </TouchableOpacity>
+            </View>
+            
+            <View style={styles.weekdays}>
+              <Text style={styles.weekday}>S</Text>
+              <Text style={styles.weekday}>M</Text>
+              <Text style={styles.weekday}>T</Text>
+              <Text style={styles.weekday}>W</Text>
+              <Text style={styles.weekday}>T</Text>
+              <Text style={styles.weekday}>F</Text>
+              <Text style={styles.weekday}>S</Text>
+            </View>
+            
+            <View style={styles.days}>
+              {(() => {
+                const today = new Date();
+                const year = currentMonth.getFullYear();
+                const month = currentMonth.getMonth();
+                
+                // Get days in month and first day of month
+                const daysInMonth = new Date(year, month + 1, 0).getDate();
+                const firstDayOfMonth = new Date(year, month, 1).getDay();
+                
+                const days = [];
+                
+                // Add empty cells for days before the 1st of the month
+                for (let i = 0; i < firstDayOfMonth; i++) {
+                  days.push(
+                    <View key={`empty-${i}`} style={styles.day} />
+                  );
+                }
+                
+                // Add cells for each day of the month
+                for (let day = 1; day <= daysInMonth; day++) {
+                  const isToday = 
+                    day === today.getDate() && 
+                    month === today.getMonth() && 
+                    year === today.getFullYear();
+                  
+                  // Only show workout dots on past days (up to today)
+                  const pastDays = [3, 4, 10, 15, 18]; // Example days with workouts
+                  const isPastDay = 
+                    new Date(year, month, day) <= today;
+                  const hasWorkout = pastDays.includes(day) && isPastDay;
+                  
+                  days.push(
+                    <View 
+                      key={`day-${day}`} 
+                      style={[
+                        styles.day,
+                        isToday && styles.currentDay
+                      ]}
+                    >
+                      <Text style={[styles.dayNumber, isToday && styles.currentDayText]}>
+                        {day}
+                      </Text>
+                      {hasWorkout && <View style={styles.workoutDot} />}
+                    </View>
+                  );
+                }
+                
+                return days;
+              })()}
             </View>
           </View>
         </View>
@@ -311,6 +430,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     gap: SPACING.medium,
+    marginBottom: SPACING.large,
   },
   statCard: {
     flex: 1,
@@ -347,6 +467,74 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     color: 'rgba(255, 255, 255, 0.7)',
     textAlign: 'center',
+  },
+  calendarSection: {
+    marginBottom: SPACING.small,
+    paddingHorizontal: SPACING.large,
+  },
+  calendar: {
+    backgroundColor: COLORS.darkGray,
+    borderRadius: 15,
+    padding: SPACING.medium,
+    paddingBottom: SPACING.small, // Reduce bottom padding
+  },
+  monthHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: SPACING.medium,
+  },
+  monthName: {
+    fontSize: FONT_SIZES.medium,
+    fontWeight: 'bold',
+    color: COLORS.white,
+  },
+  navButton: {
+    color: COLORS.accent,
+    fontSize: FONT_SIZES.large,
+  },
+  weekdays: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 5,
+  },
+  weekday: {
+    textAlign: 'center',
+    fontSize: 12,
+    color: 'rgba(255, 255, 255, 0.6)',
+    width: '14.28%',
+  },
+  days: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'flex-start',
+    marginBottom: 2, // Add a small bottom margin instead of extra space
+  },
+  day: {
+    width: '14.28%',
+    height: 32, // Fixed height instead of aspectRatio
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  currentDay: {
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    borderRadius: 50,
+  },
+  dayNumber: {
+    fontSize: 12,
+    color: 'rgba(255, 255, 255, 0.7)',
+    marginBottom: 1, // Reduce bottom margin
+  },
+  currentDayText: {
+    color: COLORS.white,
+    fontWeight: 'bold',
+  },
+  workoutDot: {
+    width: 5,
+    height: 5,
+    borderRadius: 3,
+    backgroundColor: COLORS.accent,
+    marginTop: 1,
   },
   favoritesSection: {
     marginTop: SPACING.large,

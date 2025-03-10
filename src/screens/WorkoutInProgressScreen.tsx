@@ -26,6 +26,7 @@ import {
   selectSegmentRemaining,
   selectTotalDuration,
   selectIsSkipping,
+  selectIsCompleted,
   formatTime,
   formatCountdownTime,
   startWorkout as startWorkoutAction,
@@ -37,6 +38,7 @@ import {
 } from '../redux/slices/workoutSlice';
 import { createWorkoutSession } from '../utils/historyUtils';
 import useWorkoutTimer from '../hooks/useWorkoutTimer';
+import { addWorkoutSession } from '../redux/slices/workoutProgramsSlice';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'WorkoutInProgress'>;
 
@@ -67,6 +69,7 @@ const WorkoutInProgressScreen: React.FC<Props> = ({ route, navigation }) => {
   const segmentTimeRemaining = useAppSelector(selectSegmentRemaining);
   const workoutTotalTime = useAppSelector(selectTotalDuration);
   const isSkipping = useAppSelector(selectIsSkipping);
+  const isCompleted = useAppSelector(selectIsCompleted);
   
   // Initialize the Redux timer
   // Use the hook at the component level for proper lifecycle management
@@ -79,18 +82,16 @@ const WorkoutInProgressScreen: React.FC<Props> = ({ route, navigation }) => {
   useEffect(() => {
     // Critical fix: Only initialize once to prevent constant restarting
     if (hasInitializedRef.current) {
-      console.log('[WorkoutScreen] Already initialized, skipping');
       return;
     }
     
-    console.log('[WorkoutScreen] Initializing workout with ID:', workoutId);
     hasInitializedRef.current = true;
     
     // Start the workout using Redux only
     dispatch(startWorkoutAction(workoutId))
       .unwrap()
       .then(() => {
-        console.log('[WorkoutScreen] Workout started successfully');
+        // Workout started successfully
       })
       .catch((error) => {
         console.log('[WorkoutScreen] Failed to start workout:', error);
@@ -128,8 +129,6 @@ const WorkoutInProgressScreen: React.FC<Props> = ({ route, navigation }) => {
       
       // If there's a significant discrepancy (more than 5%), fix it
       if (Math.abs(expectedProgress - currentProgressValue) > 0.05) {
-        console.log(`[WorkoutScreen] Emergency fix! Progress marker (${currentProgressValue.toFixed(2)}) doesn't match position (${expectedProgress.toFixed(2)})`);
-        
         // Force set the values directly
         progressAnimation.setValue(expectedProgress);
         overlayAnimation.setValue(expectedProgress);
@@ -156,7 +155,6 @@ const WorkoutInProgressScreen: React.FC<Props> = ({ route, navigation }) => {
   // Detect segment changes
   useEffect(() => {
     if (currentSegmentIndex !== prevSegmentIndexRef.current) {
-      console.log(`[WorkoutScreen] Segment changed: ${prevSegmentIndexRef.current} -> ${currentSegmentIndex}`);
       prevSegmentIndexRef.current = currentSegmentIndex;
       
       // Force immediate position calculation on segment change
@@ -166,11 +164,8 @@ const WorkoutInProgressScreen: React.FC<Props> = ({ route, navigation }) => {
     }
   }, [currentSegmentIndex]);
   
-  // Monitor changes to segmentTimeRemaining with precise timing logs
+  // Monitor changes to segmentTimeRemaining for timer sync
   useEffect(() => {
-    const timestamp = new Date().toISOString();
-    console.log(`[WorkoutScreen] TIMER UPDATE @ ${timestamp} - segmentTimeRemaining: ${segmentTimeRemaining}`);
-    
     // Update relevant state on timer change - helps with syncing after skips
     if (activeWorkout && segmentTimeRemaining > 0) {
       // When context updates segment time, ensure our UI is in sync
@@ -179,7 +174,7 @@ const WorkoutInProgressScreen: React.FC<Props> = ({ route, navigation }) => {
       // If we're close to the segment's total duration, we probably just switched segments
       // For example, if a 90-second segment shows 90 or 89 seconds remaining
       if (segmentTimeRemaining >= currentSegment.duration - 2) {
-        console.log('[WorkoutScreen] Detected fresh segment - ensuring all timers in sync');
+        // New segment detected - ensure timers are in sync
       }
     }
   }, [segmentTimeRemaining, activeWorkout, currentSegmentIndex]);
@@ -201,11 +196,6 @@ const WorkoutInProgressScreen: React.FC<Props> = ({ route, navigation }) => {
     // Calculate what the remaining time should be
     const currentSegmentDuration = activeWorkout.segments[currentSegmentIndex].duration;
     const calculatedRemaining = Math.max(0, currentSegmentDuration - segmentElapsedTime);
-    
-    console.log(`[WorkoutScreen] DETAILED DEBUG - Calculated remaining time: ${calculatedRemaining}`);
-    console.log(`[WorkoutScreen] DETAILED DEBUG - Context segmentTimeRemaining: ${segmentTimeRemaining}`);
-    console.log(`[WorkoutScreen] DETAILED DEBUG - Segment elapsed time: ${segmentElapsedTime}`);
-    console.log(`[WorkoutScreen] DETAILED DEBUG - Current segment duration: ${currentSegmentDuration}`);
     
   }, [workoutPosition, segmentTimeRemaining, activeWorkout, currentSegmentIndex]);
 
@@ -238,9 +228,6 @@ const WorkoutInProgressScreen: React.FC<Props> = ({ route, navigation }) => {
   // Now we're using the Redux timer, so we don't need to manage it here
   useEffect(() => {
     // Just add an effect for segment changes if needed
-    if (currentSegmentIndex > 0) {
-      console.log(`[WorkoutScreen] Segment changed to index: ${currentSegmentIndex}`);
-    }
   }, [currentSegmentIndex]);
   
   // Calculate the position in the workout including skipped segments
@@ -250,7 +237,6 @@ const WorkoutInProgressScreen: React.FC<Props> = ({ route, navigation }) => {
     
     // If we're currently skipping, don't recalculate (avoids conflicting with the skip logic)
     if (skipActionRef.current || isSkipping) {
-      console.log('[WorkoutScreen] Skip in progress, using last position:', lastPositionRef.current);
       return lastPositionRef.current;
     }
     
@@ -260,11 +246,6 @@ const WorkoutInProgressScreen: React.FC<Props> = ({ route, navigation }) => {
     
     // Still keep the lastPositionRef to ensure we never go backward
     const finalPosition = Math.max(lastPositionRef.current, newPosition);
-    
-    // Only log when position changes to reduce noise
-    if (finalPosition !== lastPositionRef.current) {
-      console.log(`[WorkoutScreen] Position update: ${lastPositionRef.current} -> ${finalPosition}`);
-    }
     
     // Update our reference
     lastPositionRef.current = finalPosition;
@@ -277,11 +258,9 @@ const WorkoutInProgressScreen: React.FC<Props> = ({ route, navigation }) => {
     isSkipping
   ]);
   
-  // Update workout position with timestamp for sync analysis
+  // Update workout position
   const updateWorkoutPosition = useCallback(() => {
     const newPosition = calculateWorkoutPosition();
-    const timestamp = new Date().toISOString();
-    console.log(`[WorkoutScreen] POSITION UPDATE @ ${timestamp}: ${workoutPosition} -> ${newPosition}`);
     setWorkoutPosition(newPosition);
   }, [calculateWorkoutPosition, workoutPosition]);
 
@@ -289,30 +268,35 @@ const WorkoutInProgressScreen: React.FC<Props> = ({ route, navigation }) => {
   useEffect(() => {
     // Don't update from workoutContext if we're in the middle of skipping
     if (skipActionRef.current) {
-      console.log('[WorkoutScreen] Blocking position update from context due to skip in progress');
       return;
     }
     
     updateWorkoutPosition();
-    
-    // Log segment change details
-    if (activeWorkout) {
-      const currentSegmentDuration = activeWorkout.segments[currentSegmentIndex].duration;
-      console.log(`[WorkoutScreen] Segment duration: ${currentSegmentDuration}, segmentTimeRemaining: ${segmentTimeRemaining}`);
-    }
   }, [updateWorkoutPosition, currentSegmentIndex, segmentTimeRemaining]);
+  
+  // Handle automatic workout completion when the isCompleted flag is set
+  useEffect(() => {
+    if (isCompleted && isWorkoutActive) {
+      // Complete the workout after a brief delay
+      const timeoutId = setTimeout(() => {
+        handleCompleteWorkout();
+      }, 500);
+      
+      return () => clearTimeout(timeoutId);
+    }
+  }, [isCompleted, isWorkoutActive]);
 
   // We're now using the Redux isSkipping state instead of local state
 
   // Track last skip time to throttle skip requests
   const lastSkipTimeRef = useRef(0);
   
+
   // Skip segment handler using Redux
   const handleSkipSegment = useCallback(() => {
     // Prevent multiple skips - add a 750ms throttle to prevent double-taps and UI jumpiness
     const now = Date.now();
     if (isSkipping || skipActionRef.current || (now - lastSkipTimeRef.current < 750)) {
-      console.log('[WorkoutScreen] Skip already in progress or throttled, ignoring request');
       return;
     }
     
@@ -323,11 +307,8 @@ const WorkoutInProgressScreen: React.FC<Props> = ({ route, navigation }) => {
     // Set skipping state locally to prevent UI issues
     skipActionRef.current = true;
     
-    console.log('[WorkoutScreen] Skip button pressed');
-    
     // If no workout is active, do nothing
     if (!activeWorkout || !isWorkoutActive) {
-      console.log('[WorkoutScreen] Cannot skip - no active workout');
       skipActionRef.current = false;
       return;
     }
@@ -336,10 +317,31 @@ const WorkoutInProgressScreen: React.FC<Props> = ({ route, navigation }) => {
     const currentIndex = currentSegmentIndex;
     const nextIndex = currentIndex + 1;
     
-    // If this is the last segment, do nothing
+    // If this is the last segment, mark it as complete by setting progress to 100%
     if (nextIndex >= activeWorkout.segments.length) {
-      console.log('[WorkoutScreen] Cannot skip - already on last segment');
       skipActionRef.current = false;
+      
+      // Set all animations to 100%
+      const progress = 1.0; // 100%
+      progressAnimation.setValue(progress);
+      overlayAnimation.setValue(progress);
+      
+      // Calculate total workout time
+      let totalTime = 0;
+      for (let i = 0; i < activeWorkout.segments.length; i++) {
+        totalTime += activeWorkout.segments[i].duration;
+      }
+      
+      // Force position to the end
+      lastPositionRef.current = totalTime;
+      setWorkoutPosition(totalTime);
+      
+      // When workout ends normally by completing all segments or skipping to the end,
+      // directly go to the completion screen without asking
+      setTimeout(() => {
+        handleCompleteWorkout();
+      }, 500);
+      
       return;
     }
     
@@ -366,11 +368,8 @@ const WorkoutInProgressScreen: React.FC<Props> = ({ route, navigation }) => {
     
     // Ensure new position is reasonable
     if (newPosition > workoutTotalTime) {
-      console.log(`[WorkoutScreen] WARNING: Calculated position ${newPosition} exceeds total duration ${workoutTotalTime}`);
       newPosition = Math.min(newPosition, workoutTotalTime);
     }
-    
-    console.log(`[WorkoutScreen] Skipping segment ${currentIndex}. Setting position to ${newPosition}`);
     
     // Update our references to ensure we don't go backward
     lastPositionRef.current = newPosition;
@@ -380,20 +379,15 @@ const WorkoutInProgressScreen: React.FC<Props> = ({ route, navigation }) => {
     
     // Calculate and set progress value
     const progress = Math.min(newPosition / workoutTotalTime, 1);
-    console.log(`[WorkoutScreen] Setting progress to ${progress.toFixed(2)} (${newPosition}/${workoutTotalTime})`);
     
     // CRITICAL FIX: Set animated values directly without animation to ensure immediate update
     progressAnimation.setValue(progress);
     overlayAnimation.setValue(progress);
     
     // DISPATCH REDUX ACTION TO SKIP SEGMENT
-    const skipStartTime = new Date().toISOString();
-    console.log(`[WorkoutScreen] SKIP START @ ${skipStartTime} - dispatching skipSegment action`);
-    
     dispatch(skipSegmentAction())
       .unwrap()
       .then(() => {
-        console.log('[WorkoutScreen] Skip segment action succeeded');
         // Force a final position update to ensure everything is in sync
         updateWorkoutPosition();
       })
@@ -405,8 +399,6 @@ const WorkoutInProgressScreen: React.FC<Props> = ({ route, navigation }) => {
         setTimeout(() => {
           skipActionRef.current = false;
           dispatch(resetSkipState());
-          
-          console.log(`[WorkoutScreen] Skip operation complete, cleared skip flag`);
         }, 700); // Increased delay to ensure state settles
       });
     
@@ -429,13 +421,11 @@ const WorkoutInProgressScreen: React.FC<Props> = ({ route, navigation }) => {
     
     // Skip animation updates triggered by the timer during a skip action
     if (skipActionRef.current || isSkipping) {
-      console.log('[WorkoutScreen] Skip in progress, not updating animation from timer');
       return;
     }
     
     // Calculate progress as a percentage (0-1)
     const progress = Math.min(workoutPosition / workoutTotalTime, 1);
-    console.log(`[WorkoutScreen] Updating progress animation: ${progress.toFixed(2)}`);
     
     // Don't animate if paused
     if (isPaused) return;
@@ -460,7 +450,6 @@ const WorkoutInProgressScreen: React.FC<Props> = ({ route, navigation }) => {
     ]).start(() => {
       // After animation completes, verify we still have the right position
       if (workoutPosition !== currentPositionForCheck && !skipActionRef.current) {
-        console.log('[WorkoutScreen] Position changed during animation, updating markers');
         const newProgress = Math.min(workoutPosition / workoutTotalTime, 1);
         progressAnimation.setValue(newProgress);
         overlayAnimation.setValue(newProgress);
@@ -469,6 +458,7 @@ const WorkoutInProgressScreen: React.FC<Props> = ({ route, navigation }) => {
     
   }, [workoutPosition, isPaused, isWorkoutActive, activeWorkout, workoutTotalTime, isSkipping]);
 
+  // Define control handlers
   const handlePause = () => {
     dispatch(pauseWorkoutAction());
     setIsPauseModalVisible(true);
@@ -478,8 +468,40 @@ const WorkoutInProgressScreen: React.FC<Props> = ({ route, navigation }) => {
     dispatch(resumeWorkoutAction());
     setIsPauseModalVisible(false);
   };
-
+  
+  const handleReturnToLibrary = () => {
+    // Simply end the workout without saving and return to the library
+    dispatch(endWorkoutAction());
+    navigation.navigate('WorkoutLibrary');
+  };
+  
   const handleEndWorkout = () => {
+    // Show a confirmation dialog asking the user what they want to do
+    Alert.alert(
+      'End Workout',
+      'What would you like to do?',
+      [
+        {
+          text: 'Return to Workout Library',
+          onPress: handleReturnToLibrary,
+          style: 'default',
+        },
+        {
+          text: 'Mark as Complete',
+          onPress: handleCompleteWorkout,
+          style: 'default',
+        },
+        {
+          text: 'Cancel',
+          style: 'cancel',
+        },
+      ],
+      { cancelable: true }
+    );
+  };
+
+  // Define the complete workout handler
+  const handleCompleteWorkout = () => {
     // First create a session from the current workout state
     if (activeWorkout) {
       // Generate a unique ID for the session
@@ -516,6 +538,12 @@ const WorkoutInProgressScreen: React.FC<Props> = ({ route, navigation }) => {
       createWorkoutSession(session).then(() => {
         // End the workout in Redux
         dispatch(endWorkoutAction());
+        
+        // IMPORTANT: Add the session to Redux directly to ensure stats are calculated properly
+        dispatch(addWorkoutSession(session))
+          .catch(err => {
+            console.error('Error adding session to Redux:', err);
+          });
         
         // Navigate to the complete screen
         navigation.navigate('WorkoutComplete', { sessionId });
@@ -780,7 +808,10 @@ const WorkoutInProgressScreen: React.FC<Props> = ({ route, navigation }) => {
               </TouchableOpacity>
               <TouchableOpacity 
                 style={styles.modalEndButton} 
-                onPress={handleEndWorkout}
+                onPress={() => {
+                  setIsPauseModalVisible(false);
+                  handleEndWorkout();
+                }}
               >
                 <Text style={styles.modalEndButtonText}>End Workout</Text>
               </TouchableOpacity>

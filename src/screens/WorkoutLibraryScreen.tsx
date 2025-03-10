@@ -50,17 +50,6 @@ const WorkoutLibraryScreen: React.FC<Props> = ({ navigation }) => {
     dispatch(fetchStats());
   }, [dispatch]);
   
-  // Debugging function to log current pace values
-  const logPaceValues = (source: string, settings: any) => {
-    console.log(`[DEBUG] ${source} - Pace values:`, 
-      settings ? {
-        recovery: settings.recovery?.speed,
-        base: settings.base?.speed,
-        run: settings.run?.speed,
-        sprint: settings.sprint?.speed
-      } : 'No settings available'
-    );
-  };
   
   // Convert mph to km/h for display
   const convertToMetric = (speed: number) => {
@@ -72,30 +61,17 @@ const WorkoutLibraryScreen: React.FC<Props> = ({ navigation }) => {
     return isMetric ? convertToMetric(speed) : speed.toFixed(1);
   };
 
-  // Add logging when userSettings change
-  useEffect(() => {
-    logPaceValues('userSettings changed', userSettings?.paceSettings);
-  }, [userSettings]);
-
-  // Add logging when paceSettings state changes
-  useEffect(() => {
-    logPaceValues('paceSettings state changed', paceSettings);
-  }, [paceSettings]);
 
   // Update local state when userSettings change
   useEffect(() => {
-    console.log('[DEBUG] userSettings changed in WorkoutLibraryScreen');
-    
     // Update pace settings
     if (userSettings?.paceSettings) {
-      console.log('[DEBUG] Updating local paceSettings from userSettings');
       setPaceSettings({...userSettings.paceSettings});
     }
     
     // Update units preference
     if (userSettings?.preferences) {
       const newIsMetric = userSettings.preferences.units === 'metric';
-      console.log('[DEBUG] Units preference:', userSettings.preferences.units, 'isMetric:', newIsMetric);
       setIsMetric(newIsMetric);
     }
     
@@ -107,20 +83,15 @@ const WorkoutLibraryScreen: React.FC<Props> = ({ navigation }) => {
   useFocusEffect(
     useCallback(() => {
       // This will run when the screen is focused
-      console.log('[DEBUG] Screen focused - current userSettings:', 
-        userSettings?.paceSettings ? 'available' : 'not available');
-
       if (userSettings) {
         // Update pace settings
         if (userSettings.paceSettings) {
-          console.log('[DEBUG] About to update paceSettings from userSettings on focus');
           setPaceSettings({...userSettings.paceSettings});
         }
         
         // Update units preference
         if (userSettings.preferences) {
           const newIsMetric = userSettings.preferences.units === 'metric';
-          console.log('[DEBUG] Units preference on focus:', userSettings.preferences.units, 'isMetric:', newIsMetric);
           setIsMetric(newIsMetric);
         }
         
@@ -130,7 +101,6 @@ const WorkoutLibraryScreen: React.FC<Props> = ({ navigation }) => {
       
       return () => {
         // This will run when the screen is unfocused
-        console.log('[DEBUG] Screen unfocused');
       };
     }, [userSettings])
   );

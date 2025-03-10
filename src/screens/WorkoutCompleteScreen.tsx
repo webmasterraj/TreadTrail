@@ -11,9 +11,9 @@ import {
 } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList, WorkoutSession } from '../types';
-import { COLORS, FONT_SIZES, SPACING } from '../styles/theme';
+import { COLORS, FONT_SIZES, SPACING, BORDER_RADIUS } from '../styles/theme';
 import { DataContext, UserContext } from '../context';
-import { formatTime, formatDuration, formatDate } from '../utils/helpers';
+import { formatTime, formatDuration, formatDate, mphToKph } from '../utils/helpers';
 import Button from '../components/common/Button';
 import WorkoutTimeline from '../components/workout/WorkoutTimeline';
 import { getWorkoutSessionById } from '../utils/historyUtils';
@@ -24,10 +24,13 @@ const WorkoutCompleteScreen: React.FC<Props> = ({ route, navigation }) => {
   const { sessionId } = route.params;
   const { getWorkoutById } = useContext(DataContext);
   // Move UserContext access to the top of the component
-  const { authState } = useContext(UserContext);
+  const { authState, userSettings } = useContext(UserContext);
   const [isLoading, setIsLoading] = useState(true);
   const [session, setSession] = useState<WorkoutSession | null>(null);
   const [error, setError] = useState<string | null>(null);
+  
+  // Get user's unit preference
+  const unitPreference = userSettings?.preferences?.units || 'imperial';
   
   // Fetch session data when component mounts
   useEffect(() => {
@@ -95,6 +98,13 @@ const WorkoutCompleteScreen: React.FC<Props> = ({ route, navigation }) => {
   const completionRate = originalWorkout 
     ? Math.round((segments.length - skippedSegments) / originalWorkout.segments.length * 100) 
     : 100;
+    
+  // Calculate distance based on session data (simplified estimation)
+  // In a real app, this would be tracked during workout
+  const estimatedMiles = 1.8;
+  const distance = unitPreference === 'imperial' 
+    ? estimatedMiles.toFixed(1) 
+    : (mphToKph(estimatedMiles) * 0.62).toFixed(1); // Approximate conversion for distance
   
   // Handle share result
   const handleShare = async () => {
@@ -112,36 +122,71 @@ const WorkoutCompleteScreen: React.FC<Props> = ({ route, navigation }) => {
     navigation.navigate('WorkoutLibrary');
   };
   
+  // Navigation to Profile
+  const navigateToProfile = () => {
+    // Force reload stats if needed before navigation
+    navigation.navigate('Profile', { forceReload: true });
+  };
+  
   return (
     <SafeAreaView style={styles.container}>
       <ScrollView contentContainerStyle={styles.scrollContent}>
-        <Text style={styles.congratsText}>Workout Complete!</Text>
+        <View style={styles.celebration}>
+          <Text style={styles.celebrationEmoji}>🎉</Text>
+          <Text style={styles.congratsText}>Great job!</Text>
+          <Text style={styles.congratsSubtitle}>You've completed your workout</Text>
+        </View>
         
         <View style={styles.summaryCard}>
-          <Text style={styles.workoutName}>{workoutName}</Text>
-          <Text style={styles.date}>{formatDate(date)}</Text>
+          <View style={styles.summaryHeader}>
+            <Text style={styles.workoutName}>{workoutName}</Text>
+            <Text style={styles.date}>{formatDate(date)}</Text>
+          </View>
           
-          <View style={styles.statsContainer}>
-            <View style={styles.statItem}>
-              <Text style={styles.statValue}>{formatDuration(duration)}</Text>
-              <Text style={styles.statLabel}>Duration</Text>
+          <View style={styles.statsCircles}>
+            <View style={styles.statCircle}>
+              <View style={styles.circle}>
+                <Text style={styles.circleValue}>{(duration / 60).toFixed(1)}</Text>
+              </View>
+              <Text style={styles.circleLabel}>Minutes</Text>
             </View>
             
-            <View style={styles.statItem}>
-              <Text style={styles.statValue}>{segments.length}</Text>
-              <Text style={styles.statLabel}>Segments</Text>
+            <View style={styles.statCircle}>
+              <View style={styles.circle}>
+                <Text style={styles.circleValue}>{distance}</Text>
+              </View>
+              <Text style={styles.circleLabel}>{unitPreference === 'imperial' ? 'Miles' : 'Kms'}</Text>
             </View>
             
-            <View style={styles.statItem}>
-              <Text style={styles.statValue}>{completionRate}%</Text>
-              <Text style={styles.statLabel}>Completion</Text>
+            <View style={styles.statCircle}>
+              <View style={styles.circle}>
+                <Text style={styles.circleValue}>{segments.length}</Text>
+              </View>
+              <Text style={styles.circleLabel}>Intervals</Text>
             </View>
           </View>
         </View>
         
-        <View style={styles.timelineContainer}>
-          <Text style={styles.sectionTitle}>Workout Timeline</Text>
-          <WorkoutTimeline segments={segments} compact={false} />
+        <View style={styles.workoutsSection}>
+          <Text style={styles.sectionTitle}>Your Workouts</Text>
+          
+          {/* Calendar would go here - simplified for now */}
+          <View style={styles.calendar}>
+            <View style={styles.monthHeader}>
+              <TouchableOpacity>
+                <Text style={styles.navButton}>←</Text>
+              </TouchableOpacity>
+              <Text style={styles.monthName}>March 2025</Text>
+              <TouchableOpacity>
+                <Text style={styles.navButton}>→</Text>
+              </TouchableOpacity>
+            </View>
+            
+            {/* Simplified calendar view */}
+            <View style={styles.calendarPlaceholder}>
+              <Text style={styles.placeholderText}>Calendar View</Text>
+            </View>
+          </View>
         </View>
         
         {!authState.isAuthenticated && (
@@ -159,21 +204,20 @@ const WorkoutCompleteScreen: React.FC<Props> = ({ route, navigation }) => {
           </View>
         )}
         
-        <View style={styles.buttonContainer}>
-          <Button
-            title="Share Results"
-            onPress={handleShare}
-            type="secondary"
-            style={styles.button}
-            icon="share"
-          />
-          
-          <Button
-            title="Done"
+        <View style={styles.actionButtons}>
+          <TouchableOpacity 
+            style={styles.workoutsButton}
             onPress={handleDone}
-            type="primary"
-            style={styles.button}
-          />
+          >
+            <Text style={styles.workoutsButtonText}>Workouts</Text>
+          </TouchableOpacity>
+          
+          <TouchableOpacity 
+            style={styles.statsButton}
+            onPress={navigateToProfile}
+          >
+            <Text style={styles.statsButtonText}>My Stats</Text>
+          </TouchableOpacity>
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -198,61 +242,126 @@ const styles = StyleSheet.create({
     fontSize: FONT_SIZES.medium,
     marginTop: SPACING.medium,
   },
-  congratsText: {
-    fontSize: FONT_SIZES.xxlarge,
-    fontWeight: 'bold',
-    color: COLORS.primary,
-    textAlign: 'center',
-    marginVertical: SPACING.large,
+  // Celebration section styles
+  celebration: {
+    alignItems: 'center',
+    marginTop: SPACING.xl,
+    marginBottom: SPACING.large,
   },
+  celebrationEmoji: {
+    fontSize: 48,
+    marginBottom: SPACING.small,
+  },
+  congratsText: {
+    fontSize: FONT_SIZES.xxl,
+    fontWeight: 'bold',
+    color: COLORS.accent,
+    textAlign: 'center',
+    marginBottom: SPACING.xs,
+  },
+  congratsSubtitle: {
+    fontSize: FONT_SIZES.medium,
+    color: 'rgba(255, 255, 255, 0.7)',
+    textAlign: 'center',
+  },
+  // Summary card styles
   summaryCard: {
     backgroundColor: COLORS.darkGray,
-    borderRadius: 12,
+    borderRadius: 15,
     padding: SPACING.medium,
     marginBottom: SPACING.large,
+  },
+  summaryHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: SPACING.medium,
   },
   workoutName: {
     fontSize: FONT_SIZES.large,
     fontWeight: 'bold',
     color: COLORS.white,
-    marginBottom: SPACING.small,
   },
   date: {
     fontSize: FONT_SIZES.small,
-    color: COLORS.lightGray,
-    marginBottom: SPACING.medium,
+    color: 'rgba(255, 255, 255, 0.6)',
   },
-  statsContainer: {
+  // Circular stats layout
+  statsCircles: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginTop: SPACING.small,
+    alignItems: 'flex-start',
+    marginHorizontal: -5, // Negative margin to offset padding of children
   },
-  statItem: {
-    alignItems: 'center',
+  statCircle: {
     flex: 1,
+    alignItems: 'center',
+    padding: 5,
   },
-  statValue: {
-    fontSize: FONT_SIZES.large,
+  circle: {
+    width: 55,
+    height: 55,
+    borderRadius: 55/2,
+    backgroundColor: COLORS.mediumGray,
+    borderWidth: 1,
+    borderColor: COLORS.accent,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: SPACING.small,
+  },
+  circleValue: {
+    fontSize: FONT_SIZES.small,
     fontWeight: 'bold',
     color: COLORS.white,
   },
-  statLabel: {
-    fontSize: FONT_SIZES.xsmall,
-    color: COLORS.lightGray,
-    marginTop: SPACING.xsmall,
+  circleLabel: {
+    fontSize: 11,
+    color: 'rgba(255, 255, 255, 0.7)',
   },
-  timelineContainer: {
+  // Workouts section
+  workoutsSection: {
     marginBottom: SPACING.large,
   },
   sectionTitle: {
-    fontSize: FONT_SIZES.medium,
+    fontSize: FONT_SIZES.large,
     fontWeight: 'bold',
     color: COLORS.white,
     marginBottom: SPACING.medium,
   },
+  calendar: {
+    backgroundColor: COLORS.darkGray,
+    borderRadius: 15,
+    padding: SPACING.medium,
+  },
+  monthHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: SPACING.medium,
+  },
+  monthName: {
+    fontSize: FONT_SIZES.medium,
+    fontWeight: 'bold',
+    color: COLORS.white,
+  },
+  navButton: {
+    color: COLORS.accent,
+    fontSize: FONT_SIZES.large,
+  },
+  calendarPlaceholder: {
+    height: 150,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    borderRadius: 8,
+  },
+  placeholderText: {
+    color: 'rgba(255, 255, 255, 0.5)',
+  },
+  // Account prompt
   accountPromptContainer: {
-    backgroundColor: COLORS.accentMuted,
-    borderRadius: 12,
+    backgroundColor: COLORS.sprintMuted,
+    borderRadius: 15,
     padding: SPACING.medium,
     marginBottom: SPACING.large,
     borderWidth: 1,
@@ -281,21 +390,45 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     fontSize: FONT_SIZES.small,
   },
-  buttonContainer: {
+  // Action buttons
+  actionButtons: {
+    display: 'flex',
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginTop: SPACING.large,
-    marginBottom: SPACING.xlarge,
+    gap: 10,
+    marginTop: 'auto',
+    marginBottom: SPACING.xl,
   },
-  button: {
+  workoutsButton: {
     flex: 1,
-    marginHorizontal: SPACING.xsmall,
+    backgroundColor: COLORS.accent,
+    borderRadius: 25,
+    padding: 15,
+    alignItems: 'center',
+  },
+  workoutsButtonText: {
+    fontWeight: 'bold',
+    fontSize: FONT_SIZES.medium,
+    color: COLORS.black,
+  },
+  statsButton: {
+    flex: 1,
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    borderRadius: 25,
+    padding: 15,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.2)',
+  },
+  statsButtonText: {
+    fontWeight: 'bold',
+    fontSize: FONT_SIZES.medium,
+    color: COLORS.white,
   },
   errorText: {
     fontSize: FONT_SIZES.medium,
     color: COLORS.error,
     textAlign: 'center',
-    marginTop: SPACING.xlarge,
+    marginTop: SPACING.xl,
   },
 });
 

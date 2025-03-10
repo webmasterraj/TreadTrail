@@ -23,23 +23,59 @@ export const formatTime = (seconds: number): string => {
 };
 
 /**
- * Formats seconds into a more readable duration (e.g. "5 min 30 sec")
+ * Formats seconds into a more readable duration (e.g. "5.2h", "2.5d", "1.2w")
  * @param seconds Number of seconds
+ * @param format Optional format to use (can be basic, hours, days, or auto)
  * @returns Formatted duration string
  */
-export const formatDuration = (seconds: number): string => {
+export const formatDuration = (seconds: number, format: 'basic' | 'hours' | 'days' | 'auto' = 'basic'): string => {
+  // Handle zero time specially
+  if (seconds === 0) {
+    if (format === 'basic') {
+      return '0 sec';
+    } else {
+      return '0.0h';  // Show exactly 0.0h for zero duration
+    }
+  }
+  
   if (seconds < 60) {
-    return `${seconds} sec`;
+    if (format === 'basic') {
+      return `${seconds} sec`;
+    } else {
+      return '0.1h'; // Minimum display for non-zero but small durations
+    }
   }
   
-  const minutes = Math.floor(seconds / 60);
-  const remainingSeconds = Math.floor(seconds % 60);
-  
-  if (remainingSeconds === 0) {
-    return `${minutes} min`;
+  if (format === 'basic') {
+    const minutes = Math.floor(seconds / 60);
+    const remainingSeconds = Math.floor(seconds % 60);
+    
+    if (remainingSeconds === 0) {
+      return `${minutes} min`;
+    }
+    
+    return `${minutes} min ${remainingSeconds} sec`;
+  } else {
+    // Convert to hours
+    const hours = seconds / 3600;
+    
+    if (format === 'hours' || (format === 'auto' && hours < 24)) {
+      // Display as hours with one decimal place
+      return `${hours.toFixed(1)}h`;
+    }
+    
+    // Convert to days
+    const days = hours / 24;
+    
+    if (format === 'days' || (format === 'auto' && days < 7)) {
+      // Display as days with one decimal place
+      return `${days.toFixed(1)}d`;
+    }
+    
+    // Display as weeks with one decimal place
+    const weeks = days / 7;
+    return `${weeks.toFixed(1)}w`;
   }
-  
-  return `${minutes} min ${remainingSeconds} sec`;
 };
 
 /**
@@ -98,6 +134,24 @@ export const mphToKph = (mph: number): number => {
  */
 export const kphToMph = (kph: number): number => {
   return kph / 1.60934;
+};
+
+/**
+ * Converts miles to kilometers
+ * @param miles Distance in miles
+ * @returns Distance in kilometers
+ */
+export const milesToKm = (miles: number): number => {
+  return miles * 1.60934;
+};
+
+/**
+ * Converts kilometers to miles
+ * @param km Distance in kilometers
+ * @returns Distance in miles
+ */
+export const kmToMiles = (km: number): number => {
+  return km / 1.60934;
 };
 
 /**
