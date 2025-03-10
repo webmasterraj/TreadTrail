@@ -16,14 +16,16 @@ module.exports = {
   ],
   ios: {
     supportsTablet: true,
-    bundleIdentifier: 'com.treadtrail.app'
+    bundleIdentifier: 'com.treadtrail.app',
+    jsEngine: 'hermes'
   },
   android: {
     adaptiveIcon: {
       foregroundImage: './src/assets/images/adaptive-icon.png',
       backgroundColor: '#ffffff'
     },
-    package: 'com.treadtrail.app'
+    package: 'com.treadtrail.app',
+    jsEngine: 'hermes'
   },
   web: {
     favicon: './src/assets/images/favicon.png'

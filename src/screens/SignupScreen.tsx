@@ -1,4 +1,4 @@
-import React, { useContext, useState } from 'react';
+import React, { useContext, useState, useEffect } from 'react';
 import { 
   View, 
   Text, 
@@ -11,18 +11,20 @@ import {
   Keyboard,
   Alert,
   TouchableOpacity,
-  StatusBar
+  StatusBar,
+  ActivityIndicator
 } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../types';
 import { COLORS, FONT_SIZES, SPACING, BORDER_RADIUS } from '../styles/theme';
 import { UserContext } from '../context';
 import Button from '../components/common/Button';
+import appleAuth, { AppleButton } from '@invertase/react-native-apple-authentication';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Signup'>;
 
 const SignupScreen: React.FC<Props> = ({ navigation }) => {
-  const { updateProfile } = useContext(UserContext);
+  const { signUp, signInWithApple } = useContext(UserContext);
   
   // States for form fields
   const [name, setName] = useState('');
@@ -30,7 +32,27 @@ const SignupScreen: React.FC<Props> = ({ navigation }) => {
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isAppleSigningIn, setIsAppleSigningIn] = useState(false);
   
+  // State to track if Apple Auth is supported
+  const [isAppleAuthSupported, setIsAppleAuthSupported] = useState(false);
+  
+  // Check if Apple Auth is supported on component mount
+  useEffect(() => {
+    const checkAppleAuthSupport = async () => {
+      if (Platform.OS === 'ios') {
+        try {
+          setIsAppleAuthSupported(appleAuth.isSupported);
+        } catch (error) {
+          console.error('Error checking Apple Auth support:', error);
+          setIsAppleAuthSupported(false);
+        }
+      }
+    };
+    
+    checkAppleAuthSupport();
+  }, []);
+
   // Handle form submission
   const handleSubmit = async () => {
     if (!name.trim()) {
@@ -51,12 +73,31 @@ const SignupScreen: React.FC<Props> = ({ navigation }) => {
     setIsSubmitting(true);
     
     try {
-      await updateProfile(name.trim());
+      await signUp(name.trim(), email.trim(), password);
       navigation.navigate('Welcome', { name: name.trim() });
     } catch (error) {
       Alert.alert('Error', 'Failed to create account. Please try again.');
     } finally {
       setIsSubmitting(false);
+    }
+  };
+  
+  // Handle Apple Sign In
+  const handleAppleSignIn = async () => {
+    setIsAppleSigningIn(true);
+    
+    try {
+      const success = await signInWithApple();
+      
+      if (success) {
+        navigation.replace('WorkoutLibrary');
+      } else {
+        Alert.alert('Error', 'Failed to sign in with Apple. Please try again.');
+      }
+    } catch (error) {
+      Alert.alert('Error', 'Failed to sign in with Apple. Please try again.');
+    } finally {
+      setIsAppleSigningIn(false);
     }
   };
   
@@ -151,8 +192,33 @@ const SignupScreen: React.FC<Props> = ({ navigation }) => {
               onPress={handleSubmit}
               disabled={isSubmitting}
             >
-              <Text style={styles.signupButtonText}>Create Account</Text>
+              {isSubmitting ? (
+                <ActivityIndicator color={COLORS.black} />
+              ) : (
+                <Text style={styles.signupButtonText}>Create Account</Text>
+              )}
             </TouchableOpacity>
+            
+            <View style={styles.divider}>
+              <View style={styles.dividerLine} />
+              <Text style={styles.dividerText}>OR</Text>
+              <View style={styles.dividerLine} />
+            </View>
+            
+            {Platform.OS === 'ios' && isAppleAuthSupported && (
+              <AppleButton
+                buttonStyle={AppleButton.Style.BLACK}
+                buttonType={AppleButton.Type.SIGN_IN}
+                style={styles.appleSignInButton}
+                onPress={handleAppleSignIn}
+              />
+            )}
+            
+            {isAppleSigningIn && (
+              <View style={styles.loadingOverlay}>
+                <ActivityIndicator size="large" color={COLORS.accent} />
+              </View>
+            )}
             
             <Text style={styles.termsText}>
               By creating an account, you agree to our Terms of Service and Privacy Policy
@@ -160,7 +226,7 @@ const SignupScreen: React.FC<Props> = ({ navigation }) => {
             
             <View style={styles.alternateAction}>
               <Text style={styles.alternateText}>Already have an account? </Text>
-              <TouchableOpacity>
+              <TouchableOpacity onPress={() => navigation.navigate('Landing')}>
                 <Text style={styles.alternateLink}>Sign In</Text>
               </TouchableOpacity>
             </View>
@@ -199,94 +265,121 @@ const styles = StyleSheet.create({
   },
   content: {
     flex: 1,
-    padding: 0,
   },
   formContainer: {
-    padding: 30,
-    paddingBottom: 40,
     flex: 1,
+    padding: SPACING.large,
   },
   formTitle: {
     color: COLORS.white,
-    fontSize: 32,
-    fontWeight: '800',
-    marginBottom: 10,
-    marginTop: 40,
+    fontSize: FONT_SIZES.xxlarge,
+    fontWeight: '700',
+    marginBottom: SPACING.small,
   },
   formSubtitle: {
-    color: COLORS.white,
-    fontSize: 16,
-    lineHeight: 24,
-    marginBottom: 40,
-    opacity: 0.7,
+    color: COLORS.lightGray,
+    fontSize: FONT_SIZES.medium,
+    marginBottom: SPACING.xlarge,
   },
   formGroup: {
-    marginBottom: 24,
+    marginBottom: SPACING.large,
   },
   formLabel: {
     color: COLORS.white,
-    fontSize: 14,
+    fontSize: FONT_SIZES.small,
+    marginBottom: SPACING.xsmall,
     fontWeight: '600',
-    marginBottom: 8,
   },
   formInput: {
-    width: '100%',
-    padding: 16,
-    borderRadius: 12, // --input-radius from mockup
-    backgroundColor: COLORS.mediumGray,
-    borderWidth: 1,
-    borderColor: COLORS.lightGray,
+    backgroundColor: COLORS.darkGray,
+    borderRadius: BORDER_RADIUS.medium,
     color: COLORS.white,
-    fontSize: 16,
+    fontSize: FONT_SIZES.medium,
+    padding: SPACING.medium,
+    width: '100%',
   },
   passwordContainer: {
     position: 'relative',
+    width: '100%',
   },
   togglePassword: {
     position: 'absolute',
-    right: 16,
-    top: '50%',
-    transform: [{ translateY: -12 }], // Approximating the centering
+    right: SPACING.medium,
+    top: 0,
+    bottom: 0,
+    justifyContent: 'center',
   },
   togglePasswordText: {
-    color: 'rgba(255, 255, 255, 0.6)',
-    fontSize: 14,
+    color: COLORS.accent,
+    fontSize: FONT_SIZES.small,
+    fontWeight: '600',
   },
   spacer: {
-    flexGrow: 1,
+    height: SPACING.medium,
   },
   signupButton: {
     backgroundColor: COLORS.accent,
-    borderRadius: BORDER_RADIUS.button,
-    padding: 18,
+    borderRadius: BORDER_RADIUS.medium,
+    padding: SPACING.medium,
     alignItems: 'center',
-    marginTop: 12,
+    justifyContent: 'center',
+    marginBottom: SPACING.medium,
+    height: 56,
   },
   signupButtonText: {
     color: COLORS.black,
+    fontSize: FONT_SIZES.medium,
     fontWeight: '600',
-    fontSize: 16,
+  },
+  divider: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginVertical: SPACING.medium,
+  },
+  dividerLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: COLORS.darkGray,
+  },
+  dividerText: {
+    color: COLORS.lightGray,
+    paddingHorizontal: SPACING.medium,
+    fontSize: FONT_SIZES.small,
+  },
+  appleSignInButton: {
+    width: '100%',
+    height: 50,
+    marginBottom: SPACING.medium,
+  },
+  loadingOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 999,
   },
   termsText: {
+    color: COLORS.lightGray,
+    fontSize: FONT_SIZES.xsmall,
     textAlign: 'center',
-    color: 'rgba(255, 255, 255, 0.5)',
-    fontSize: 12,
-    marginTop: 20,
-    lineHeight: 18,
+    marginTop: SPACING.large,
   },
   alternateAction: {
     flexDirection: 'row',
     justifyContent: 'center',
-    alignItems: 'center',
-    marginTop: 30,
+    marginTop: SPACING.large,
   },
   alternateText: {
-    color: 'rgba(255, 255, 255, 0.7)',
-    fontSize: 14,
+    color: COLORS.lightGray,
+    fontSize: FONT_SIZES.small,
   },
   alternateLink: {
     color: COLORS.accent,
-    fontSize: 14,
+    fontSize: FONT_SIZES.small,
     fontWeight: '600',
   },
 });

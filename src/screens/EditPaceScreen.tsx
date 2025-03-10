@@ -1,14 +1,15 @@
-import React, { useContext, useState, useEffect } from 'react';
+import React, { useContext, useState, useEffect, useRef } from 'react';
 import { 
   View, 
   Text, 
   StyleSheet, 
-  SafeAreaView, 
   ScrollView, 
   TextInput,
   TouchableOpacity,
-  Alert
+  Alert,
+  StatusBar
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList, PaceType, PaceSetting } from '../types';
 import { COLORS, FONT_SIZES, SPACING, BORDER_RADIUS, PACE_COLORS } from '../styles/theme';
@@ -37,7 +38,20 @@ const PaceTypeInfo = {
 };
 
 const EditPaceScreen: React.FC<Props> = ({ navigation }) => {
-  const { userSettings, updatePaceSetting } = useContext(UserContext);
+  // Get all the context functions we need
+  const { 
+    userSettings, 
+    updatePaceSetting, 
+    updatePreference, 
+    authState,
+    // Get the saveSettings function directly from context
+    saveSettings = async (settings) => {
+      console.error('saveSettings not available');
+      return false;
+    } 
+  } = useContext(UserContext);
+  // Create a ref to track the most up-to-date unit preference
+  const unitPreferenceRef = useRef<'imperial' | 'metric'>('imperial');
   
   // Initialize pace settings from user context or use defaults
   const [paceSettings, setPaceSettings] = useState<Record<PaceType, PaceSetting>>({
@@ -56,33 +70,20 @@ const EditPaceScreen: React.FC<Props> = ({ navigation }) => {
     if (userSettings?.paceSettings) {
       setPaceSettings(userSettings.paceSettings);
     }
-    // If the user has a preference for metric units, use that
-    if (userSettings?.preferences?.useMetric !== undefined) {
-      setUseMetric(userSettings.preferences.useMetric);
+    
+    // If the user has a preference for units, use that
+    if (userSettings?.preferences) {
+      // Check the units preference
+      const unitsPreference = userSettings.preferences.units;
+      
+      if (unitsPreference) {
+        // Update the ref to the current preference
+        unitPreferenceRef.current = unitsPreference;
+        // Update the state
+        setUseMetric(unitsPreference === 'metric');
+      }
     }
   }, [userSettings]);
-  
-  // Update pace setting value
-  const handleUpdateValue = (
-    paceType: PaceType, 
-    field: 'speed' | 'incline', 
-    value: string
-  ) => {
-    const numValue = parseFloat(value) || 0;
-    
-    setPaceSettings(prev => ({
-      ...prev,
-      [paceType]: {
-        ...prev[paceType],
-        [field]: numValue,
-      },
-    }));
-  };
-  
-  // Toggle between miles and kilometers
-  const toggleUnits = (useMetricUnits: boolean) => {
-    setUseMetric(useMetricUnits);
-  };
   
   // Convert mph to km/h for display
   const convertToMetric = (speed: number) => {
@@ -113,6 +114,16 @@ const EditPaceScreen: React.FC<Props> = ({ navigation }) => {
     }));
   };
   
+  // Toggle between miles and kilometers
+  const toggleUnits = (useMetricUnits: boolean) => {
+    const unitPref = useMetricUnits ? 'metric' : 'imperial';
+    // Update the ref value
+    unitPreferenceRef.current = unitPref;
+    // Update the state
+    setUseMetric(useMetricUnits);
+    // Units preference is saved when user clicks Save
+  };
+  
   // Save pace settings
   const handleSaveSettings = async () => {
     setIsSubmitting(true);
@@ -132,17 +143,88 @@ const EditPaceScreen: React.FC<Props> = ({ navigation }) => {
         setIsSubmitting(false);
         return;
       }
+
+      // Get the units preference from our ref
+      const unitPref = unitPreferenceRef.current;
       
-      // Save each pace setting
-      await Promise.all(
-        Object.entries(paceSettings).map(([paceType, setting]) =>
-          updatePaceSetting(paceType as PaceType, setting)
-        )
-      );
+      try {
+        // Save the preference first
+        await updatePreference('units', unitPref);
+        
+        // Force a short delay to ensure state updates propagate
+        await new Promise(resolve => setTimeout(resolve, 100));
+      } catch (prefError) {
+        console.error('Error saving units preference:', prefError);
+        Alert.alert('Error', 'Failed to save units preference. Please try again.');
+      }
+      
+      // Get the current user settings after unit preference update
+      const currentSettings = userSettings;
+      if (!currentSettings) {
+        Alert.alert('Error', 'Could not access user settings');
+        setIsSubmitting(false);
+        return;
+      }
+      
+      // Create updated settings object with all pace settings updated at once
+      const updatedSettings = {
+        ...currentSettings,
+        paceSettings: {
+          ...paceSettings
+        },
+        // Explicitly set the preferences to ensure they don't get overwritten
+        preferences: {
+          ...currentSettings.preferences,
+          units: unitPref, // Use the value we saved earlier
+        }
+      };
+      
+      // Save the complete updated settings
+      try {
+        // Debug log before saving
+        console.log('[DEBUG-EDIT] About to save settings with paces:', {
+          recovery: updatedSettings.paceSettings.recovery.speed,
+          base: updatedSettings.paceSettings.base.speed,
+          run: updatedSettings.paceSettings.run.speed,
+          sprint: updatedSettings.paceSettings.sprint.speed
+        });
+        
+        const success = await saveSettings(updatedSettings);
+        
+        // Debug log after saving
+        console.log('[DEBUG-EDIT] Settings saved successfully:', success);
+        console.log('[DEBUG-EDIT] Navigate back to Workouts screen');
+      } catch (error) {
+        console.error('Error saving settings:', error);
+        Alert.alert('Error', 'Failed to save pace settings');
+        setIsSubmitting(false);
+        return;
+      }
+      
+      // If not authenticated, prompt to create account
+      if (!authState.isAuthenticated) {
+        Alert.alert(
+          'Settings Saved Temporarily',
+          'Create an account to save your preferences permanently.',
+          [
+            {
+              text: 'Create Account',
+              onPress: () => navigation.navigate('Signup'),
+            },
+            {
+              text: 'OK',
+              onPress: () => navigation.goBack(),
+            },
+          ]
+        );
+        setIsSubmitting(false);
+        return;
+      }
       
       // Navigate back
       navigation.goBack();
     } catch (error) {
+      console.error('Error saving pace settings:', error);
       Alert.alert(
         'Error',
         'Failed to save pace settings. Please try again.',
@@ -153,28 +235,22 @@ const EditPaceScreen: React.FC<Props> = ({ navigation }) => {
     }
   };
   
-  // Handle cancel
-  const handleCancel = () => {
-    navigation.goBack();
-  };
-  
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['top']}>
+      <StatusBar barStyle="light-content" backgroundColor={COLORS.black} />
       <ScrollView contentContainerStyle={styles.scrollContent}>
-        {/* Header with Cancel button and title */}
+        {/* Header with back arrow and title */}
         <View style={styles.navRow}>
-          <TouchableOpacity onPress={handleCancel}>
-            <Text style={styles.cancelButton}>Cancel</Text>
+          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
+            <Text style={styles.backButtonText}>←</Text>
           </TouchableOpacity>
+          <Text style={styles.screenTitle}>Set Your Pace Levels</Text>
           <View style={styles.emptySpace} />
         </View>
         
-        <Text style={styles.screenTitle}>Set Your Pace Levels</Text>
-        
         {/* Description text */}
         <Text style={styles.description}>
-          Define your personal pace levels for this and future workouts.
-          <Text style={styles.note}> — you can always adjust it later as you improve!</Text>
+          Set your personal pace levels for your treadmill workouts
         </Text>
         
         {/* Units toggle */}
@@ -236,22 +312,25 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: SPACING.small,
+    marginBottom: SPACING.medium,
   },
-  cancelButton: {
+  backButton: {
+    padding: SPACING.xs,
+  },
+  backButtonText: {
     color: COLORS.accent,
-    fontSize: FONT_SIZES.medium,
-    fontWeight: 'normal',
+    fontSize: 24,
+    fontWeight: 'bold',
   },
   emptySpace: {
-    width: 60,
+    width: 24,
   },
   screenTitle: {
     fontSize: 22,
     fontWeight: 'bold',
     color: COLORS.white,
+    flex: 1,
     textAlign: 'center',
-    marginBottom: SPACING.medium,
   },
   description: {
     color: COLORS.white,

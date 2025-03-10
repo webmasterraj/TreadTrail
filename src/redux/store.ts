@@ -3,20 +3,28 @@ import { persistStore, persistReducer } from 'redux-persist';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { TypedUseSelectorHook, useDispatch, useSelector } from 'react-redux';
 import workoutReducer from './slices/workoutSlice';
+import workoutProgramsReducer from './slices/workoutProgramsSlice';
 
-// Configure Redux Persist
-const persistConfig = {
-  key: 'root',
+// Configure Redux Persist for workout state
+const workoutPersistConfig = {
+  key: 'workout',
   storage: AsyncStorage,
-  whitelist: ['workout'], // Only persist workout state
 };
 
-const persistedWorkoutReducer = persistReducer(persistConfig, workoutReducer);
+// Configure Redux Persist for workout programs state
+const workoutProgramsPersistConfig = {
+  key: 'workoutPrograms',
+  storage: AsyncStorage,
+};
+
+const persistedWorkoutReducer = persistReducer(workoutPersistConfig, workoutReducer);
+const persistedWorkoutProgramsReducer = persistReducer(workoutProgramsPersistConfig, workoutProgramsReducer);
 
 // Configure store
 export const store = configureStore({
   reducer: {
     workout: persistedWorkoutReducer,
+    workoutPrograms: persistedWorkoutProgramsReducer,
   },
   middleware: (getDefaultMiddleware) =>
     getDefaultMiddleware({

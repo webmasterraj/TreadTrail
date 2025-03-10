@@ -1,5 +1,5 @@
 import { DEFAULT_WORKOUT_PROGRAMS } from '../constants/workoutData';
-import { WorkoutProgram } from '../types/workout';
+import { WorkoutProgram } from '../types';
 
 /**
  * Gets a workout by ID directly from the default programs
@@ -7,6 +7,11 @@ import { WorkoutProgram } from '../types/workout';
  */
 export const getWorkoutById = (id: string): WorkoutProgram | null => {
   console.log('[workoutData] Getting workout by ID:', id);
+  
+  if (!id || typeof id !== 'string') {
+    console.error('[workoutData] Invalid workout ID:', id);
+    return null;
+  }
   
   // Use the default workout programs for now - in production this
   // should use AsyncStorage or a more robust data access method

@@ -1,33 +1,73 @@
-import React, { useContext, useEffect } from 'react';
+import React, { useContext, useEffect, useState } from 'react';
 import { 
   View, 
   Text, 
   StyleSheet, 
   SafeAreaView, 
   ScrollView, 
-  Share
+  Share,
+  TouchableOpacity,
+  ActivityIndicator
 } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { RootStackParamList } from '../types';
+import { RootStackParamList, WorkoutSession } from '../types';
 import { COLORS, FONT_SIZES, SPACING } from '../styles/theme';
-import { DataContext } from '../context';
+import { DataContext, UserContext } from '../context';
 import { formatTime, formatDuration, formatDate } from '../utils/helpers';
 import Button from '../components/common/Button';
 import WorkoutTimeline from '../components/workout/WorkoutTimeline';
+import { getWorkoutSessionById } from '../utils/historyUtils';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'WorkoutComplete'>;
 
 const WorkoutCompleteScreen: React.FC<Props> = ({ route, navigation }) => {
   const { sessionId } = route.params;
-  const { getSessionById, getWorkoutById } = useContext(DataContext);
+  const { getWorkoutById } = useContext(DataContext);
+  // Move UserContext access to the top of the component
+  const { authState } = useContext(UserContext);
+  const [isLoading, setIsLoading] = useState(true);
+  const [session, setSession] = useState<WorkoutSession | null>(null);
+  const [error, setError] = useState<string | null>(null);
   
-  const session = getSessionById(sessionId);
+  // Fetch session data when component mounts
+  useEffect(() => {
+    const fetchSession = async () => {
+      try {
+        setIsLoading(true);
+        const sessionData = await getWorkoutSessionById(sessionId);
+        if (sessionData) {
+          setSession(sessionData);
+        } else {
+          setError('Session not found');
+        }
+      } catch (err) {
+        console.error('Error fetching session:', err);
+        setError('Failed to load workout data');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    
+    fetchSession();
+  }, [sessionId]);
   
-  // Handle case where session is not found
-  if (!session) {
+  // Handle loading state
+  if (isLoading) {
     return (
       <SafeAreaView style={styles.container}>
-        <Text style={styles.errorText}>Workout session not found</Text>
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={COLORS.accent} />
+          <Text style={styles.loadingText}>Loading workout data...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+  
+  // Handle case where session is not found
+  if (!session || error) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <Text style={styles.errorText}>{error || 'Workout session not found'}</Text>
         <Button 
           title="Back to Workouts" 
           onPress={() => navigation.navigate('WorkoutLibrary')}
@@ -104,6 +144,21 @@ const WorkoutCompleteScreen: React.FC<Props> = ({ route, navigation }) => {
           <WorkoutTimeline segments={segments} compact={false} />
         </View>
         
+        {!authState.isAuthenticated && (
+          <View style={styles.accountPromptContainer}>
+            <Text style={styles.accountPromptTitle}>Save Your Progress</Text>
+            <Text style={styles.accountPromptText}>
+              Create an account to save your workout history and track your progress over time.
+            </Text>
+            <TouchableOpacity 
+              style={styles.accountPromptButton}
+              onPress={() => navigation.navigate('Signup')}
+            >
+              <Text style={styles.accountPromptButtonText}>Create Account</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+        
         <View style={styles.buttonContainer}>
           <Button
             title="Share Results"
@@ -132,6 +187,16 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     padding: SPACING.medium,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loadingText: {
+    color: COLORS.white,
+    fontSize: FONT_SIZES.medium,
+    marginTop: SPACING.medium,
   },
   congratsText: {
     fontSize: FONT_SIZES.xxlarge,
@@ -184,6 +249,37 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: COLORS.white,
     marginBottom: SPACING.medium,
+  },
+  accountPromptContainer: {
+    backgroundColor: COLORS.accentMuted,
+    borderRadius: 12,
+    padding: SPACING.medium,
+    marginBottom: SPACING.large,
+    borderWidth: 1,
+    borderColor: COLORS.accent,
+  },
+  accountPromptTitle: {
+    fontSize: FONT_SIZES.medium,
+    fontWeight: 'bold',
+    color: COLORS.accent,
+    marginBottom: SPACING.small,
+  },
+  accountPromptText: {
+    fontSize: FONT_SIZES.small,
+    color: COLORS.white,
+    marginBottom: SPACING.medium,
+    lineHeight: 18,
+  },
+  accountPromptButton: {
+    backgroundColor: COLORS.accent,
+    borderRadius: 8,
+    padding: SPACING.small,
+    alignItems: 'center',
+  },
+  accountPromptButtonText: {
+    color: COLORS.black,
+    fontWeight: 'bold',
+    fontSize: FONT_SIZES.small,
   },
   buttonContainer: {
     flexDirection: 'row',

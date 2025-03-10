@@ -8,17 +8,16 @@ import { COLORS } from '../styles/theme';
 import {
   LandingScreen,
   SignupScreen,
+  SigninScreen,
   WelcomeScreen,
   EditPaceScreen,
   WorkoutLibraryScreen,
   WorkoutDetailsScreen,
   WorkoutInProgressScreen,
-  WorkoutCompleteScreen
+  WorkoutCompleteScreen,
+  ProfileScreen,
+  SettingsScreen
 } from '../screens';
-
-// Placeholder screens for future implementation
-const ProfileScreen = () => <></>;
-const SettingsScreen = () => <></>;
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
@@ -47,7 +46,12 @@ const Navigation: React.FC = () => {
         <Stack.Screen 
           name="Signup" 
           component={SignupScreen}
-          options={{ title: 'Create Profile' }} 
+          options={{ headerShown: false }} 
+        />
+        <Stack.Screen 
+          name="Signin" 
+          component={SigninScreen}
+          options={{ headerShown: false }} 
         />
         <Stack.Screen 
           name="Welcome" 
@@ -57,7 +61,7 @@ const Navigation: React.FC = () => {
         <Stack.Screen 
           name="EditPace" 
           component={EditPaceScreen}
-          options={{ title: 'Edit Pace Settings' }} 
+          options={{ headerShown: false }} 
         />
         <Stack.Screen 
           name="WorkoutLibrary" 
@@ -89,12 +93,12 @@ const Navigation: React.FC = () => {
         <Stack.Screen 
           name="Profile" 
           component={ProfileScreen}
-          options={{ title: 'Profile' }} 
+          options={{ headerShown: false }} 
         />
         <Stack.Screen 
           name="Settings" 
           component={SettingsScreen}
-          options={{ title: 'Settings' }} 
+          options={{ headerShown: false }} 
         />
       </Stack.Navigator>
     </NavigationContainer>

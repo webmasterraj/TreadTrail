@@ -159,9 +159,10 @@ const WorkoutCard: React.FC<WorkoutCardProps> = ({
       <TouchableOpacity 
         style={styles.favoriteHeart} 
         onPress={onFavoriteToggle}
+        testID="favorite-button"
       >
-        <Text style={[styles.heartIcon, favorite && styles.activeHeart]}>
-          {favorite ? '♥' : '♡'}
+        <Text style={[styles.heartIcon, Boolean(favorite) && styles.activeHeart]}>
+          {Boolean(favorite) ? '♥' : '♡'}
         </Text>
       </TouchableOpacity>
       

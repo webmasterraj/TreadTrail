@@ -1,6 +1,10 @@
 import React, { createContext, useState, useEffect, ReactNode } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { UserSettings, PaceSetting, UserPreferences } from '../types';
+import { UserSettings, PaceSetting, UserPreferences, AuthState, User } from '../types';
+import 'react-native-get-random-values'; 
+import { v4 as uuidv4 } from 'uuid';
+import { Platform } from 'react-native';
+import appleAuth from '@invertase/react-native-apple-authentication';
 
 // Default pace settings
 const DEFAULT_PACE_SETTINGS = {
@@ -12,23 +16,41 @@ const DEFAULT_PACE_SETTINGS = {
 
 // Default user preferences
 const DEFAULT_PREFERENCES: UserPreferences = {
-  countdownSound: true,
   units: 'imperial',
   darkMode: true,
 };
 
-// Storage key
+// Storage keys
 const USER_SETTINGS_KEY = '@treadtrail:user_settings';
+const AUTH_STATE_KEY = '@treadtrail:auth_state';
+const USER_SETTINGS_KEY_PREFIX = '@treadtrail:user_settings_';
+
+// Helper to get user-specific storage key
+const getUserSettingsKey = (userId: string) => `${USER_SETTINGS_KEY_PREFIX}${userId}`;
+
+// Default auth state
+const DEFAULT_AUTH_STATE: AuthState = {
+  isAuthenticated: false,
+  user: null,
+  token: null,
+};
 
 // Context type definition
 interface UserContextType {
   userSettings: UserSettings | null;
   isLoading: boolean;
   error: string | null;
+  authState: AuthState;
+  signUp: (name: string, email: string, password: string) => Promise<void>;
+  signIn: (email: string, password: string) => Promise<boolean>;
+  signInWithApple: () => Promise<boolean>;
+  signOut: () => Promise<void>;
   updateProfile: (name: string) => Promise<void>;
   updatePaceSetting: (paceType: keyof typeof DEFAULT_PACE_SETTINGS, setting: PaceSetting) => Promise<void>;
-  updatePreference: <K extends keyof UserPreferences>(key: K, value: UserPreferences[K]) => Promise<void>;
+  updatePreference: <K extends keyof UserPreferences>(key: K, value: UserPreferences[K]) => Promise<any>;
   resetToDefault: () => Promise<void>;
+  // Add the saveSettings function to allow direct saving
+  saveSettings: (settings: UserSettings) => Promise<boolean>;
 }
 
 // Create the context
@@ -36,10 +58,16 @@ export const UserContext = createContext<UserContextType>({
   userSettings: null,
   isLoading: true,
   error: null,
+  authState: DEFAULT_AUTH_STATE,
+  signUp: async () => {},
+  signIn: async () => false,
+  signInWithApple: async () => false,
+  signOut: async () => {},
   updateProfile: async () => {},
   updatePaceSetting: async () => {},
   updatePreference: async () => {},
   resetToDefault: async () => {},
+  saveSettings: async () => false,
 });
 
 // Provider component
@@ -49,22 +77,63 @@ interface UserProviderProps {
 
 export const UserProvider: React.FC<UserProviderProps> = ({ children }) => {
   const [userSettings, setUserSettings] = useState<UserSettings | null>(null);
+  const [authState, setAuthState] = useState<AuthState>(DEFAULT_AUTH_STATE);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Initialize settings when component mounts
+  // Initialize settings and auth state when component mounts
   useEffect(() => {
-    const initializeSettings = async () => {
+    const initialize = async () => {
       try {
         setIsLoading(true);
-        // Try to load settings from storage
-        const storedSettings = await AsyncStorage.getItem(USER_SETTINGS_KEY);
         
-        if (storedSettings) {
+        // Load auth state from storage
+        const storedAuthState = await AsyncStorage.getItem(AUTH_STATE_KEY);
+        let loadedAuthState = DEFAULT_AUTH_STATE;
+        
+        if (storedAuthState) {
+          loadedAuthState = JSON.parse(storedAuthState);
+          setAuthState(loadedAuthState);
+        }
+        
+        // Try to load user-specific settings if authenticated
+        let settingsToLoad = null;
+        if (loadedAuthState.isAuthenticated && loadedAuthState.user?.id) {
+          console.log(`[DEBUG-INIT] Checking for user-specific settings for ${loadedAuthState.user.id}`);
+          const userKey = getUserSettingsKey(loadedAuthState.user.id);
+          const userSpecificSettings = await AsyncStorage.getItem(userKey);
+          
+          if (userSpecificSettings) {
+            console.log(`[DEBUG-INIT] Found user-specific settings for ${loadedAuthState.user.id}`);
+            settingsToLoad = JSON.parse(userSpecificSettings);
+          }
+        }
+        
+        // If no user-specific settings, try global settings
+        if (!settingsToLoad) {
+          console.log('[DEBUG-INIT] No user-specific settings found, trying global settings');
+          const storedSettings = await AsyncStorage.getItem(USER_SETTINGS_KEY);
+          
+          if (storedSettings) {
+            settingsToLoad = JSON.parse(storedSettings);
+          }
+        }
+        
+        if (settingsToLoad) {
           // If settings exist, parse and use them
-          setUserSettings(JSON.parse(storedSettings));
+          console.log('[DEBUG-INIT] Loading stored settings');
+          if (settingsToLoad.paceSettings) {
+            console.log('[DEBUG-INIT] Loaded pace settings:', {
+              recovery: settingsToLoad.paceSettings.recovery?.speed,
+              base: settingsToLoad.paceSettings.base?.speed,
+              run: settingsToLoad.paceSettings.run?.speed,
+              sprint: settingsToLoad.paceSettings.sprint?.speed
+            });
+          }
+          setUserSettings(settingsToLoad);
         } else {
           // Otherwise create default settings
+          console.log('[DEBUG-INIT] No settings found, creating defaults');
           const now = new Date().toISOString();
           const defaultSettings: UserSettings = {
             profile: {
@@ -88,16 +157,310 @@ export const UserProvider: React.FC<UserProviderProps> = ({ children }) => {
       }
     };
 
-    initializeSettings();
+    initialize();
   }, []);
 
   // Save settings to storage whenever they change
   const saveSettings = async (settings: UserSettings) => {
     try {
+      console.log('[DEBUG-CONTEXT] Saving settings to AsyncStorage');
+      
+      // Always save to global settings
       await AsyncStorage.setItem(USER_SETTINGS_KEY, JSON.stringify(settings));
+      
+      // If user is logged in, also save user-specific settings
+      if (authState.isAuthenticated && authState.user?.id) {
+        const userKey = getUserSettingsKey(authState.user.id);
+        console.log(`[DEBUG-CONTEXT] Saving user-specific settings for ${authState.user.id}`);
+        await AsyncStorage.setItem(userKey, JSON.stringify(settings));
+      }
+      
+      // Important: Update the React state with the new settings
+      console.log('[DEBUG-CONTEXT] Updating userSettings state');
+      setUserSettings({...settings});
+      
+      console.log('[DEBUG-CONTEXT] Save complete');
+      return true;
     } catch (err) {
       setError('Failed to save user settings');
       console.error('Error saving user settings:', err);
+      return false;
+    }
+  };
+
+  // Save auth state to storage
+  const saveAuthState = async (state: AuthState) => {
+    try {
+      await AsyncStorage.setItem(AUTH_STATE_KEY, JSON.stringify(state));
+    } catch (err) {
+      setError('Failed to save authentication state');
+      console.error('Error saving authentication state:', err);
+    }
+  };
+
+  // Sign up a new user
+  const signUp = async (name: string, email: string, password: string) => {
+    try {
+      // For MVP, we'll store credentials in AsyncStorage
+      // In a real app, this would involve a backend API call
+      const userId = uuidv4();
+      const now = new Date().toISOString();
+      
+      // Create a simple token (in a real app, this would be JWT from server)
+      const token = uuidv4();
+      
+      // Create user object
+      const user: User = {
+        id: userId,
+        name,
+        email,
+        authMethod: 'email',
+      };
+      
+      // Store user credentials (this is simplified for MVP)
+      await AsyncStorage.setItem(`@treadtrail:user_${email}`, JSON.stringify({
+        id: userId,
+        email,
+        password, // In a real app, this would be hashed
+        name,
+      }));
+      
+      // Update auth state
+      const newAuthState: AuthState = {
+        isAuthenticated: true,
+        user,
+        token,
+      };
+      
+      setAuthState(newAuthState);
+      await saveAuthState(newAuthState);
+      
+      // Update user settings with the name
+      if (userSettings) {
+        const updatedSettings = {
+          ...userSettings,
+          profile: {
+            ...userSettings.profile,
+            name,
+            lastActive: now,
+          },
+        };
+        
+        setUserSettings(updatedSettings);
+        await saveSettings(updatedSettings);
+      }
+    } catch (err) {
+      setError('Failed to sign up');
+      console.error('Error signing up:', err);
+      throw err;
+    }
+  };
+
+  // Sign in an existing user
+  const signIn = async (email: string, password: string): Promise<boolean> => {
+    try {
+      // Retrieve stored user credentials
+      const storedUser = await AsyncStorage.getItem(`@treadtrail:user_${email}`);
+      
+      if (!storedUser) {
+        setError('User not found');
+        return false;
+      }
+      
+      const userData = JSON.parse(storedUser);
+      
+      // Check password (in a real app, this would involve proper password verification)
+      if (userData.password !== password) {
+        setError('Invalid password');
+        return false;
+      }
+      
+      // Create a simple token
+      const token = uuidv4();
+      
+      // Create user object
+      const user: User = {
+        id: userData.id,
+        name: userData.name,
+        email: userData.email,
+        authMethod: 'email',
+      };
+      
+      // Update auth state
+      const newAuthState: AuthState = {
+        isAuthenticated: true,
+        user,
+        token,
+      };
+      
+      setAuthState(newAuthState);
+      await saveAuthState(newAuthState);
+      
+      // Load user-specific settings if they exist
+      const userKey = getUserSettingsKey(userData.id);
+      const userSpecificSettings = await AsyncStorage.getItem(userKey);
+      
+      if (userSpecificSettings) {
+        // Use user's previously saved settings
+        console.log(`[DEBUG-SIGNIN] Found user-specific settings for ${userData.id}`);
+        const parsedUserSettings = JSON.parse(userSpecificSettings);
+        setUserSettings(parsedUserSettings);
+      } else if (userSettings) {
+        // Otherwise update current settings with user info
+        console.log(`[DEBUG-SIGNIN] No user-specific settings found for ${userData.id}, updating current settings`);
+        const now = new Date().toISOString();
+        const updatedSettings = {
+          ...userSettings,
+          profile: {
+            ...userSettings.profile,
+            name: userData.name,
+            lastActive: now,
+          },
+        };
+        
+        // Save settings to both global and user-specific storage
+        setUserSettings(updatedSettings);
+        await saveSettings(updatedSettings);
+      }
+      
+      return true;
+    } catch (err) {
+      setError('Failed to sign in');
+      console.error('Error signing in:', err);
+      return false;
+    }
+  };
+
+  // Sign in with Apple (real implementation)
+  const signInWithApple = async (): Promise<boolean> => {
+    try {
+      // Check if Apple Authentication is available
+      if (Platform.OS !== 'ios' || !appleAuth.isSupported) {
+        setError('Apple Sign In is only available on iOS devices');
+        return false;
+      }
+
+      // Request Apple authentication
+      const appleAuthRequestResponse = await appleAuth.performRequest({
+        requestedOperation: appleAuth.Operation.LOGIN,
+        requestedScopes: [appleAuth.Scope.EMAIL, appleAuth.Scope.FULL_NAME],
+      });
+
+      // Get credential state for the user
+      const credentialState = await appleAuth.getCredentialStateForUser(appleAuthRequestResponse.user);
+
+      // Check if the user is authenticated
+      if (credentialState !== appleAuth.State.AUTHORIZED) {
+        setError('Apple Sign In failed: User not authorized');
+        return false;
+      }
+
+      // Extract user information
+      const { user: appleUserId, email, fullName, identityToken } = appleAuthRequestResponse;
+      
+      // Use email from response or create a placeholder
+      const userEmail = email || `apple_${appleUserId}@treadtrail.app`;
+      
+      // Use full name from response or create a placeholder
+      const userName = fullName?.givenName 
+        ? `${fullName.givenName}${fullName.familyName ? ' ' + fullName.familyName : ''}`
+        : 'Apple User';
+      
+      // Store Apple user in AsyncStorage for future sign-ins
+      const appleUserKey = `@treadtrail:apple_user_${appleUserId}`;
+      await AsyncStorage.setItem(appleUserKey, JSON.stringify({
+        id: appleUserId,
+        email: userEmail,
+        name: userName,
+      }));
+      
+      // Create user object
+      const user: User = {
+        id: appleUserId,
+        name: userName,
+        email: userEmail,
+        authMethod: 'apple',
+      };
+      
+      // Use identity token as auth token
+      const token = identityToken || uuidv4();
+      
+      // Update auth state
+      const newAuthState: AuthState = {
+        isAuthenticated: true,
+        user,
+        token,
+      };
+      
+      setAuthState(newAuthState);
+      await saveAuthState(newAuthState);
+      
+      // Update user settings
+      if (userSettings) {
+        const now = new Date().toISOString();
+        const updatedSettings = {
+          ...userSettings,
+          profile: {
+            ...userSettings.profile,
+            name: userName,
+            lastActive: now,
+          },
+        };
+        
+        setUserSettings(updatedSettings);
+        await saveSettings(updatedSettings);
+      }
+      
+      return true;
+    } catch (error: any) {
+      // Handle specific error cases
+      if (error.code && error.code === appleAuth.Error.CANCELED) {
+        setError('Apple Sign In was canceled by the user');
+      } else if (error.code && error.code === appleAuth.Error.FAILED) {
+        setError('Apple Sign In failed');
+      } else if (error.code && error.code === appleAuth.Error.INVALID_RESPONSE) {
+        setError('Apple Sign In response was invalid');
+      } else {
+        setError('Failed to sign in with Apple');
+      }
+      console.error('Error signing in with Apple:', error);
+      return false;
+    }
+  };
+
+  // Sign out
+  const signOut = async () => {
+    try {
+      // Save current user-specific settings before logout
+      if (authState.isAuthenticated && authState.user?.id && userSettings) {
+        const userId = authState.user.id;
+        console.log(`[DEBUG-SIGNOUT] Preserving settings for user ${userId}`);
+        const userKey = getUserSettingsKey(userId);
+        await AsyncStorage.setItem(userKey, JSON.stringify(userSettings));
+      }
+      
+      // Keep the current pace settings
+      const currentPaceSettings = userSettings?.paceSettings || DEFAULT_PACE_SETTINGS;
+      
+      // Reset auth state
+      setAuthState(DEFAULT_AUTH_STATE);
+      await saveAuthState(DEFAULT_AUTH_STATE);
+      
+      // Create new settings object but preserve pace settings
+      if (userSettings) {
+        const defaultSettings = getDefaultSettings();
+        const updatedSettings = {
+          ...defaultSettings,
+          paceSettings: currentPaceSettings, // Keep the current pace settings
+        };
+        
+        console.log('[DEBUG-SIGNOUT] Setting user settings with preserved pace values');
+        setUserSettings(updatedSettings);
+        await AsyncStorage.setItem(USER_SETTINGS_KEY, JSON.stringify(updatedSettings));
+      }
+    } catch (err) {
+      setError('Failed to sign out');
+      console.error('Error signing out:', err);
     }
   };
 
@@ -118,6 +481,20 @@ export const UserProvider: React.FC<UserProviderProps> = ({ children }) => {
       
       setUserSettings(updatedSettings);
       await saveSettings(updatedSettings);
+      
+      // If user is authenticated, update the user object in auth state
+      if (authState.isAuthenticated && authState.user) {
+        const updatedAuthState = {
+          ...authState,
+          user: {
+            ...authState.user,
+            name,
+          },
+        };
+        
+        setAuthState(updatedAuthState);
+        await saveAuthState(updatedAuthState);
+      }
     } catch (err) {
       setError('Failed to update profile');
       console.error('Error updating profile:', err);
@@ -156,6 +533,7 @@ export const UserProvider: React.FC<UserProviderProps> = ({ children }) => {
     if (!userSettings) return;
 
     try {
+      // Create a deep copy of the updated settings to avoid reference issues
       const updatedSettings = {
         ...userSettings,
         preferences: {
@@ -164,11 +542,17 @@ export const UserProvider: React.FC<UserProviderProps> = ({ children }) => {
         },
       };
       
-      setUserSettings(updatedSettings);
+      // Save to AsyncStorage first to ensure it persists
       await saveSettings(updatedSettings);
+      
+      // Then update the state
+      setUserSettings(updatedSettings);
+      
+      return updatedSettings; // Return the updated settings for immediate use
     } catch (err) {
       setError(`Failed to update ${String(key)} preference`);
       console.error(`Error updating ${String(key)} preference:`, err);
+      throw err; // Re-throw to allow caller to handle error
     }
   };
 
@@ -199,11 +583,31 @@ export const UserProvider: React.FC<UserProviderProps> = ({ children }) => {
     userSettings,
     isLoading,
     error,
+    authState,
+    signUp,
+    signIn,
+    signInWithApple,
+    signOut,
     updateProfile,
     updatePaceSetting,
     updatePreference,
     resetToDefault,
+    saveSettings, // Export the saveSettings function
   };
 
   return <UserContext.Provider value={value}>{children}</UserContext.Provider>;
+};
+
+// Helper function to get default settings
+const getDefaultSettings = (): UserSettings => {
+  const now = new Date().toISOString();
+  return {
+    profile: {
+      name: '',
+      dateCreated: now,
+      lastActive: now,
+    },
+    paceSettings: DEFAULT_PACE_SETTINGS,
+    preferences: DEFAULT_PREFERENCES,
+  };
 };

@@ -1,11 +1,12 @@
-import React, { useContext, useEffect } from 'react';
+import React, { useContext, useEffect, useState } from 'react';
 import { 
   View, 
   Text, 
   StyleSheet, 
   SafeAreaView, 
   ImageBackground,
-  StatusBar
+  StatusBar,
+  ActivityIndicator
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -17,25 +18,52 @@ import Button from '../components/common/Button';
 type Props = NativeStackScreenProps<RootStackParamList, 'Landing'>;
 
 const LandingScreen: React.FC<Props> = ({ navigation }) => {
-  const { userSettings } = useContext(UserContext);
+  const { userSettings, authState } = useContext(UserContext);
+  const [isLoading, setIsLoading] = useState(true);
   
-  // Check if user has already set up their profile
+  // Check if user is already authenticated
   useEffect(() => {
-    // If user has a name set, automatically navigate to workout library
-    if (userSettings?.profile.name) {
-      navigation.replace('WorkoutLibrary');
-    }
-  }, [userSettings, navigation]);
+    const checkAuthStatus = async () => {
+      try {
+        // If user is authenticated, navigate to the appropriate screen
+        if (authState.isAuthenticated) {
+          navigation.replace('WorkoutLibrary');
+        } else if (userSettings?.profile.name) {
+          // For backward compatibility - if user has a profile but isn't authenticated
+          navigation.replace('WorkoutLibrary');
+        }
+        setIsLoading(false);
+      } catch (error) {
+        console.error('Error checking auth status:', error);
+        setIsLoading(false);
+      }
+    };
+    
+    checkAuthStatus();
+  }, [authState.isAuthenticated, userSettings, navigation]);
   
   // Handle sign up button press
   const handleSignUp = () => {
     navigation.navigate('Signup');
   };
   
+  // Handle sign in button press
+  const handleSignIn = () => {
+    navigation.navigate('Signin');
+  };
+  
   // Handle browse workouts button press
   const handleBrowseWorkouts = () => {
     navigation.navigate('WorkoutLibrary');
   };
+  
+  if (isLoading) {
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color={COLORS.accent} />
+      </View>
+    );
+  }
   
   return (
     <ImageBackground
@@ -80,14 +108,23 @@ const LandingScreen: React.FC<Props> = ({ navigation }) => {
               />
               
               <Button 
-                title="Workout Library" 
-                onPress={handleBrowseWorkouts}
+                title="Sign In" 
+                onPress={handleSignIn}
                 type="secondary"
                 size="large"
                 fullWidth
                 style={styles.button}
               />
             </View>
+            
+            <Button 
+              title="Browse Workouts" 
+              onPress={handleBrowseWorkouts}
+              type="text"
+              size="medium"
+              fullWidth
+              style={styles.browseButton}
+            />
             
             <Text style={styles.terms}>
               By continuing, you agree to our Terms of Service
@@ -105,6 +142,12 @@ const styles = StyleSheet.create({
   },
   container: {
     flex: 1,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: COLORS.black,
   },
   overlay: {
     flex: 1,
@@ -143,12 +186,15 @@ const styles = StyleSheet.create({
   buttonContainer: {
     flexDirection: 'row',
     gap: 15, // Exact gap from mockup
-    marginBottom: 30, // Exact spacing from mockup
+    marginBottom: 20, // Reduced spacing for the browse button
   },
   button: {
     flex: 1,
     padding: 18, // Exact padding from mockup for large button
     borderRadius: BORDER_RADIUS.button,
+  },
+  browseButton: {
+    marginBottom: 30,
   },
   terms: {
     color: COLORS.white,

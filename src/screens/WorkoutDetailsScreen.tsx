@@ -1,4 +1,4 @@
-import React, { useContext } from 'react';
+import React, { useContext, useEffect } from 'react';
 import { 
   View, 
   Text, 
@@ -12,18 +12,31 @@ import {
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList, WorkoutSegment, PaceType } from '../types';
 import { COLORS, FONT_SIZES, SPACING, BORDER_RADIUS, DIFFICULTY_INDICATORS, FOCUS_INDICATORS, PACE_COLORS } from '../styles/theme';
-import { DataContext, UserContext } from '../context';
+import { UserContext } from '../context';
 import { formatDuration, formatTime } from '../utils/helpers';
 import Button from '../components/common/Button';
+import { useAppDispatch, useAppSelector } from '../redux/store';
+import { 
+  fetchWorkoutPrograms,
+  toggleWorkoutFavorite,
+  selectWorkoutById
+} from '../redux/slices/workoutProgramsSlice';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'WorkoutDetails'>;
 
 const WorkoutDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
   const { workoutId } = route.params;
-  const { getWorkoutById, toggleFavorite } = useContext(DataContext);
-  const { userSettings } = useContext(UserContext);
+  const dispatch = useAppDispatch();
+  // Get user context once at component level
+  const { userSettings, authState } = useContext(UserContext);
   
-  const workout = getWorkoutById(workoutId);
+  // Initialize workout data if not loaded
+  useEffect(() => {
+    dispatch(fetchWorkoutPrograms());
+  }, [dispatch]);
+  
+  // Get the workout from Redux
+  const workout = useAppSelector(selectWorkoutById(workoutId));
   
   // Handle case where workout is not found
   if (!workout) {
@@ -61,6 +74,26 @@ const WorkoutDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
   
   // Handle start workout button press
   const handleStartWorkout = () => {
+    // Check if user is authenticated
+    // Using authState from component-level context
+    if (!authState || !authState.isAuthenticated) {
+      Alert.alert(
+        'Sign In Required',
+        'Please sign in to start a workout.',
+        [
+          {
+            text: 'Sign In',
+            onPress: () => navigation.navigate('Signup'),
+          },
+          {
+            text: 'Cancel',
+            style: 'cancel',
+          },
+        ]
+      );
+      return;
+    }
+    
     // Check if user has set up pace settings
     if (!userSettings?.paceSettings) {
       Alert.alert(
@@ -80,12 +113,32 @@ const WorkoutDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
       return;
     }
     
-    navigation.navigate('WorkoutInProgress', { workoutId });
+    try {
+      console.log('[WorkoutDetailsScreen] Starting workout with ID:', workoutId);
+      if (!workoutId || typeof workoutId !== 'string') {
+        console.error('[WorkoutDetailsScreen] Invalid workout ID:', workoutId);
+        Alert.alert('Error', 'Invalid workout. Please try again.');
+        return;
+      }
+      navigation.navigate('WorkoutInProgress', { workoutId });
+    } catch (error) {
+      console.error('[WorkoutDetailsScreen] Error navigating to workout:', error);
+      Alert.alert('Error', 'Failed to start workout. Please try again.');
+    }
   };
   
   // Handle favorite toggle
   const handleFavoriteToggle = () => {
-    toggleFavorite(workoutId);
+    try {
+      if (!workoutId || !workout) {
+        return;
+      }
+      
+      // Directly dispatch action to toggle the favorite status
+      dispatch(toggleWorkoutFavorite(workoutId));
+    } catch (error) {
+      console.error('Error toggling favorite:', error);
+    }
   };
   
   // Render workout preview visualization

@@ -1,8 +1,11 @@
 export { default as LandingScreen } from './LandingScreen';
 export { default as SignupScreen } from './SignupScreen';
+export { default as SigninScreen } from './SigninScreen';
 export { default as WelcomeScreen } from './WelcomeScreen';
 export { default as EditPaceScreen } from './EditPaceScreen';
 export { default as WorkoutLibraryScreen } from './WorkoutLibraryScreen';
 export { default as WorkoutDetailsScreen } from './WorkoutDetailsScreen';
 export { default as WorkoutInProgressScreen } from './WorkoutInProgressScreen';
 export { default as WorkoutCompleteScreen } from './WorkoutCompleteScreen';
+export { default as ProfileScreen } from './ProfileScreen';
+export { default as SettingsScreen } from './SettingsScreen';

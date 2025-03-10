@@ -1,4 +1,4 @@
-import React, { useContext, useState, useEffect } from 'react';
+import React, { useContext, useState, useEffect, useCallback } from 'react';
 import { 
   View, 
   Text, 
@@ -7,26 +7,146 @@ import {
   FlatList, 
   TouchableOpacity,
   ActivityIndicator,
-  StatusBar
+  StatusBar,
+  Alert
 } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList, WorkoutProgram, PaceType } from '../types';
 import { COLORS, FONT_SIZES, SPACING, BORDER_RADIUS, SHADOW, PACE_COLORS } from '../styles/theme';
-import { DataContext, UserContext } from '../context';
+import { UserContext } from '../context';
 import WorkoutCard from '../components/workout/WorkoutCard';
+import BottomTabBar from '../components/common/BottomTabBar';
+import { useAppDispatch, useAppSelector } from '../redux/store';
+import { 
+  fetchWorkoutPrograms, 
+  fetchWorkoutHistory, 
+  fetchStats, 
+  toggleWorkoutFavorite,
+  selectWorkoutPrograms, 
+  selectIsLoading 
+} from '../redux/slices/workoutProgramsSlice';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'WorkoutLibrary'>;
 
 const WorkoutLibraryScreen: React.FC<Props> = ({ navigation }) => {
-  const { workoutPrograms, isLoading, toggleFavorite } = useContext(DataContext);
+  const dispatch = useAppDispatch();
+  const workoutPrograms = useAppSelector(selectWorkoutPrograms);
+  const isLoading = useAppSelector(selectIsLoading);
   const { userSettings } = useContext(UserContext);
   
   const [filteredWorkouts, setFilteredWorkouts] = useState<WorkoutProgram[]>([]);
+  // Create a state to force updates of pace settings - with a key to force re-render
+  const [paceSettings, setPaceSettings] = useState(userSettings?.paceSettings);
+  // Add a key to force re-render of pace circles
+  const [updateKey, setUpdateKey] = useState(Date.now());
+  // Track if we're using metric units
+  const [isMetric, setIsMetric] = useState(userSettings?.preferences?.units === 'metric');
+  
+  // Initialize data on component mount
+  useEffect(() => {
+    dispatch(fetchWorkoutPrograms());
+    dispatch(fetchWorkoutHistory());
+    dispatch(fetchStats());
+  }, [dispatch]);
+  
+  // Debugging function to log current pace values
+  const logPaceValues = (source: string, settings: any) => {
+    console.log(`[DEBUG] ${source} - Pace values:`, 
+      settings ? {
+        recovery: settings.recovery?.speed,
+        base: settings.base?.speed,
+        run: settings.run?.speed,
+        sprint: settings.sprint?.speed
+      } : 'No settings available'
+    );
+  };
+  
+  // Convert mph to km/h for display
+  const convertToMetric = (speed: number) => {
+    return (speed * 1.60934).toFixed(1);
+  };
+  
+  // Function to get the displayed speed value based on current unit setting
+  const getDisplaySpeed = (speed: number) => {
+    return isMetric ? convertToMetric(speed) : speed.toFixed(1);
+  };
+
+  // Add logging when userSettings change
+  useEffect(() => {
+    logPaceValues('userSettings changed', userSettings?.paceSettings);
+  }, [userSettings]);
+
+  // Add logging when paceSettings state changes
+  useEffect(() => {
+    logPaceValues('paceSettings state changed', paceSettings);
+  }, [paceSettings]);
+
+  // Update local state when userSettings change
+  useEffect(() => {
+    console.log('[DEBUG] userSettings changed in WorkoutLibraryScreen');
+    
+    // Update pace settings
+    if (userSettings?.paceSettings) {
+      console.log('[DEBUG] Updating local paceSettings from userSettings');
+      setPaceSettings({...userSettings.paceSettings});
+    }
+    
+    // Update units preference
+    if (userSettings?.preferences) {
+      const newIsMetric = userSettings.preferences.units === 'metric';
+      console.log('[DEBUG] Units preference:', userSettings.preferences.units, 'isMetric:', newIsMetric);
+      setIsMetric(newIsMetric);
+    }
+    
+    // Force re-render
+    setUpdateKey(Date.now());
+  }, [userSettings]);
+
+  // Refresh pace settings when the screen comes into focus
+  useFocusEffect(
+    useCallback(() => {
+      // This will run when the screen is focused
+      console.log('[DEBUG] Screen focused - current userSettings:', 
+        userSettings?.paceSettings ? 'available' : 'not available');
+
+      if (userSettings) {
+        // Update pace settings
+        if (userSettings.paceSettings) {
+          console.log('[DEBUG] About to update paceSettings from userSettings on focus');
+          setPaceSettings({...userSettings.paceSettings});
+        }
+        
+        // Update units preference
+        if (userSettings.preferences) {
+          const newIsMetric = userSettings.preferences.units === 'metric';
+          console.log('[DEBUG] Units preference on focus:', userSettings.preferences.units, 'isMetric:', newIsMetric);
+          setIsMetric(newIsMetric);
+        }
+        
+        // Force re-render
+        setUpdateKey(Date.now());
+      }
+      
+      return () => {
+        // This will run when the screen is unfocused
+        console.log('[DEBUG] Screen unfocused');
+      };
+    }, [userSettings])
+  );
   
   // Apply filters whenever workouts change
   useEffect(() => {
-    if (!workoutPrograms) return;
-    setFilteredWorkouts([...workoutPrograms]);
+    if (!workoutPrograms || workoutPrograms.length === 0) return;
+    
+    // Make sure we're creating a new array reference
+    const workoutsWithFavoriteStatus = workoutPrograms.map(workout => ({
+      ...workout,
+      // Ensure favorite is always a boolean
+      favorite: Boolean(workout.favorite)
+    }));
+    
+    setFilteredWorkouts(workoutsWithFavoriteStatus);
   }, [workoutPrograms]);
   
   // Navigate to workout details
@@ -34,9 +154,39 @@ const WorkoutLibraryScreen: React.FC<Props> = ({ navigation }) => {
     navigation.navigate('WorkoutDetails', { workoutId });
   };
   
-  // Toggle favorite status
+  // Get auth state at component level
+  const { authState } = useContext(UserContext);
+  
+  // Toggle favorite status using Redux
   const handleFavoriteToggle = (workoutId: string) => {
-    toggleFavorite(workoutId);
+    if (!authState.isAuthenticated) {
+      Alert.alert(
+        'Sign In Required',
+        'Please sign in to add workouts to your favorites.',
+        [
+          {
+            text: 'Sign In',
+            onPress: () => navigation.navigate('Signup'),
+          },
+          {
+            text: 'Cancel',
+            style: 'cancel',
+          },
+        ]
+      );
+      return;
+    }
+    
+    try {
+      if (!workoutId) {
+        return;
+      }
+      
+      // Directly dispatch the toggle action
+      dispatch(toggleWorkoutFavorite(workoutId));
+    } catch (error) {
+      console.error('Error toggling favorite:', error);
+    }
   };
   
   // Navigate to edit pace screen
@@ -49,7 +199,19 @@ const WorkoutLibraryScreen: React.FC<Props> = ({ navigation }) => {
     // This could navigate to a filtered view or expanded list in the future
     // For now, it doesn't do anything as we're showing all workouts already
   };
+
+  // Navigate to profile screen
+  const handleProfilePress = () => {
+    navigation.navigate('Profile');
+  };
+
+  // Navigate to settings screen
+  const handleSettingsPress = () => {
+    navigation.navigate('Settings');
+  };
   
+  // Removed debug functions
+
   // Show loading indicator while data is loading
   if (isLoading) {
     return (
@@ -71,15 +233,16 @@ const WorkoutLibraryScreen: React.FC<Props> = ({ navigation }) => {
           {/* Pace Settings Section */}
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>Pace Settings</Text>
+            <Text style={styles.unitsIndicator}>({isMetric ? 'km/h' : 'mph'})</Text>
           </View>
           
           <View style={styles.paceSettingsCard}>
-            <View style={styles.paceCircles}>
+            <View key={`pace-circles-${updateKey}`} style={styles.paceCircles}>
               {/* Recovery Pace */}
               <View style={styles.paceCircle}>
                 <View style={[styles.circle, { backgroundColor: COLORS.recovery }]}>
                   <Text style={styles.circleText}>
-                    {userSettings?.paceSettings?.recovery?.speed || 4.5}
+                    {getDisplaySpeed(paceSettings?.recovery?.speed || 4.5)}
                   </Text>
                 </View>
                 <Text style={styles.circleLabel}>Recovery</Text>
@@ -89,7 +252,7 @@ const WorkoutLibraryScreen: React.FC<Props> = ({ navigation }) => {
               <View style={styles.paceCircle}>
                 <View style={[styles.circle, { backgroundColor: COLORS.base }]}>
                   <Text style={styles.circleText}>
-                    {userSettings?.paceSettings?.base?.speed || 5.5}
+                    {getDisplaySpeed(paceSettings?.base?.speed || 5.5)}
                   </Text>
                 </View>
                 <Text style={styles.circleLabel}>Base</Text>
@@ -99,7 +262,7 @@ const WorkoutLibraryScreen: React.FC<Props> = ({ navigation }) => {
               <View style={styles.paceCircle}>
                 <View style={[styles.circle, { backgroundColor: COLORS.run }]}>
                   <Text style={styles.circleText}>
-                    {userSettings?.paceSettings?.run?.speed || 7.0}
+                    {getDisplaySpeed(paceSettings?.run?.speed || 7.0)}
                   </Text>
                 </View>
                 <Text style={styles.circleLabel}>Run</Text>
@@ -109,7 +272,7 @@ const WorkoutLibraryScreen: React.FC<Props> = ({ navigation }) => {
               <View style={styles.paceCircle}>
                 <View style={[styles.circle, { backgroundColor: COLORS.sprint }]}>
                   <Text style={styles.circleText}>
-                    {userSettings?.paceSettings?.sprint?.speed || 9.0}
+                    {getDisplaySpeed(paceSettings?.sprint?.speed || 9.0)}
                   </Text>
                 </View>
                 <Text style={styles.circleLabel}>Sprint</Text>
@@ -141,15 +304,22 @@ const WorkoutLibraryScreen: React.FC<Props> = ({ navigation }) => {
             <FlatList
               data={filteredWorkouts}
               keyExtractor={(item) => item.id}
+              extraData={workoutPrograms} // Force re-render when Redux state changes
               contentContainerStyle={styles.listContent}
-              renderItem={({ item }) => (
-                <WorkoutCard
-                  workout={item}
-                  onPress={() => handleWorkoutPress(item.id)}
-                  onFavoriteToggle={() => handleFavoriteToggle(item.id)}
-                  showVisualization={true}
-                />
-              )}
+              renderItem={({ item }) => {
+                // Look up the latest data from Redux for this item
+                const reduxWorkout = workoutPrograms.find(w => w.id === item.id) || item;
+                
+                return (
+                  <WorkoutCard
+                    key={`workout-${item.id}-${reduxWorkout.favorite ? 'fav' : 'notfav'}`} // Force re-render when favorite changes
+                    workout={reduxWorkout} // Use the latest data from Redux
+                    onPress={() => handleWorkoutPress(reduxWorkout.id)}
+                    onFavoriteToggle={() => dispatch(toggleWorkoutFavorite(reduxWorkout.id))}
+                    showVisualization={true}
+                  />
+                );
+              }}
               ListEmptyComponent={
                 <View style={styles.emptyContainer}>
                   <Text style={styles.emptyText}>
@@ -161,32 +331,8 @@ const WorkoutLibraryScreen: React.FC<Props> = ({ navigation }) => {
           </View>
         </View>
         
-        {/* Tab Bar */}
-        <View style={styles.tabBar}>
-          <TouchableOpacity style={[styles.tab, styles.activeTab]}>
-            <View style={styles.tabIcon}>
-              {/* Hamburger menu icon for Workouts */}
-              <Text style={[styles.tabIconText, styles.activeTabText]}>☰</Text>
-            </View>
-            <Text style={[styles.tabLabel, styles.activeTabText]}>Workouts</Text>
-          </TouchableOpacity>
-          
-          <TouchableOpacity style={styles.tab}>
-            <View style={styles.tabIcon}>
-              {/* Square icon for Profile */}
-              <Text style={styles.tabIconText}>□</Text>
-            </View>
-            <Text style={styles.tabLabel}>Profile</Text>
-          </TouchableOpacity>
-          
-          <TouchableOpacity style={styles.tab}>
-            <View style={styles.tabIcon}>
-              {/* Gear icon for Settings */}
-              <Text style={styles.tabIconText}>⚙</Text>
-            </View>
-            <Text style={styles.tabLabel}>Settings</Text>
-          </TouchableOpacity>
-        </View>
+        {/* Use the shared BottomTabBar component */}
+        <BottomTabBar activeTab="Workouts" />
       </SafeAreaView>
     </View>
   );
@@ -227,6 +373,11 @@ const styles = StyleSheet.create({
     fontWeight: '700', // Bold as per mockup
   },
   seeAllText: {
+    color: COLORS.accent,
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  unitsIndicator: {
     color: COLORS.accent,
     fontSize: 14,
     fontWeight: '500',
@@ -294,43 +445,6 @@ const styles = StyleSheet.create({
     color: COLORS.white,
     fontSize: FONT_SIZES.medium,
     textAlign: 'center',
-  },
-  // Tab Bar Styles
-  tabBar: {
-    height: 60,
-    backgroundColor: COLORS.black,
-    borderTopWidth: 1,
-    borderTopColor: COLORS.lightGray,
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-    width: '100%',
-  },
-  tab: {
-    alignItems: 'center',
-    flex: 1,
-  },
-  activeTab: {
-    // No different background, just different text color
-  },
-  tabIcon: {
-    marginBottom: 4,
-    height: 22,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  tabIconText: {
-    color: 'rgba(255, 255, 255, 0.6)',
-    fontSize: 20,
-  },
-  tabLabel: {
-    color: 'rgba(255, 255, 255, 0.6)',
-    fontSize: 10,
-    fontWeight: '500',
-  },
-  activeTabText: {
-    color: COLORS.accent,
   },
 });
 

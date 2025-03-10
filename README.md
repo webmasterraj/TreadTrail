@@ -1,5 +1,16 @@
 This is a new [**React Native**](https://reactnative.dev) project, bootstrapped using [`@react-native-community/cli`](https://github.com/react-native-community/cli).
 
+# TreadTrail
+
+TreadTrail is a React Native application for treadmill interval training. This app helps users create custom treadmill workouts with varying intensity levels and track their progress.
+
+## Developer Documentation
+
+For developers working on this project, please review these resources:
+
+- [Developer Notes](./DEVELOPER_NOTES.md) - Implementation details and architectural decisions
+- [Tasks](./TASKS.md) - Completed and pending development tasks
+
 # Getting Started
 
 > **Note**: Make sure you have completed the [Set Up Your Environment](https://reactnative.dev/docs/set-up-your-environment) guide before proceeding.

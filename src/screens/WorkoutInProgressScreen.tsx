@@ -35,6 +35,7 @@ import {
   endWorkout as endWorkoutAction,
   resetSkipState
 } from '../redux/slices/workoutSlice';
+import { createWorkoutSession } from '../utils/historyUtils';
 import useWorkoutTimer from '../hooks/useWorkoutTimer';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'WorkoutInProgress'>;
@@ -68,7 +69,8 @@ const WorkoutInProgressScreen: React.FC<Props> = ({ route, navigation }) => {
   const isSkipping = useAppSelector(selectIsSkipping);
   
   // Initialize the Redux timer
-  useWorkoutTimer();
+  // Use the hook at the component level for proper lifecycle management
+  const timer = useWorkoutTimer();
 
   // Track if workout has been initialized
   const hasInitializedRef = useRef(false);
@@ -84,7 +86,7 @@ const WorkoutInProgressScreen: React.FC<Props> = ({ route, navigation }) => {
     console.log('[WorkoutScreen] Initializing workout with ID:', workoutId);
     hasInitializedRef.current = true;
     
-    // Dispatch the async thunk to start the workout
+    // Start the workout using Redux only
     dispatch(startWorkoutAction(workoutId))
       .unwrap()
       .then(() => {
@@ -478,8 +480,56 @@ const WorkoutInProgressScreen: React.FC<Props> = ({ route, navigation }) => {
   };
 
   const handleEndWorkout = () => {
-    dispatch(endWorkoutAction());
-    navigation.navigate('WorkoutLibrary');
+    // First create a session from the current workout state
+    if (activeWorkout) {
+      // Generate a unique ID for the session
+      const sessionId = `session_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+      
+      // Create completed segments array
+      const completedSegments = activeWorkout.segments.map((segment, index) => {
+        return {
+          type: segment.type,
+          duration: index < currentSegmentIndex ? segment.duration : 
+                   index === currentSegmentIndex ? segmentElapsedTime : 0,
+          plannedDuration: segment.duration,
+          skipped: index > currentSegmentIndex || 
+                  (index === currentSegmentIndex && segmentElapsedTime < segment.duration)
+        };
+      });
+      
+      // Create the session object
+      const now = new Date().toISOString();
+      const session = {
+        id: sessionId,
+        workoutId: activeWorkout.id,
+        workoutName: activeWorkout.name,
+        date: now.split('T')[0], // Just the date part
+        startTime: new Date().toISOString(), // In a real implementation, track the actual start time
+        endTime: now,
+        duration: elapsedTime,
+        completed: currentSegmentIndex >= activeWorkout.segments.length - 1,
+        pauses: [], // Could track pauses in a real implementation
+        segments: completedSegments,
+      };
+      
+      // Save the session using the utility function
+      createWorkoutSession(session).then(() => {
+        // End the workout in Redux
+        dispatch(endWorkoutAction());
+        
+        // Navigate to the complete screen
+        navigation.navigate('WorkoutComplete', { sessionId });
+      }).catch(error => {
+        console.error('Error saving workout session:', error);
+        // Still end the workout in redux
+        dispatch(endWorkoutAction());
+        navigation.navigate('WorkoutLibrary');
+      });
+    } else {
+      // If somehow no active workout, just end it and go back
+      dispatch(endWorkoutAction());
+      navigation.navigate('WorkoutLibrary');
+    }
   };
 
   // If no active workout yet, show loading

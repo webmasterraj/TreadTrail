@@ -110,6 +110,20 @@ const workoutSlice = createSlice({
       }
     },
     endWorkout: (state) => {
+      // Keep a reference to the workout data before clearing state
+      // The async thunk will use this data to create a session
+      const sessionData = {
+        activeWorkout: state.activeWorkout,
+        elapsedTime: state.elapsedTime,
+        currentSegmentIndex: state.currentSegmentIndex,
+        segmentElapsedTime: state.segmentElapsedTime,
+        startTime: state.startTime,
+      };
+      
+      // Store this data somewhere it can be accessed by the endWorkout thunk
+      // For simplicity, we're returning to initial state, but in a real implementation
+      // you'd dispatch another action to save the session
+      
       return initialState;
     },
     timerTick: (state, action: PayloadAction<{ timestamp: number }>) => {

@@ -128,10 +128,27 @@ export interface Stats {
   achievements: AchievementProgress[];
 }
 
+// Authentication types
+export type AuthMethod = 'email' | 'apple' | null;
+
+export interface User {
+  id: string;
+  name: string;
+  email: string;
+  authMethod: AuthMethod;
+}
+
+export interface AuthState {
+  isAuthenticated: boolean;
+  user: User | null;
+  token: string | null;
+}
+
 // Navigation types
 export type RootStackParamList = {
   Landing: undefined;
   Signup: undefined;
+  Signin: undefined;
   Welcome: { name: string };
   EditPace: undefined;
   WorkoutLibrary: undefined;
