@@ -4,7 +4,7 @@ import { UserSettings, PaceSetting, UserPreferences, AuthState, User } from '../
 import 'react-native-get-random-values'; 
 import { v4 as uuidv4 } from 'uuid';
 import { Platform } from 'react-native';
-import appleAuth from '@invertase/react-native-apple-authentication';
+import * as AppleAuthentication from 'expo-apple-authentication';
 
 // Default pace settings
 const DEFAULT_PACE_SETTINGS = {
@@ -20,10 +20,10 @@ const DEFAULT_PREFERENCES: UserPreferences = {
   darkMode: true,
 };
 
-// Storage keys
-const USER_SETTINGS_KEY = '@treadtrail:user_settings';
-const AUTH_STATE_KEY = '@treadtrail:auth_state';
-const USER_SETTINGS_KEY_PREFIX = '@treadtrail:user_settings_';
+// Storage keys - avoid using @ symbol which might cause issues with Expo's storage
+const USER_SETTINGS_KEY = 'treadtrail_user_settings';
+const AUTH_STATE_KEY = 'treadtrail_auth_state';
+const USER_SETTINGS_KEY_PREFIX = 'treadtrail_user_settings_';
 
 // Helper to get user-specific storage key
 const getUserSettingsKey = (userId: string) => `${USER_SETTINGS_KEY_PREFIX}${userId}`;
@@ -218,7 +218,7 @@ export const UserProvider: React.FC<UserProviderProps> = ({ children }) => {
       };
       
       // Store user credentials (this is simplified for MVP)
-      await AsyncStorage.setItem(`@treadtrail:user_${email}`, JSON.stringify({
+      await AsyncStorage.setItem(`treadtrail_user_${email}`, JSON.stringify({
         id: userId,
         email,
         password, // In a real app, this would be hashed
@@ -260,7 +260,7 @@ export const UserProvider: React.FC<UserProviderProps> = ({ children }) => {
   const signIn = async (email: string, password: string): Promise<boolean> => {
     try {
       // Retrieve stored user credentials
-      const storedUser = await AsyncStorage.getItem(`@treadtrail:user_${email}`);
+      const storedUser = await AsyncStorage.getItem(`treadtrail_user_${email}`);
       
       if (!storedUser) {
         setError('User not found');
@@ -329,43 +329,58 @@ export const UserProvider: React.FC<UserProviderProps> = ({ children }) => {
     }
   };
 
-  // Sign in with Apple (real implementation)
-  const signInWithApple = async (): Promise<boolean> => {
+  // Sign in with Apple using Expo's Apple Authentication
+  const signInWithApple = async (credential?: AppleAuthentication.AppleAuthenticationCredential): Promise<boolean> => {
     try {
-      // Check if Apple Authentication is available
-      if (Platform.OS !== 'ios' || !appleAuth.isSupported) {
+      // Check if we're on iOS
+      if (Platform.OS !== 'ios') {
         setError('Apple Sign In is only available on iOS devices');
         return false;
       }
 
-      // Request Apple authentication
-      const appleAuthRequestResponse = await appleAuth.performRequest({
-        requestedOperation: appleAuth.Operation.LOGIN,
-        requestedScopes: [appleAuth.Scope.EMAIL, appleAuth.Scope.FULL_NAME],
-      });
+      // If no credential was passed, try to request Apple authentication directly
+      let appleCredential = credential;
+      if (!appleCredential) {
+        try {
+          appleCredential = await AppleAuthentication.signInAsync({
+            requestedScopes: [
+              AppleAuthentication.AppleAuthenticationScope.FULL_NAME,
+              AppleAuthentication.AppleAuthenticationScope.EMAIL,
+            ],
+          });
+        } catch (authError) {
+          console.log('Error during Apple Auth request:', authError);
+          setError('Failed to complete Apple Sign In');
+          return false;
+        }
+      }
 
-      // Get credential state for the user
-      const credentialState = await appleAuth.getCredentialStateForUser(appleAuthRequestResponse.user);
-
-      // Check if the user is authenticated
-      if (credentialState !== appleAuth.State.AUTHORIZED) {
-        setError('Apple Sign In failed: User not authorized');
+      // Ensure we have a credential
+      if (!appleCredential) {
+        setError('Failed to obtain Apple credentials');
         return false;
       }
 
       // Extract user information
-      const { user: appleUserId, email, fullName, identityToken } = appleAuthRequestResponse;
+      const appleUserId = appleCredential.user;
+      const userEmail = appleCredential.email || `apple_${appleUserId}@treadtrail.app`;
       
-      // Use email from response or create a placeholder
-      const userEmail = email || `apple_${appleUserId}@treadtrail.app`;
-      
-      // Use full name from response or create a placeholder
-      const userName = fullName?.givenName 
-        ? `${fullName.givenName}${fullName.familyName ? ' ' + fullName.familyName : ''}`
-        : 'Apple User';
+      // Get name information
+      let userName = 'Apple User';
+      if (appleCredential.fullName) {
+        userName = appleCredential.fullName.givenName || '';
+        if (appleCredential.fullName.familyName) {
+          userName += ` ${appleCredential.fullName.familyName}`;
+        }
+        
+        // If no name was provided, use a default
+        if (!userName.trim()) {
+          userName = 'Apple User';
+        }
+      }
       
       // Store Apple user in AsyncStorage for future sign-ins
-      const appleUserKey = `@treadtrail:apple_user_${appleUserId}`;
+      const appleUserKey = `treadtrail_apple_user_${appleUserId}`;
       await AsyncStorage.setItem(appleUserKey, JSON.stringify({
         id: appleUserId,
         email: userEmail,
@@ -381,7 +396,7 @@ export const UserProvider: React.FC<UserProviderProps> = ({ children }) => {
       };
       
       // Use identity token as auth token
-      const token = identityToken || uuidv4();
+      const token = appleCredential.identityToken || uuidv4();
       
       // Update auth state
       const newAuthState: AuthState = {

@@ -1,6 +1,4 @@
 export { default as LandingScreen } from './LandingScreen';
-export { default as SignupScreen } from './SignupScreen';
-export { default as SigninScreen } from './SigninScreen';
 export { default as WelcomeScreen } from './WelcomeScreen';
 export { default as EditPaceScreen } from './EditPaceScreen';
 export { default as WorkoutLibraryScreen } from './WorkoutLibraryScreen';

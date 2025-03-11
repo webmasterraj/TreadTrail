@@ -166,7 +166,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.large,
   },
   largeButton: {
-    paddingVertical: 18, // Exact padding from mockup
+    paddingVertical: 14, // Reduced padding to prevent text cutoff
     paddingHorizontal: 0, // Let the container handle horizontal spacing
   },
   fullWidth: {

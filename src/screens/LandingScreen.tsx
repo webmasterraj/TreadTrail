@@ -6,7 +6,10 @@ import {
   SafeAreaView, 
   ImageBackground,
   StatusBar,
-  ActivityIndicator
+  ActivityIndicator,
+  Platform,
+  Alert,
+  TouchableOpacity
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -14,12 +17,14 @@ import { RootStackParamList } from '../types';
 import { COLORS, FONT_SIZES, SPACING, BORDER_RADIUS } from '../styles/theme';
 import { UserContext } from '../context';
 import Button from '../components/common/Button';
+import * as AppleAuthentication from 'expo-apple-authentication';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Landing'>;
 
 const LandingScreen: React.FC<Props> = ({ navigation }) => {
-  const { userSettings, authState } = useContext(UserContext);
+  const { userSettings, authState, signInWithApple } = useContext(UserContext);
   const [isLoading, setIsLoading] = useState(true);
+  const [appleSignInLoading, setAppleSignInLoading] = useState(false);
   
   // Check if user is already authenticated
   useEffect(() => {
@@ -42,14 +47,57 @@ const LandingScreen: React.FC<Props> = ({ navigation }) => {
     checkAuthStatus();
   }, [authState.isAuthenticated, userSettings, navigation]);
   
-  // Handle sign up button press
-  const handleSignUp = () => {
-    navigation.navigate('Signup');
-  };
-  
-  // Handle sign in button press
-  const handleSignIn = () => {
-    navigation.navigate('Signin');
+  // Handle Sign In with Apple using Expo's Authentication
+  const handleAppleSignIn = async () => {
+    try {
+      setAppleSignInLoading(true);
+      
+      if (Platform.OS === 'ios') {
+        // Use Expo's Apple Authentication
+        const credential = await AppleAuthentication.signInAsync({
+          requestedScopes: [
+            AppleAuthentication.AppleAuthenticationScope.FULL_NAME,
+            AppleAuthentication.AppleAuthenticationScope.EMAIL,
+          ],
+        });
+        
+        // Successfully authenticated, now handle the credentials in our system
+        if (credential && credential.user) {
+          // Call our existing signInWithApple function with the credentials
+          const signInResult = await signInWithApple(credential);
+          
+          if (!signInResult) {
+            Alert.alert(
+              'Sign In Failed',
+              'There was an error processing your Apple Sign In. Please try again.'
+            );
+          }
+          // On success, the useEffect will redirect
+        }
+      } else {
+        // For non-iOS platforms, show a message
+        Alert.alert(
+          'Not Supported',
+          'Apple Sign In is only available on iOS devices.'
+        );
+      }
+      
+      setAppleSignInLoading(false);
+    } catch (error) {
+      console.error('Apple sign in error:', error);
+      
+      if (error.code === 'ERR_CANCELED') {
+        // User canceled the sign-in flow
+        console.log('User canceled Apple Sign In');
+      } else {
+        Alert.alert(
+          'Apple Sign In Failed',
+          'There was an error signing in with Apple. Please try again.'
+        );
+      }
+      
+      setAppleSignInLoading(false);
+    }
   };
   
   // Handle browse workouts button press
@@ -66,13 +114,15 @@ const LandingScreen: React.FC<Props> = ({ navigation }) => {
   }
   
   return (
-    <ImageBackground
-      source={{ uri: 'https://images.unsplash.com/photo-1571008887538-b36bb32f4571?ixlib=rb-4.0.3&ixid=MnwxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8&auto=format&fit=crop&w=1000&q=80' }}
-      style={styles.background}
-    >
+    <View style={AppStyles.container}>
+      <ImageBackground
+        source={{ uri: 'https://images.unsplash.com/photo-1571008887538-b36bb32f4571?ixlib=rb-4.0.3&ixid=MnwxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8&auto=format&fit=crop&w=1000&q=80' }}
+        style={styles.background}
+        resizeMode="cover"
+      >
       <StatusBar barStyle="light-content" backgroundColor="transparent" translucent />
       
-      <SafeAreaView style={styles.container}>
+      <View style={styles.container}>
         {/* Gradient overlay exactly matching the mockup */}
         <LinearGradient
           colors={[
@@ -81,7 +131,7 @@ const LandingScreen: React.FC<Props> = ({ navigation }) => {
             COLORS.blackOverlayHeavy,
             COLORS.blackOverlayVeryHeavy
           ]}
-          locations={[0, 0.5, 0.8, 1]}
+          locations={[0, 0.4, 0.7, 1]}
           style={styles.overlay}
         >
           <View style={styles.logoContainer}>
@@ -98,32 +148,36 @@ const LandingScreen: React.FC<Props> = ({ navigation }) => {
             </Text>
             
             <View style={styles.buttonContainer}>
-              <Button 
-                title="Sign Up" 
-                onPress={handleSignUp}
-                type="accent"
-                size="large"
-                fullWidth
-                style={styles.button}
-              />
-              
-              <Button 
-                title="Sign In" 
-                onPress={handleSignIn}
-                type="secondary"
-                size="large"
-                fullWidth
-                style={styles.button}
-              />
+              {/* Expo Apple Authentication Button */}
+              {Platform.OS === 'ios' ? (
+                <View style={styles.buttonWrapper}>
+                  <AppleAuthentication.AppleAuthenticationButton
+                    buttonType={AppleAuthentication.AppleAuthenticationButtonType.SIGN_IN}
+                    buttonStyle={AppleAuthentication.AppleAuthenticationButtonStyle.WHITE}
+                    cornerRadius={25}
+                    style={styles.appleSignInButton}
+                    onPress={handleAppleSignIn}
+                  />
+                </View>
+              ) : (
+                <TouchableOpacity 
+                  style={[styles.customAppleButton, styles.appleButtonTouch]} 
+                  onPress={handleAppleSignIn}
+                >
+                  <Text style={styles.appleIcon}>🍎</Text>
+                  <Text style={styles.appleButtonText}>Sign in with Apple</Text>
+                </TouchableOpacity>
+              )}
             </View>
             
             <Button 
               title="Browse Workouts" 
               onPress={handleBrowseWorkouts}
-              type="text"
-              size="medium"
+              type="secondary"
+              size="large"
               fullWidth
               style={styles.browseButton}
+              textStyle={styles.browseButtonText}
             />
             
             <Text style={styles.terms}>
@@ -131,17 +185,31 @@ const LandingScreen: React.FC<Props> = ({ navigation }) => {
             </Text>
           </View>
         </LinearGradient>
-      </SafeAreaView>
+      </View>
     </ImageBackground>
+    </View>
   );
 };
+
+// This wrapping style at the app level will ensure full screen coverage
+const AppStyles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: COLORS.black, // Fallback color
+  },
+});
 
 const styles = StyleSheet.create({
   background: {
     flex: 1,
+    width: '100%',
+    height: '100%',
+    resizeMode: 'cover',
   },
   container: {
     flex: 1,
+    width: '100%',
+    height: '100%',
   },
   loadingContainer: {
     flex: 1,
@@ -151,6 +219,8 @@ const styles = StyleSheet.create({
   },
   overlay: {
     flex: 1,
+    width: '100%',
+    height: '100%',
     justifyContent: 'space-between',
     paddingBottom: 40,
     paddingHorizontal: 30,
@@ -184,23 +254,60 @@ const styles = StyleSheet.create({
     lineHeight: 24, // 1.5 line height as in mockup
   },
   buttonContainer: {
-    flexDirection: 'row',
-    gap: 15, // Exact gap from mockup
-    marginBottom: 20, // Reduced spacing for the browse button
+    marginBottom: 15, // Reduced spacing for the browse button
+    width: '100%', // Ensure full width
   },
-  button: {
-    flex: 1,
-    padding: 18, // Exact padding from mockup for large button
-    borderRadius: BORDER_RADIUS.button,
+  buttonWrapper: {
+    width: '100%',
+    marginBottom: 15,
+    height: 50,
+  },
+  appleSignInButton: {
+    width: '100%', // Full width
+    height: 50, // Taller than default
   },
   browseButton: {
+    height: 50, // Match the height of the Apple button
     marginBottom: 30,
+    paddingVertical: 0, // Override default padding to prevent text cutoff
+  },
+  browseButtonText: {
+    fontSize: 18, // Match the Apple button text size
   },
   terms: {
     color: COLORS.white,
     fontSize: 12, // Exact size from mockup
     textAlign: 'center',
     opacity: 0.6,
+  },
+  customAppleButton: {
+    backgroundColor: '#FFF',
+    borderColor: '#000',
+    borderWidth: 1,
+    marginBottom: 15,
+    elevation: 3,
+    shadowColor: '#FFF',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.8,
+    shadowRadius: 2,
+  },
+  appleButtonTouch: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    height: 50, // Match the height exactly
+    paddingHorizontal: 20,
+    borderRadius: 25,
+    width: '100%',
+  },
+  appleButtonText: {
+    color: '#000',
+    fontSize: 18,
+    fontWeight: 'bold',
+  },
+  appleIcon: {
+    fontSize: 18,
+    marginRight: 8,
   },
 });
 

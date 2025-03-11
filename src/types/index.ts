@@ -147,8 +147,6 @@ export interface AuthState {
 // Navigation types
 export type RootStackParamList = {
   Landing: undefined;
-  Signup: undefined;
-  Signin: undefined;
   Welcome: { name: string };
   EditPace: undefined;
   WorkoutLibrary: undefined;

@@ -1,15 +1,16 @@
 module.exports = {
   name: 'TreadTrail',
   slug: 'TreadTrail',
-  owner: "nsheth17",
+  // Remove owner field causing storage directory issues
+  // owner: "nsheth17",
   version: '1.0.0',
   orientation: 'portrait',
   icon: './src/assets/images/icon.png',
   userInterfaceStyle: 'automatic',
   splash: {
     image: './src/assets/images/splash.png',
-    resizeMode: 'contain',
-    backgroundColor: '#ffffff'
+    resizeMode: 'cover',
+    backgroundColor: '#000000'
   },
   assetBundlePatterns: [
     '**/*'

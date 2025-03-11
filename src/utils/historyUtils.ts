@@ -2,8 +2,8 @@ import { WorkoutSession } from '../types';
 import { DataContext } from '../context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-// Storage keys
-const WORKOUT_HISTORY_KEY = '@treadtrail:workout_history';
+// Storage keys - avoid using @ symbol which might cause issues with Expo's storage
+const WORKOUT_HISTORY_KEY = 'treadtrail_workout_history';
 
 // Create a new workout session (simplified implementation)
 export const createWorkoutSession = async (session: WorkoutSession): Promise<string> => {
