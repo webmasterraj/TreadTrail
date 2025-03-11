@@ -284,7 +284,7 @@ const WorkoutDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
           {(!authState || !authState.isAuthenticated) && (
             <TouchableOpacity 
               style={styles.signInButton}
-              onPress={() => navigation.navigate('Signup')}
+              onPress={() => navigation.navigate('Landing')}
             >
               <Text style={styles.signInButtonText}>Sign In to Start Workouts</Text>
             </TouchableOpacity>

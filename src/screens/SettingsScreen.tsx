@@ -88,7 +88,7 @@ const SettingsScreen: React.FC<Props> = ({navigation}) => {
             ) : (
               <TouchableOpacity
                 style={styles.settingsItem}
-                onPress={() => navigation.navigate('Signup')}>
+                onPress={() => navigation.navigate('Landing')}>
                 <Text style={styles.signInText}>Sign In / Create Account</Text>
               </TouchableOpacity>
             )}

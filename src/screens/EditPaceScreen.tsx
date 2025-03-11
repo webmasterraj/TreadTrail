@@ -209,7 +209,7 @@ const EditPaceScreen: React.FC<Props> = ({ navigation }) => {
           [
             {
               text: 'Create Account',
-              onPress: () => navigation.navigate('Signup'),
+              onPress: () => navigation.navigate('Landing'),
             },
             {
               text: 'OK',

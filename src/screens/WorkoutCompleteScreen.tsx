@@ -16,6 +16,7 @@ import { DataContext, UserContext } from '../context';
 import { formatTime, formatDuration, formatDate, mphToKph } from '../utils/helpers';
 import Button from '../components/common/Button';
 import WorkoutTimeline from '../components/workout/WorkoutTimeline';
+import WorkoutCalendar from '../components/common/WorkoutCalendar';
 import { getWorkoutSessionById } from '../utils/historyUtils';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'WorkoutComplete'>;
@@ -170,23 +171,8 @@ const WorkoutCompleteScreen: React.FC<Props> = ({ route, navigation }) => {
         <View style={styles.workoutsSection}>
           <Text style={styles.sectionTitle}>Your Workouts</Text>
           
-          {/* Calendar would go here - simplified for now */}
-          <View style={styles.calendar}>
-            <View style={styles.monthHeader}>
-              <TouchableOpacity>
-                <Text style={styles.navButton}>←</Text>
-              </TouchableOpacity>
-              <Text style={styles.monthName}>March 2025</Text>
-              <TouchableOpacity>
-                <Text style={styles.navButton}>→</Text>
-              </TouchableOpacity>
-            </View>
-            
-            {/* Simplified calendar view */}
-            <View style={styles.calendarPlaceholder}>
-              <Text style={styles.placeholderText}>Calendar View</Text>
-            </View>
-          </View>
+          {/* Use the shared WorkoutCalendar component */}
+          <WorkoutCalendar workoutHistory={[session]} />
         </View>
         
         {!authState.isAuthenticated && (
@@ -197,7 +183,7 @@ const WorkoutCompleteScreen: React.FC<Props> = ({ route, navigation }) => {
             </Text>
             <TouchableOpacity 
               style={styles.accountPromptButton}
-              onPress={() => navigation.navigate('Signup')}
+              onPress={() => navigation.navigate('Landing')}
             >
               <Text style={styles.accountPromptButtonText}>Create Account</Text>
             </TouchableOpacity>
@@ -327,36 +313,6 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: COLORS.white,
     marginBottom: SPACING.medium,
-  },
-  calendar: {
-    backgroundColor: COLORS.darkGray,
-    borderRadius: 15,
-    padding: SPACING.medium,
-  },
-  monthHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: SPACING.medium,
-  },
-  monthName: {
-    fontSize: FONT_SIZES.medium,
-    fontWeight: 'bold',
-    color: COLORS.white,
-  },
-  navButton: {
-    color: COLORS.accent,
-    fontSize: FONT_SIZES.large,
-  },
-  calendarPlaceholder: {
-    height: 150,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.05)',
-    borderRadius: 8,
-  },
-  placeholderText: {
-    color: 'rgba(255, 255, 255, 0.5)',
   },
   // Account prompt
   accountPromptContainer: {

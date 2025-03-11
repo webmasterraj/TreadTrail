@@ -136,7 +136,7 @@ const WorkoutLibraryScreen: React.FC<Props> = ({ navigation }) => {
         [
           {
             text: 'Sign In',
-            onPress: () => navigation.navigate('Signup'),
+            onPress: () => navigation.navigate('Landing'),
           },
           {
             text: 'Cancel',
