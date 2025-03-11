@@ -579,70 +579,81 @@ const WorkoutInProgressScreen: React.FC<Props> = ({ route, navigation }) => {
     ? activeWorkout.segments[currentSegmentIndex + 1] 
     : null;
   
-  // Render the timeline visualization with individual bars for each segment
+  // Render the timeline visualization with rounded bars like in WorkoutLibrary
   const renderTimelineBars = () => {
-    // Create an array of uniformly-sized bars to represent the workout
-    // Each bar represents a small time slice - we'll use 40 bars total
-    const totalBars = 40;
     const bars = [];
-    
-    // Calculate each segment's contribution to the total bars
-    let position = 0;
-    let segmentIndex = 0;
-    let segmentBarsRemaining = 0;
-    let currentSegmentType = activeWorkout.segments[0].type as PaceType;
+    let barIndex = 0;
     
     // Calculate total workout duration
     const totalDuration = workoutTotalTime;
     
-    // Distribute the bars among segments based on duration proportion
-    for (let i = 0; i < totalBars; i++) {
-      // If we've used all the bars for the current segment, move to the next one
-      if (segmentBarsRemaining <= 0 && segmentIndex < activeWorkout.segments.length) {
-        const segment = activeWorkout.segments[segmentIndex];
-        const segmentDuration = segment.duration;
-        const segmentProportion = segmentDuration / totalDuration;
-        segmentBarsRemaining = Math.max(1, Math.round(segmentProportion * totalBars));
-        currentSegmentType = segment.type as PaceType;
-        segmentIndex++;
+    // Process each segment
+    activeWorkout.segments.forEach((segment) => {
+      const segmentDuration = segment.duration;
+      const paceType = segment.type as PaceType;
+      const incline = segment.incline;
+      
+      // Calculate how many 30-second bars this segment needs
+      const fullBarsCount = Math.floor(segmentDuration / 30);
+      const remainingSeconds = segmentDuration % 30;
+      
+      // Add the full-width bars (each representing 30 seconds)
+      for (let i = 0; i < fullBarsCount; i++) {
+        const barHeight = getPaceHeight(paceType);
+        
+        bars.push(
+          <View 
+            key={`${barIndex}-${i}`}
+            style={[
+              styles.timelineBar, 
+              { 
+                height: barHeight, 
+                backgroundColor: PACE_COLORS[paceType],
+                width: 6, // Fixed width like WorkoutLibrary
+                borderRadius: 3, // Rounded corners like WorkoutLibrary
+                marginRight: 4, // Small gap between bars
+              }
+            ]} 
+          />
+        );
       }
       
-      // Ensure we have at least one bar for each segment
-      if (segmentBarsRemaining <= 0) segmentBarsRemaining = 1;
+      // Add a thinner bar for any remaining time that doesn't fit into 30-second increments
+      if (remainingSeconds > 0) {
+        const barHeight = getPaceHeight(paceType);
+        const widthRatio = remainingSeconds / 30; // Calculate width relative to a full bar
+        
+        bars.push(
+          <View 
+            key={`${barIndex}-remainder`}
+            style={[
+              styles.timelineBar, 
+              { 
+                height: barHeight, 
+                backgroundColor: PACE_COLORS[paceType],
+                width: 3, // 50% width for partial duration
+                borderRadius: 1.5, // Rounded corners adjusted for smaller width
+                marginRight: 4, // Small gap between bars
+              }
+            ]} 
+          />
+        );
+      }
       
-      // Create the bar
-      const barHeight = getPaceHeight(currentSegmentType);
-      
-      bars.push(
-        <View 
-          key={i}
-          style={[
-            styles.timelineBar, 
-            { 
-              height: barHeight, 
-              backgroundColor: PACE_COLORS[currentSegmentType],
-              marginHorizontal: 0, // Remove gap between bars to fix empty space
-              flex: 1, // Make bars flex to fill the container
-            }
-          ]} 
-        />
-      );
-      
-      segmentBarsRemaining--;
-      position++;
-    }
+      barIndex++;
+    });
     
     return bars;
   };
   
-  // Determine height based on pace type (matching the mockup)
+  // Determine height based on pace type (matching the WorkoutLibrary implementation)
   const getPaceHeight = (paceType: PaceType): number => {
     switch(paceType) {
-      case 'recovery': return 8;  // Shortest bars for recovery
-      case 'base': return 12;     // Medium-short bars for base
-      case 'run': return 18;      // Medium-tall bars for run
-      case 'sprint': return 24;   // Tallest bars for sprint
-      default: return 12;
+      case 'recovery': return 10;  // Shortest bars for recovery
+      case 'base': return 15;      // Medium-short bars for base
+      case 'run': return 20;       // Medium-tall bars for run
+      case 'sprint': return 24;    // Tallest bars for sprint
+      default: return 15;
     }
   };
 
@@ -1013,16 +1024,17 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     height: '100%',
     width: '100%',
-    alignItems: 'flex-end',
-    padding: 4, // Exact value from mockup (padding top/bottom)
-    justifyContent: 'space-between', // Space bars evenly across entire width
+    alignItems: 'flex-end', // Align bars at the bottom
+    padding: 4, // Padding inside the container
     position: 'relative',
     zIndex: 0,
+    justifyContent: 'flex-start', // Align bars from the start (left)
   },
   timelineBar: {
-    flex: 1, // Each bar should take equal space
-    borderRadius: 0, // Remove border radius to avoid gaps
-    height: 20, // Default height, will be overridden
+    width: 6, // Default width for a bar
+    borderRadius: 3, // Rounded corners like WorkoutLibrary
+    height: 15, // Default height, will be overridden
+    marginRight: 4, // Default spacing between bars
   },
   timelineTimes: {
     flexDirection: 'row',
