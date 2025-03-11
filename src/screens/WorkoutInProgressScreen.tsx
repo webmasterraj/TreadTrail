@@ -15,6 +15,7 @@ import {
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList, PaceType } from '../types';
 import { COLORS, FONT_SIZES, SPACING, PACE_COLORS } from '../styles/theme';
+import { WorkoutVisualization } from '../components/workout';
 import { useAppDispatch, useAppSelector } from '../redux/store';
 import { 
   selectActiveWorkout, 
@@ -741,45 +742,21 @@ const WorkoutInProgressScreen: React.FC<Props> = ({ route, navigation }) => {
               </View>
             </View>
             
-            <View style={styles.barTimeline}>
-              {/* Overlay to darken completed segments */}
-              <Animated.View 
-                style={[
-                  styles.completedOverlay, 
-                  { 
-                    width: overlayAnimation.interpolate({
-                      inputRange: [0, 1],
-                      outputRange: ['0%', '100%']
-                    }) 
-                  }
-                ]} 
-              />
-              
-              {/* Progress marker */}
-              <Animated.View 
-                style={[
-                  styles.progressMarker, 
-                  { 
-                    left: progressAnimation.interpolate({
-                      inputRange: [0, 1],
-                      outputRange: ['0%', '100%']
-                    }) 
-                  }
-                ]} 
-                testID="progress-marker"
-              />
-              
-              <View style={styles.timelineBarContainer}>
-                {renderTimelineBars()}
-              </View>
-            </View>
+            {/* Use the shared WorkoutVisualization component */}
+            <WorkoutVisualization
+              segments={activeWorkout.segments}
+              progressPosition={elapsedTime}
+              minutePerBar={true} // Each bar represents 1 minute
+              showOverlay={true}
+              maxBars={40}
+            />
             
             <View style={styles.timelineTimes}>
-              <Text style={styles.timeText}>0:00</Text>
-              <Text style={styles.timeText}>{formatTime(Math.floor(workoutTotalTime / 4))}</Text>
-              <Text style={styles.timeText}>{formatTime(Math.floor(workoutTotalTime / 2))}</Text>
-              <Text style={styles.timeText}>{formatTime(Math.floor(workoutTotalTime * 3 / 4))}</Text>
-              <Text style={styles.timeText}>{formatTime(workoutTotalTime)}</Text>
+              <Text style={styles.timeText}>0'</Text>
+              <Text style={styles.timeText}>{Math.floor(workoutTotalTime / 60 / 4)}'</Text>
+              <Text style={styles.timeText}>{Math.floor(workoutTotalTime / 60 / 2)}'</Text>
+              <Text style={styles.timeText}>{Math.floor(workoutTotalTime / 60 * 3 / 4)}'</Text>
+              <Text style={styles.timeText}>{Math.floor(workoutTotalTime / 60)}'</Text>
             </View>
           </View>
           

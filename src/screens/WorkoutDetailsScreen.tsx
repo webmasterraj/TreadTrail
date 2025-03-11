@@ -12,6 +12,7 @@ import {
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList, WorkoutSegment, PaceType } from '../types';
 import { COLORS, FONT_SIZES, SPACING, BORDER_RADIUS, DIFFICULTY_INDICATORS, FOCUS_INDICATORS, PACE_COLORS } from '../styles/theme';
+import WorkoutVisualization from '../components/workout/WorkoutVisualization';
 import { UserContext } from '../context';
 import { formatDuration, formatTime } from '../utils/helpers';
 import Button from '../components/common/Button';
@@ -141,62 +142,7 @@ const WorkoutDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
     }
   };
   
-  // Render workout preview visualization
-  const renderWorkoutPreview = () => {
-    return (
-      <View style={styles.visualizationContainer}>
-        <View style={styles.barContainer}>
-          {segments.map((segment, index) => {
-            // Determine bar height based on pace type
-            const height = getPaceHeight(segment.type as PaceType);
-            
-            // Determine spacing between bars
-            let marginRight = 4; // Default spacing for close bars
-            
-            // For the last bar in a grouping, add more space
-            // Use different interval types based on patterns
-            const isLastInGroup = index < segments.length - 1 && 
-                                segments[index+1].type !== segment.type;
-            
-            if (isLastInGroup) {
-              if (segment.duration > 120) { // Long interval
-                marginRight = 12; // extra-long-interval from mockup
-              } else if (segment.duration > 60) { // Medium interval
-                marginRight = 8; // medium-interval from mockup
-              }
-            } else if (index === segments.length - 1) {
-              marginRight = 0; // Last bar has no margin
-            }
-            
-            return (
-              <View 
-                key={index}
-                style={[
-                  styles.bar, 
-                  { 
-                    height, 
-                    backgroundColor: PACE_COLORS[segment.type as PaceType],
-                    marginRight
-                  }
-                ]} 
-              />
-            );
-          })}
-        </View>
-      </View>
-    );
-  };
-  
-  // Helper function to determine bar height based on pace type
-  const getPaceHeight = (paceType: PaceType): number => {
-    switch(paceType) {
-      case 'recovery': return 8;
-      case 'base': return 12;
-      case 'run': return 20;
-      case 'sprint': return 24;
-      default: return 12;
-    }
-  };
+  // Using the new WorkoutVisualization component instead of custom implementation
   
   // Render difficulty stars
   const renderDifficultyStars = () => {
@@ -242,7 +188,11 @@ const WorkoutDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
           
           <View style={styles.previewSection}>
             <Text style={styles.sectionTitle}>Workout Preview</Text>
-            {renderWorkoutPreview()}
+            <WorkoutVisualization 
+              segments={segments} 
+              minutePerBar={true}
+              showOverlay={false}
+            />
           </View>
           
           <View style={styles.structureSection}>
@@ -346,6 +296,7 @@ const styles = StyleSheet.create({
   },
   previewSection: {
     marginBottom: 20, // Exact value from mockup
+    paddingHorizontal: 0, // Let the visualization component fill the width
   },
   sectionTitle: {
     color: COLORS.white,
@@ -354,24 +305,7 @@ const styles = StyleSheet.create({
     marginBottom: 12, // Exact value from mockup
     opacity: 0.9,
   },
-  visualizationContainer: {
-    height: 30, // Exact value from mockup
-    display: 'flex',
-    alignItems: 'flex-end',
-    width: '100%',
-    marginBottom: 20, // Exact value from mockup
-  },
-  barContainer: {
-    display: 'flex',
-    flexDirection: 'row',
-    width: '100%',
-    height: 30, // Exact value from mockup
-    alignItems: 'flex-end',
-  },
-  bar: {
-    width: 6, // Exact value from mockup
-    borderRadius: 3, // Exact value from mockup
-  },
+  // Removed visualization styles as they're now handled by the WorkoutVisualization component
   structureSection: {
     marginBottom: 20, // Exact value from mockup
   },

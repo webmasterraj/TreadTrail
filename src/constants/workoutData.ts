@@ -14,8 +14,8 @@ export const DEFAULT_WORKOUT_PROGRAMS: WorkoutProgram[] = [
     favorite: false,
     lastUsed: null,
     segments: [
-      // Warm up (5 minutes)
-      { type: 'base', duration: 300, incline: 1 },
+      // Warm up (2 minutes)
+      { type: 'base', duration: 120, incline: 1 },
       
       // 8 rounds of Sprint/Recovery (total 16 minutes)
       { type: 'sprint', duration: 30, incline: 1 },
@@ -51,10 +51,10 @@ export const DEFAULT_WORKOUT_PROGRAMS: WorkoutProgram[] = [
     favorite: false,
     lastUsed: null,
     segments: [
-      // Warm up (5 minutes)
-      { type: 'base', duration: 300, incline: 1 },
+      // Warm up (2 minutes)
+      { type: 'base', duration: 120, incline: 1 },
       
-      // Main workout (22 minutes)
+      // Main workout (25 minutes)
       { type: 'base', duration: 180, incline: 2 },
       { type: 'run', duration: 120, incline: 2 },
       { type: 'base', duration: 180, incline: 3 },
@@ -83,10 +83,10 @@ export const DEFAULT_WORKOUT_PROGRAMS: WorkoutProgram[] = [
     favorite: false,
     lastUsed: null,
     segments: [
-      // Warm up (5 minutes)
-      { type: 'base', duration: 300, incline: 1 },
+      // Warm up (2 minutes)
+      { type: 'base', duration: 120, incline: 1 },
       
-      // Main workout (37 minutes)
+      // Main workout (35 minutes)
       { type: 'base', duration: 300, incline: 2 },
       { type: 'run', duration: 180, incline: 2 },
       { type: 'base', duration: 300, incline: 3 },
@@ -115,11 +115,11 @@ export const DEFAULT_WORKOUT_PROGRAMS: WorkoutProgram[] = [
     favorite: false,
     lastUsed: null,
     segments: [
-      // Warm up (3 minutes)
+      // Warm up (2 minutes)
       { type: 'recovery', duration: 60, incline: 1 },
-      { type: 'base', duration: 120, incline: 1 },
+      { type: 'base', duration: 60, incline: 1 },
       
-      // Main workout (10 minutes)
+      // Main workout (11 minutes)
       { type: 'base', duration: 180, incline: 1 },
       { type: 'run', duration: 60, incline: 1 },
       { type: 'base', duration: 180, incline: 2 },
