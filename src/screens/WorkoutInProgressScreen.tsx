@@ -580,6 +580,7 @@ const WorkoutInProgressScreen: React.FC<Props> = ({ route, navigation }) => {
     : null;
   
   // Render the timeline visualization with rounded bars like in WorkoutLibrary
+  // Each bar now represents 1 minute (60 seconds)
   const renderTimelineBars = () => {
     const bars = [];
     let barIndex = 0;
@@ -593,11 +594,11 @@ const WorkoutInProgressScreen: React.FC<Props> = ({ route, navigation }) => {
       const paceType = segment.type as PaceType;
       const incline = segment.incline;
       
-      // Calculate how many 30-second bars this segment needs
-      const fullBarsCount = Math.floor(segmentDuration / 30);
-      const remainingSeconds = segmentDuration % 30;
+      // Calculate how many 1-minute bars this segment needs (each bar = 60 seconds)
+      const fullBarsCount = Math.floor(segmentDuration / 60);
+      const remainingSeconds = segmentDuration % 60;
       
-      // Add the full-width bars (each representing 30 seconds)
+      // Add the full-width bars (each representing 1 minute)
       for (let i = 0; i < fullBarsCount; i++) {
         const barHeight = getPaceHeight(paceType);
         
@@ -618,10 +619,15 @@ const WorkoutInProgressScreen: React.FC<Props> = ({ route, navigation }) => {
         );
       }
       
-      // Add a thinner bar for any remaining time that doesn't fit into 30-second increments
+      // Add a partial bar for any remaining time that doesn't fit into 1-minute increments
       if (remainingSeconds > 0) {
         const barHeight = getPaceHeight(paceType);
-        const widthRatio = remainingSeconds / 30; // Calculate width relative to a full bar
+        const widthRatio = remainingSeconds / 60; // Calculate width relative to a full bar
+        
+        // For partial minutes, adjust the width proportionally
+        // For example, a 30-second remainder would be 3px wide (half of the full 6px)
+        const partialWidth = Math.max(2, Math.round(6 * widthRatio));
+        const partialRadius = Math.max(1, Math.round(3 * widthRatio));
         
         bars.push(
           <View 
@@ -631,8 +637,8 @@ const WorkoutInProgressScreen: React.FC<Props> = ({ route, navigation }) => {
               { 
                 height: barHeight, 
                 backgroundColor: PACE_COLORS[paceType],
-                width: 3, // 50% width for partial duration
-                borderRadius: 1.5, // Rounded corners adjusted for smaller width
+                width: partialWidth, // Width proportional to remaining seconds
+                borderRadius: partialRadius, // Rounded corners adjusted for smaller width
                 marginRight: 4, // Small gap between bars
               }
             ]} 
