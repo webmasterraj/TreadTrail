@@ -17,7 +17,6 @@ import { RootStackParamList } from '../types';
 import { COLORS, FONT_SIZES, SPACING, BORDER_RADIUS } from '../styles/theme';
 import { UserContext } from '../context';
 import Button from '../components/common/Button';
-import * as AppleAuthentication from 'expo-apple-authentication';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Landing'>;
 
@@ -47,54 +46,30 @@ const LandingScreen: React.FC<Props> = ({ navigation }) => {
     checkAuthStatus();
   }, [authState.isAuthenticated, userSettings, navigation]);
   
-  // Handle Sign In with Apple using Expo's Authentication
-  const handleAppleSignIn = async () => {
+  // Handle Sign In with test user
+  const handleTestUserSignIn = async () => {
     try {
       setAppleSignInLoading(true);
       
-      if (Platform.OS === 'ios') {
-        // Use Expo's Apple Authentication
-        const credential = await AppleAuthentication.signInAsync({
-          requestedScopes: [
-            AppleAuthentication.AppleAuthenticationScope.FULL_NAME,
-            AppleAuthentication.AppleAuthenticationScope.EMAIL,
-          ],
-        });
-        
-        // Successfully authenticated, now handle the credentials in our system
-        if (credential && credential.user) {
-          // Call our existing signInWithApple function with the credentials
-          const signInResult = await signInWithApple(credential);
-          
-          if (!signInResult) {
-            Alert.alert(
-              'Sign In Failed',
-              'There was an error processing your Apple Sign In. Please try again.'
-            );
-          }
-          // On success, the useEffect will redirect
-        }
-      } else {
-        // For non-iOS platforms, show a message
+      // Call our test user sign in function
+      const signInResult = await signInWithApple();
+      
+      if (!signInResult) {
         Alert.alert(
-          'Not Supported',
-          'Apple Sign In is only available on iOS devices.'
+          'Sign In Failed',
+          'There was an error signing in with the test user. Please try again.'
         );
       }
+      // On success, the useEffect will redirect
       
       setAppleSignInLoading(false);
     } catch (error) {
-      console.error('Apple sign in error:', error);
+      console.error('Test user sign in error:', error);
       
-      if (error.code === 'ERR_CANCELED') {
-        // User canceled the sign-in flow
-        console.log('User canceled Apple Sign In');
-      } else {
-        Alert.alert(
-          'Apple Sign In Failed',
-          'There was an error signing in with Apple. Please try again.'
-        );
-      }
+      Alert.alert(
+        'Test User Sign In Failed',
+        'There was an error signing in with the test user. Please try again.'
+      );
       
       setAppleSignInLoading(false);
     }
@@ -148,26 +123,15 @@ const LandingScreen: React.FC<Props> = ({ navigation }) => {
             </Text>
             
             <View style={styles.buttonContainer}>
-              {/* Expo Apple Authentication Button */}
-              {Platform.OS === 'ios' ? (
-                <View style={styles.buttonWrapper}>
-                  <AppleAuthentication.AppleAuthenticationButton
-                    buttonType={AppleAuthentication.AppleAuthenticationButtonType.SIGN_IN}
-                    buttonStyle={AppleAuthentication.AppleAuthenticationButtonStyle.WHITE}
-                    cornerRadius={25}
-                    style={styles.appleSignInButton}
-                    onPress={handleAppleSignIn}
-                  />
-                </View>
-              ) : (
-                <TouchableOpacity 
-                  style={[styles.customAppleButton, styles.appleButtonTouch]} 
-                  onPress={handleAppleSignIn}
-                >
-                  <Text style={styles.appleIcon}>🍎</Text>
-                  <Text style={styles.appleButtonText}>Sign in with Apple</Text>
-                </TouchableOpacity>
-              )}
+              <Button
+                title={appleSignInLoading ? "Signing In..." : "Sign In as Test User"}
+                onPress={handleTestUserSignIn}
+                type="secondary"
+                size="large"
+                fullWidth
+                style={styles.testUserButton}
+                loading={appleSignInLoading}
+              />
             </View>
             
             <Button 
@@ -257,14 +221,10 @@ const styles = StyleSheet.create({
     marginBottom: 15, // Reduced spacing for the browse button
     width: '100%', // Ensure full width
   },
-  buttonWrapper: {
-    width: '100%',
+  testUserButton: {
+    height: 50, // Match the height of the Apple button
     marginBottom: 15,
-    height: 50,
-  },
-  appleSignInButton: {
-    width: '100%', // Full width
-    height: 50, // Taller than default
+    paddingVertical: 0, // Override default padding to prevent text cutoff
   },
   browseButton: {
     height: 50, // Match the height of the Apple button
@@ -279,35 +239,6 @@ const styles = StyleSheet.create({
     fontSize: 12, // Exact size from mockup
     textAlign: 'center',
     opacity: 0.6,
-  },
-  customAppleButton: {
-    backgroundColor: '#FFF',
-    borderColor: '#000',
-    borderWidth: 1,
-    marginBottom: 15,
-    elevation: 3,
-    shadowColor: '#FFF',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.8,
-    shadowRadius: 2,
-  },
-  appleButtonTouch: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    height: 50, // Match the height exactly
-    paddingHorizontal: 20,
-    borderRadius: 25,
-    width: '100%',
-  },
-  appleButtonText: {
-    color: '#000',
-    fontSize: 18,
-    fontWeight: 'bold',
-  },
-  appleIcon: {
-    fontSize: 18,
-    marginRight: 8,
   },
 });
 

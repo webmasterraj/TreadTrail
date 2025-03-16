@@ -17,14 +17,12 @@ import {RootStackParamList} from '../types';
 import {COLORS, FONT_SIZES, SPACING, BORDER_RADIUS} from '../styles/theme';
 import {UserContext} from '../context';
 import Button from '../components/common/Button';
-import appleAuth, { AppleButton } from '@invertase/react-native-apple-authentication';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Signin'>;
 
 // Icon components to avoid linting warnings about components defined in render
 const LoadingIndicator = () => <ActivityIndicator size="small" color={COLORS.black} />;
-const AppleLoadingIndicator = () => <ActivityIndicator size="small" color={COLORS.white} />;
-const AppleIcon = () => <Text style={styles.appleIcon}>🍎</Text>;
+const TestUserLoadingIndicator = () => <ActivityIndicator size="small" color={COLORS.white} />;
 
 const SigninScreen: React.FC<Props> = ({navigation}) => {
   const {signIn, signInWithApple, authState} = useContext(UserContext);
@@ -33,7 +31,7 @@ const SigninScreen: React.FC<Props> = ({navigation}) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [appleSignInLoading, setAppleSignInLoading] = useState(false);
+  const [testUserLoading, setTestUserLoading] = useState(false);
 
   // Check if user is already authenticated
   useEffect(() => {
@@ -74,19 +72,19 @@ const SigninScreen: React.FC<Props> = ({navigation}) => {
     }
   };
 
-  // Handle sign in with Apple
-  const handleAppleSignIn = async () => {
+  // Handle sign in with test user
+  const handleTestUserSignIn = async () => {
     try {
-      setAppleSignInLoading(true);
+      setTestUserLoading(true);
       await signInWithApple();
       // Navigation will happen in the useEffect when authState updates
     } catch (error) {
       Alert.alert(
-        'Apple Sign In Failed',
-        'There was an error signing in with Apple. Please try again.',
+        'Test User Sign In Failed',
+        'There was an error signing in with the test user. Please try again.',
       );
-      console.error('Apple sign in error:', error);
-      setAppleSignInLoading(false);
+      console.error('Test user sign in error:', error);
+      setTestUserLoading(false);
     }
   };
 
@@ -149,7 +147,7 @@ const SigninScreen: React.FC<Props> = ({navigation}) => {
               fullWidth
               style={styles.signInButton}
               disabled={isLoading || !email || !password}
-              icon={isLoading ? LoadingIndicator : undefined}
+              loading={isLoading}
             />
 
             <View style={styles.divider}>
@@ -158,14 +156,16 @@ const SigninScreen: React.FC<Props> = ({navigation}) => {
               <View style={styles.dividerLine} />
             </View>
 
-            {Platform.OS === 'ios' && appleAuth.isSupported && (
-              <AppleButton
-                buttonStyle={AppleButton.Style.BLACK}
-                buttonType={AppleButton.Type.SIGN_IN}
-                style={styles.appleSignInButton}
-                onPress={handleAppleSignIn}
-              />
-            )}
+            <Button
+              title={testUserLoading ? "Signing In..." : "Sign In as Test User"}
+              onPress={handleTestUserSignIn}
+              type="secondary"
+              size="large"
+              fullWidth
+              style={styles.testUserButton}
+              disabled={testUserLoading}
+              loading={testUserLoading}
+            />
 
             <View style={styles.signUpContainer}>
               <Text style={styles.signUpText}>Don't have an account? </Text>
@@ -236,6 +236,9 @@ const styles = StyleSheet.create({
   signInButton: {
     marginTop: SPACING.medium,
   },
+  testUserButton: {
+    marginTop: SPACING.medium,
+  },
   divider: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -250,11 +253,6 @@ const styles = StyleSheet.create({
     color: COLORS.lightGray,
     paddingHorizontal: SPACING.medium,
     fontSize: FONT_SIZES.small,
-  },
-  appleSignInButton: {
-    width: '100%',
-    height: 45,
-    marginBottom: SPACING.medium,
   },
   signUpContainer: {
     flexDirection: 'row',

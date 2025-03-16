@@ -4,7 +4,6 @@ import { UserSettings, PaceSetting, UserPreferences, AuthState, User } from '../
 import 'react-native-get-random-values'; 
 import { v4 as uuidv4 } from 'uuid';
 import { Platform } from 'react-native';
-import * as AppleAuthentication from 'expo-apple-authentication';
 
 // Default pace settings
 const DEFAULT_PACE_SETTINGS = {
@@ -331,73 +330,24 @@ export const UserProvider: React.FC<UserProviderProps> = ({ children }) => {
   };
 
   // Sign in with Apple using Expo's Apple Authentication
-  const signInWithApple = async (credential?: AppleAuthentication.AppleAuthenticationCredential): Promise<boolean> => {
+  const signInWithApple = async (): Promise<boolean> => {
     try {
-      // Check if we're on iOS
-      if (Platform.OS !== 'ios') {
-        setError('Apple Sign In is only available on iOS devices');
-        return false;
-      }
-
-      // If no credential was passed, try to request Apple authentication directly
-      let appleCredential = credential;
-      if (!appleCredential) {
-        try {
-          appleCredential = await AppleAuthentication.signInAsync({
-            requestedScopes: [
-              AppleAuthentication.AppleAuthenticationScope.FULL_NAME,
-              AppleAuthentication.AppleAuthenticationScope.EMAIL,
-            ],
-          });
-        } catch (authError) {
-          console.log('Error during Apple Auth request:', authError);
-          setError('Failed to complete Apple Sign In');
-          return false;
-        }
-      }
-
-      // Ensure we have a credential
-      if (!appleCredential) {
-        setError('Failed to obtain Apple credentials');
-        return false;
-      }
-
-      // Extract user information
-      const appleUserId = appleCredential.user;
-      const userEmail = appleCredential.email || `apple_${appleUserId}@treadtrail.app`;
+      // Create a test user instead of using Apple authentication
+      console.log('Creating test user instead of using Apple authentication');
       
-      // Get name information
-      let userName = 'Apple User';
-      if (appleCredential.fullName) {
-        userName = appleCredential.fullName.givenName || '';
-        if (appleCredential.fullName.familyName) {
-          userName += ` ${appleCredential.fullName.familyName}`;
-        }
-        
-        // If no name was provided, use a default
-        if (!userName.trim()) {
-          userName = 'Apple User';
-        }
-      }
+      // Generate a unique test user ID
+      const testUserId = `test_user_${uuidv4()}`;
       
-      // Store Apple user in AsyncStorage for future sign-ins
-      const appleUserKey = `treadtrail_apple_user_${appleUserId}`;
-      await AsyncStorage.setItem(appleUserKey, JSON.stringify({
-        id: appleUserId,
-        email: userEmail,
-        name: userName,
-      }));
-      
-      // Create user object
+      // Create user object with test data
       const user: User = {
-        id: appleUserId,
-        name: userName,
-        email: userEmail,
-        authMethod: 'apple',
+        id: testUserId,
+        name: 'Test User',
+        email: 'test@example.com',
+        authMethod: 'apple', // Keep this as 'apple' to maintain compatibility
       };
       
-      // Use identity token as auth token
-      const token = appleCredential.identityToken || uuidv4();
+      // Create a simple token
+      const token = uuidv4();
       
       // Update auth state
       const newAuthState: AuthState = {
@@ -416,7 +366,7 @@ export const UserProvider: React.FC<UserProviderProps> = ({ children }) => {
           ...userSettings,
           profile: {
             ...userSettings.profile,
-            name: userName,
+            name: 'Test User',
             lastActive: now,
           },
         };
@@ -427,17 +377,8 @@ export const UserProvider: React.FC<UserProviderProps> = ({ children }) => {
       
       return true;
     } catch (error: any) {
-      // Handle specific error cases
-      if (error.code && error.code === appleAuth.Error.CANCELED) {
-        setError('Apple Sign In was canceled by the user');
-      } else if (error.code && error.code === appleAuth.Error.FAILED) {
-        setError('Apple Sign In failed');
-      } else if (error.code && error.code === appleAuth.Error.INVALID_RESPONSE) {
-        setError('Apple Sign In response was invalid');
-      } else {
-        setError('Failed to sign in with Apple');
-      }
-      console.error('Error signing in with Apple:', error);
+      setError('Failed to create test user');
+      console.error('Error creating test user:', error);
       return false;
     }
   };

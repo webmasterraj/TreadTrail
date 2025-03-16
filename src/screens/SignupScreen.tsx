@@ -19,7 +19,6 @@ import { RootStackParamList } from '../types';
 import { COLORS, FONT_SIZES, SPACING, BORDER_RADIUS } from '../styles/theme';
 import { UserContext } from '../context';
 import Button from '../components/common/Button';
-import appleAuth, { AppleButton } from '@invertase/react-native-apple-authentication';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Signup'>;
 
@@ -42,7 +41,7 @@ const SignupScreen: React.FC<Props> = ({ navigation }) => {
     const checkAppleAuthSupport = async () => {
       if (Platform.OS === 'ios') {
         try {
-          setIsAppleAuthSupported(appleAuth.isSupported);
+          setIsAppleAuthSupported(false);
         } catch (error) {
           console.error('Error checking Apple Auth support:', error);
           setIsAppleAuthSupported(false);
@@ -205,15 +204,6 @@ const SignupScreen: React.FC<Props> = ({ navigation }) => {
               <View style={styles.dividerLine} />
             </View>
             
-            {Platform.OS === 'ios' && isAppleAuthSupported && (
-              <AppleButton
-                buttonStyle={AppleButton.Style.BLACK}
-                buttonType={AppleButton.Type.SIGN_IN}
-                style={styles.appleSignInButton}
-                onPress={handleAppleSignIn}
-              />
-            )}
-            
             {isAppleSigningIn && (
               <View style={styles.loadingOverlay}>
                 <ActivityIndicator size="large" color={COLORS.accent} />
@@ -345,11 +335,6 @@ const styles = StyleSheet.create({
     color: COLORS.lightGray,
     paddingHorizontal: SPACING.medium,
     fontSize: FONT_SIZES.small,
-  },
-  appleSignInButton: {
-    width: '100%',
-    height: 50,
-    marginBottom: SPACING.medium,
   },
   loadingOverlay: {
     position: 'absolute',
