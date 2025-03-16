@@ -19,6 +19,7 @@ export interface PaceSettings {
 export interface UserPreferences {
   units: 'imperial' | 'metric';
   darkMode: boolean;
+  enableAudioCues: boolean; // Whether to play audio cues during workouts
 }
 
 // User profile
@@ -44,6 +45,10 @@ export interface WorkoutSegment {
   type: PaceType;
   duration: number; // In seconds
   incline: number; // Percentage incline
+  audio?: {
+    file: string;     // Path to the audio file
+    duration: number; // Duration of the voiceover audio in seconds
+  };
 }
 
 // Workout program

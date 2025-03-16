@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef, useCallback } from 'react';
+import React, { useEffect, useState, useRef, useCallback, useContext } from 'react';
 import { 
   View, 
   Text, 
@@ -37,8 +37,10 @@ import {
   endWorkout as endWorkoutAction,
   resetSkipState
 } from '../redux/slices/workoutSlice';
+import { UserContext } from '../context';
 import { createWorkoutSession } from '../utils/historyUtils';
 import useWorkoutTimer from '../hooks/useWorkoutTimer';
+import useWorkoutAudio from '../hooks/useWorkoutAudio';
 import { addWorkoutSession } from '../redux/slices/workoutProgramsSlice';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'WorkoutInProgress'>;
@@ -49,6 +51,8 @@ const WorkoutInProgressScreen: React.FC<Props> = ({ route, navigation }) => {
   const [isTransitioning, setIsTransitioning] = useState(false);
   const progressAnimation = useRef(new Animated.Value(0)).current;
   const overlayAnimation = useRef(new Animated.Value(0)).current;
+  
+  // Audio will be handled by useWorkoutAudio hook
   
   // Track workout position based on Redux's elapsed time
   const [workoutPosition, setWorkoutPosition] = useState(0);
@@ -79,6 +83,12 @@ const WorkoutInProgressScreen: React.FC<Props> = ({ route, navigation }) => {
   // Track if workout has been initialized
   const hasInitializedRef = useRef(false);
 
+  // Get user preferences from context
+  const { userSettings } = useContext(UserContext);
+  const preferences = userSettings?.preferences || { enableAudioCues: true, units: 'imperial', darkMode: false };
+  console.log(`[WorkoutScreen] User preferences loaded: ${JSON.stringify(preferences)}`);
+  const paceSettings = userSettings?.paceSettings || { recovery: { speed: 3, incline: 1 }, base: { speed: 5, incline: 1 }, run: { speed: 7, incline: 2 }, sprint: { speed: 9, incline: 2 } };
+
   // Initialize workout when component mounts (but only once!)
   useEffect(() => {
     // Critical fix: Only initialize once to prevent constant restarting
@@ -99,410 +109,188 @@ const WorkoutInProgressScreen: React.FC<Props> = ({ route, navigation }) => {
         Alert.alert(
           'Error',
           'Failed to start workout. Please try again.',
-          [
-            {
-              text: 'OK',
-              onPress: () => navigation.goBack(),
-            },
-          ]
+          [{ text: 'OK', onPress: () => navigation.goBack() }]
         );
       });
 
-    // Set up back button handler to show pause screen
+    // Set up back handler
     const backHandler = BackHandler.addEventListener('hardwareBackPress', () => {
-      if (isWorkoutActive) {
-        setIsPauseModalVisible(true);
-        return true; // Prevent default back behavior
-      }
-      return false;
+      handlePause();
+      return true;
     });
-    
-    // Setup an emergency check that periodically verifies the position and progress markers
-    // are consistent, especially after skipping segments
-    const emergencyCheckTimer = setInterval(() => {
-      if (skipActionRef.current || !activeWorkout) return;
-      
-      // Verify that our progress marker matches our workoutPosition
-      const expectedProgress = Math.min(workoutPosition / workoutTotalTime, 1);
-      
-      // Get current animated value
-      const currentProgressValue = progressValueRef.current;
-      
-      // If there's a significant discrepancy (more than 5%), fix it
-      if (Math.abs(expectedProgress - currentProgressValue) > 0.05) {
-        // Force set the values directly
-        progressAnimation.setValue(expectedProgress);
-        overlayAnimation.setValue(expectedProgress);
-      }
-    }, 1000); // Checking more frequently (every second)
 
+    // Cleanup
     return () => {
       backHandler.remove();
-      clearInterval(emergencyCheckTimer);
     };
-  }, [dispatch, workoutId, navigation, workoutPosition, progressAnimation, overlayAnimation, workoutTotalTime]);
+  }, []);
 
-  // Show transition effect when segment changes
-  useEffect(() => {
-    if (currentSegmentIndex > 0 && isWorkoutActive) {
-      setIsTransitioning(true);
-      const timer = setTimeout(() => {
-        setIsTransitioning(false);
-      }, 500);
-      return () => clearTimeout(timer);
-    }
-  }, [currentSegmentIndex, isWorkoutActive]);
-
-  // Detect segment changes
-  useEffect(() => {
-    if (currentSegmentIndex !== prevSegmentIndexRef.current) {
-      prevSegmentIndexRef.current = currentSegmentIndex;
-      
-      // Force immediate position calculation on segment change
-      if (activeWorkout) {
-        updateWorkoutPosition();
-      }
-    }
-  }, [currentSegmentIndex]);
+  // Initialize audio hook for workout
+  // Ensure audio cues are enabled by default (true) if unspecified
+  const audioEnabled = preferences.enableAudioCues !== false;
+  console.log(`[WorkoutScreen] Initializing audio - enableAudioCues: ${audioEnabled}`);
   
-  // Monitor changes to segmentTimeRemaining for timer sync
+  const { pauseAudio, stopAudio } = useWorkoutAudio({
+    isRunning,
+    enableAudioCues: audioEnabled,
+    currentSegmentIndex,
+    segmentElapsedTime,
+    segments: activeWorkout?.segments || []
+  });
+
+  // Handle workout completion
   useEffect(() => {
-    // Update relevant state on timer change - helps with syncing after skips
-    if (activeWorkout && segmentTimeRemaining > 0) {
-      // When context updates segment time, ensure our UI is in sync
+    if (isCompleted && activeWorkout) {
+      handleWorkoutComplete();
+    }
+  }, [isCompleted, activeWorkout]);
+
+  // Handle segment transitions and audio cues
+  useEffect(() => {
+    if (!activeWorkout || !isRunning) return;
+
+    // Check if we need to play audio for the next segment
+    if (preferences.enableAudioCues && 
+        currentSegmentIndex < activeWorkout.segments.length - 1) {
+      const nextSegment = activeWorkout.segments[currentSegmentIndex + 1];
       const currentSegment = activeWorkout.segments[currentSegmentIndex];
       
-      // If we're close to the segment's total duration, we probably just switched segments
-      // For example, if a 90-second segment shows 90 or 89 seconds remaining
-      if (segmentTimeRemaining >= currentSegment.duration - 2) {
-        // New segment detected - ensure timers are in sync
+      if (nextSegment.audio) {
+        // Calculate required durations
+        const voiceoverDuration = nextSegment.audio.duration; // Duration of voiceover
+        const countdownDuration = 3; // Fixed 3-second countdown
+        const pauseDuration = 1; // Pause between voiceover and countdown
+        const totalDuration = voiceoverDuration + pauseDuration + countdownDuration;
+        
+        const timeUntilNextSegment = currentSegment.duration - segmentElapsedTime;
+        
+        // Start playing the sequence so that the countdown ends exactly when the segment changes
+        if (timeUntilNextSegment <= totalDuration && 
+            timeUntilNextSegment > totalDuration - 1 &&
+            audioPlayingRef.current !== `segment-${currentSegmentIndex + 1}`) {
+          
+          const playAudioSequence = async () => {
+            // Play the voiceover for the next segment if it exists
+            const soundKey = `segment-${currentSegmentIndex + 1}`;
+            const sound = sounds[soundKey];
+            
+            if (sound) {
+              console.log(`Playing voiceover for segment ${currentSegmentIndex + 1}`);
+              audioPlayingRef.current = soundKey;
+              await sound.playAsync();
+              
+              // Wait for voiceover to finish plus the pause duration before playing countdown
+              setTimeout(async () => {
+                playCountdown();
+              }, voiceoverDuration * 1000 + pauseDuration * 1000);
+            } else {
+              // If there's no voiceover, just play the countdown at the appropriate time
+              console.log(`No voiceover for segment ${currentSegmentIndex + 1}, playing countdown only`);
+              playCountdown();
+            }
+            
+            // Helper function to play countdown
+            async function playCountdown() {
+              const countdownSound = sounds['countdown'];
+              if (countdownSound) {
+                console.log('Playing countdown audio');
+                countdownPlayingRef.current = true;
+                await countdownSound.playAsync();
+                
+                // Reset the refs when countdown finishes
+                countdownSound.setOnPlaybackStatusUpdate((status) => {
+                  if (status.isLoaded && status.didJustFinish) {
+                    audioPlayingRef.current = null;
+                    countdownPlayingRef.current = false;
+                  }
+                });
+              }
+            }
+          };
+          
+          playAudioSequence();
+        }
       }
     }
-  }, [segmentTimeRemaining, activeWorkout, currentSegmentIndex]);
-  
-  // Add detailed logging for segmentTimeRemaining and related values
-  useEffect(() => {
-    if (!activeWorkout) return;
-    
-    // Get the total duration of all previous segments
-    let previousSegmentsDuration = 0;
-    for (let i = 0; i < currentSegmentIndex; i++) {
-      previousSegmentsDuration += activeWorkout.segments[i].duration;
+
+    // Handle segment transitions
+    if (currentSegmentIndex !== prevSegmentIndexRef.current && !skipActionRef.current) {
+      // Segment has changed naturally (not from skip button)
+      handleSegmentTransition();
     }
-    
-    // Calculate how far we are into the current segment
-    // Ensure we never have negative segment elapsed time, which can happen during transitions
-    const segmentElapsedTime = Math.max(0, workoutPosition - previousSegmentsDuration);
-    
-    // Calculate what the remaining time should be
-    const currentSegmentDuration = activeWorkout.segments[currentSegmentIndex].duration;
-    const calculatedRemaining = Math.max(0, currentSegmentDuration - segmentElapsedTime);
-    
-  }, [workoutPosition, segmentTimeRemaining, activeWorkout, currentSegmentIndex]);
 
-  // Track the last position we calculated to ensure we never go backward
-  const lastPositionRef = useRef(0);
-  
-  // Create refs to track animation values
-  const progressValueRef = useRef(0);
-  const overlayValueRef = useRef(0);
+    prevSegmentIndexRef.current = currentSegmentIndex;
+  }, [currentSegmentIndex, segmentElapsedTime, isRunning, preferences.enableAudioCues]);
 
-  // Set up animation value tracking
+  // Handle skip state reset
   useEffect(() => {
-    // Set up listeners to track current animation values
-    const progressListener = progressAnimation.addListener(({ value }) => {
-      progressValueRef.current = value;
-    });
-    
-    const overlayListener = overlayAnimation.addListener(({ value }) => {
-      overlayValueRef.current = value;
-    });
-    
-    return () => {
-      // Clean up listeners
-      progressAnimation.removeListener(progressListener);
-      overlayAnimation.removeListener(overlayListener);
-    };
-  }, [progressAnimation, overlayAnimation]);
-
-  // This useEffect previously had local timer logic 
-  // Now we're using the Redux timer, so we don't need to manage it here
-  useEffect(() => {
-    // Just add an effect for segment changes if needed
-  }, [currentSegmentIndex]);
-  
-  // Calculate the position in the workout including skipped segments
-  const calculateWorkoutPosition = useCallback(() => {
-    // If we're not in an active workout, use elapsedTime directly
-    if (!activeWorkout || !isWorkoutActive) return elapsedTime;
-    
-    // If we're currently skipping, don't recalculate (avoids conflicting with the skip logic)
-    if (skipActionRef.current || isSkipping) {
-      return lastPositionRef.current;
-    }
-    
-    // In the Redux implementation, we can just use the elapsedTime directly
-    // since it's properly managed by the reducer logic
-    const newPosition = elapsedTime;
-    
-    // Still keep the lastPositionRef to ensure we never go backward
-    const finalPosition = Math.max(lastPositionRef.current, newPosition);
-    
-    // Update our reference
-    lastPositionRef.current = finalPosition;
-    
-    return finalPosition;
-  }, [
-    activeWorkout, 
-    isWorkoutActive, 
-    elapsedTime,
-    isSkipping
-  ]);
-  
-  // Update workout position
-  const updateWorkoutPosition = useCallback(() => {
-    const newPosition = calculateWorkoutPosition();
-    setWorkoutPosition(newPosition);
-  }, [calculateWorkoutPosition, workoutPosition]);
-
-  // Update workout position whenever relevant state changes
-  useEffect(() => {
-    // Don't update from workoutContext if we're in the middle of skipping
-    if (skipActionRef.current) {
-      return;
-    }
-    
-    updateWorkoutPosition();
-  }, [updateWorkoutPosition, currentSegmentIndex, segmentTimeRemaining]);
-  
-  // Handle automatic workout completion when the isCompleted flag is set
-  useEffect(() => {
-    if (isCompleted && isWorkoutActive) {
-      // Complete the workout after a brief delay
-      const timeoutId = setTimeout(() => {
-        handleCompleteWorkout();
-      }, 500);
-      
-      return () => clearTimeout(timeoutId);
-    }
-  }, [isCompleted, isWorkoutActive]);
-
-  // We're now using the Redux isSkipping state instead of local state
-
-  // Track last skip time to throttle skip requests
-  const lastSkipTimeRef = useRef(0);
-  
-
-  // Skip segment handler using Redux
-  const handleSkipSegment = useCallback(() => {
-    // Prevent multiple skips - add a 750ms throttle to prevent double-taps and UI jumpiness
-    const now = Date.now();
-    if (isSkipping || skipActionRef.current || (now - lastSkipTimeRef.current < 750)) {
-      return;
-    }
-    
-    // Update last skip time and store it for subsequent use
-    const skipTime = Date.now();
-    lastSkipTimeRef.current = skipTime;
-    
-    // Set skipping state locally to prevent UI issues
-    skipActionRef.current = true;
-    
-    // If no workout is active, do nothing
-    if (!activeWorkout || !isWorkoutActive) {
+    if (!isSkipping && skipActionRef.current) {
       skipActionRef.current = false;
-      return;
     }
-    
-    // Save the current segment index in a local variable for reliability
-    const currentIndex = currentSegmentIndex;
-    const nextIndex = currentIndex + 1;
-    
-    // If this is the last segment, mark it as complete by setting progress to 100%
-    if (nextIndex >= activeWorkout.segments.length) {
-      skipActionRef.current = false;
-      
-      // Set all animations to 100%
-      const progress = 1.0; // 100%
-      progressAnimation.setValue(progress);
-      overlayAnimation.setValue(progress);
-      
-      // Calculate total workout time
-      let totalTime = 0;
-      for (let i = 0; i < activeWorkout.segments.length; i++) {
-        totalTime += activeWorkout.segments[i].duration;
-      }
-      
-      // Force position to the end
-      lastPositionRef.current = totalTime;
-      setWorkoutPosition(totalTime);
-      
-      // When workout ends normally by completing all segments or skipping to the end,
-      // directly go to the completion screen without asking
-      setTimeout(() => {
-        handleCompleteWorkout();
-      }, 500);
-      
-      return;
-    }
-    
-    // Get the current and next segments
-    const curSegment = currentSegment;
-    if (!curSegment) {
-      console.log('[WorkoutScreen] Cannot skip - current segment is undefined');
-      skipActionRef.current = false;
-      return;
-    }
-    
-    const nextSegment = activeWorkout.segments[nextIndex];
-    
-    // Calculate what the position will be after skipping
-    let newPosition = 0;
-    
-    // Add all previous segments
-    for (let i = 0; i < currentIndex; i++) {
-      newPosition += activeWorkout.segments[i].duration;
-    }
-    
-    // Add current segment (fully counted when skipped)
-    newPosition += curSegment.duration;
-    
-    // Ensure new position is reasonable
-    if (newPosition > workoutTotalTime) {
-      newPosition = Math.min(newPosition, workoutTotalTime);
-    }
-    
-    // Update our references to ensure we don't go backward
-    lastPositionRef.current = newPosition;
-    
-    // Force setting the new position with immediate effects
-    setWorkoutPosition(newPosition);
-    
-    // Calculate and set progress value
-    const progress = Math.min(newPosition / workoutTotalTime, 1);
-    
-    // CRITICAL FIX: Set animated values directly without animation to ensure immediate update
-    progressAnimation.setValue(progress);
-    overlayAnimation.setValue(progress);
-    
-    // DISPATCH REDUX ACTION TO SKIP SEGMENT
-    dispatch(skipSegmentAction())
-      .unwrap()
-      .then(() => {
-        // Force a final position update to ensure everything is in sync
-        updateWorkoutPosition();
-      })
-      .catch((error) => {
-        console.log('[WorkoutScreen] Skip segment action failed:', error);
-      })
-      .finally(() => {
-        // Clear the skip flag after a short delay to allow state to settle
-        setTimeout(() => {
-          skipActionRef.current = false;
-          dispatch(resetSkipState());
-        }, 700); // Increased delay to ensure state settles
-      });
-    
-  }, [
-    activeWorkout, 
-    currentSegmentIndex, 
-    currentSegment,
-    workoutTotalTime,
-    isWorkoutActive,
-    updateWorkoutPosition,
-    isSkipping,
-    dispatch,
-    progressAnimation,
-    overlayAnimation
-  ]);
+  }, [isSkipping]);
 
-  // Update progress animation when workout position changes
-  useEffect(() => {
-    if (!activeWorkout || !isWorkoutActive) return;
-    
-    // Skip animation updates triggered by the timer during a skip action
-    if (skipActionRef.current || isSkipping) {
-      return;
-    }
-    
-    // Calculate progress as a percentage (0-1)
-    const progress = Math.min(workoutPosition / workoutTotalTime, 1);
-    
-    // Don't animate if paused
-    if (isPaused) return;
-    
-    // Store current position in a ref for consistency checks
-    const currentPositionForCheck = workoutPosition;
-    
-    // Animate the progress marker and overlay
-    Animated.parallel([
-      Animated.timing(progressAnimation, {
-        toValue: progress,
-        duration: 300, // Faster animation for better responsiveness
-        useNativeDriver: false,
-        easing: Easing.linear,
-      }),
-      Animated.timing(overlayAnimation, {
-        toValue: progress,
-        duration: 300, // Faster animation for better responsiveness
-        useNativeDriver: false,
-        easing: Easing.linear,
-      })
-    ]).start(() => {
-      // After animation completes, verify we still have the right position
-      if (workoutPosition !== currentPositionForCheck && !skipActionRef.current) {
-        const newProgress = Math.min(workoutPosition / workoutTotalTime, 1);
-        progressAnimation.setValue(newProgress);
-        overlayAnimation.setValue(newProgress);
-      }
-    });
-    
-  }, [workoutPosition, isPaused, isWorkoutActive, activeWorkout, workoutTotalTime, isSkipping]);
-
-  // Define control handlers
+  // Handle pause button press
   const handlePause = () => {
+    if (!isWorkoutActive) return;
+    
     dispatch(pauseWorkoutAction());
     setIsPauseModalVisible(true);
+    
+    // Pause any playing audio
+    if (audioEnabled) {
+      pauseAudio();
+    }
   };
 
+  // Handle resume button press
   const handleResume = () => {
+    if (!isWorkoutActive) return;
+    
     dispatch(resumeWorkoutAction());
     setIsPauseModalVisible(false);
+    
+    // No need to resume audio - we'll just play the next cue when appropriate
   };
-  
-  const handleReturnToLibrary = () => {
-    // Simply end the workout without saving and return to the library
-    dispatch(endWorkoutAction());
-    navigation.navigate('WorkoutLibrary');
+
+  // Handle skip button press
+  const handleSkip = () => {
+    if (!isWorkoutActive || isSkipping) return;
+    
+    skipActionRef.current = true;
+    dispatch(skipSegmentAction());
+    
+    // Stop any playing audio
+    if (audioEnabled) {
+      stopAudio();
+    }
   };
-  
+
+  // Handle end workout button press
   const handleEndWorkout = () => {
-    // Show a confirmation dialog asking the user what they want to do
     Alert.alert(
       'End Workout',
-      'What would you like to do?',
+      'Are you sure you want to end this workout?',
       [
-        {
-          text: 'Return to Workout Library',
-          onPress: handleReturnToLibrary,
-          style: 'default',
-        },
-        {
-          text: 'Mark as Complete',
-          onPress: handleCompleteWorkout,
-          style: 'default',
-        },
-        {
-          text: 'Cancel',
-          style: 'cancel',
-        },
-      ],
-      { cancelable: true }
+        { text: 'Cancel', style: 'cancel' },
+        { 
+          text: 'End Workout', 
+          style: 'destructive',
+          onPress: () => {
+            dispatch(endWorkoutAction());
+            navigation.goBack();
+            
+            // Stop any playing audio
+            if (audioEnabled) {
+              stopAudio();
+            }
+          }
+        }
+      ]
     );
   };
 
-  // Define the complete workout handler
-  const handleCompleteWorkout = () => {
+  // Handle workout completion
+  const handleWorkoutComplete = () => {
     // First create a session from the current workout state
     if (activeWorkout) {
       // Generate a unique ID for the session
@@ -540,6 +328,11 @@ const WorkoutInProgressScreen: React.FC<Props> = ({ route, navigation }) => {
         segments: completedSegments,
       };
       
+      // Stop any playing audio
+      if (audioEnabled) {
+        stopAudio();
+      }
+      
       // Save the session using the utility function
       createWorkoutSession(session).then(() => {
         // End the workout in Redux
@@ -566,6 +359,14 @@ const WorkoutInProgressScreen: React.FC<Props> = ({ route, navigation }) => {
     }
   };
 
+  // Handle segment transition animation
+  const handleSegmentTransition = () => {
+    setIsTransitioning(true);
+    setTimeout(() => {
+      setIsTransitioning(false);
+    }, 500);
+  };
+
   // If no active workout yet, show loading
   if (!isWorkoutActive || !activeWorkout) {
     return (
@@ -579,90 +380,6 @@ const WorkoutInProgressScreen: React.FC<Props> = ({ route, navigation }) => {
   const nextSegment = currentSegmentIndex < activeWorkout.segments.length - 1 
     ? activeWorkout.segments[currentSegmentIndex + 1] 
     : null;
-  
-  // Render the timeline visualization with rounded bars like in WorkoutLibrary
-  // Each bar now represents 1 minute (60 seconds)
-  const renderTimelineBars = () => {
-    const bars = [];
-    let barIndex = 0;
-    
-    // Calculate total workout duration
-    const totalDuration = workoutTotalTime;
-    
-    // Process each segment
-    activeWorkout.segments.forEach((segment) => {
-      const segmentDuration = segment.duration;
-      const paceType = segment.type as PaceType;
-      const incline = segment.incline;
-      
-      // Calculate how many 1-minute bars this segment needs (each bar = 60 seconds)
-      const fullBarsCount = Math.floor(segmentDuration / 60);
-      const remainingSeconds = segmentDuration % 60;
-      
-      // Add the full-width bars (each representing 1 minute)
-      for (let i = 0; i < fullBarsCount; i++) {
-        const barHeight = getPaceHeight(paceType);
-        
-        bars.push(
-          <View 
-            key={`${barIndex}-${i}`}
-            style={[
-              styles.timelineBar, 
-              { 
-                height: barHeight, 
-                backgroundColor: PACE_COLORS[paceType],
-                width: 6, // Fixed width like WorkoutLibrary
-                borderRadius: 3, // Rounded corners like WorkoutLibrary
-                marginRight: 4, // Small gap between bars
-              }
-            ]} 
-          />
-        );
-      }
-      
-      // Add a partial bar for any remaining time that doesn't fit into 1-minute increments
-      if (remainingSeconds > 0) {
-        const barHeight = getPaceHeight(paceType);
-        const widthRatio = remainingSeconds / 60; // Calculate width relative to a full bar
-        
-        // For partial minutes, adjust the width proportionally
-        // For example, a 30-second remainder would be 3px wide (half of the full 6px)
-        const partialWidth = Math.max(2, Math.round(6 * widthRatio));
-        const partialRadius = Math.max(1, Math.round(3 * widthRatio));
-        
-        bars.push(
-          <View 
-            key={`${barIndex}-remainder`}
-            style={[
-              styles.timelineBar, 
-              { 
-                height: barHeight, 
-                backgroundColor: PACE_COLORS[paceType],
-                width: partialWidth, // Width proportional to remaining seconds
-                borderRadius: partialRadius, // Rounded corners adjusted for smaller width
-                marginRight: 4, // Small gap between bars
-              }
-            ]} 
-          />
-        );
-      }
-      
-      barIndex++;
-    });
-    
-    return bars;
-  };
-  
-  // Determine height based on pace type (matching the WorkoutLibrary implementation)
-  const getPaceHeight = (paceType: PaceType): number => {
-    switch(paceType) {
-      case 'recovery': return 10;  // Shortest bars for recovery
-      case 'base': return 15;      // Medium-short bars for base
-      case 'run': return 20;       // Medium-tall bars for run
-      case 'sprint': return 24;    // Tallest bars for sprint
-      default: return 15;
-    }
-  };
 
   return (
     <View style={styles.container}>
@@ -771,7 +488,7 @@ const WorkoutInProgressScreen: React.FC<Props> = ({ route, navigation }) => {
               </TouchableOpacity>
               <TouchableOpacity 
                 style={[styles.button, styles.skipButton, isSkipping && styles.disabledButton]} 
-                onPress={handleSkipSegment}
+                onPress={handleSkip}
                 disabled={isSkipping || isPaused}
                 testID="skip-button"
               >
@@ -880,6 +597,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     borderWidth: 1,
     textAlign: 'center',
+  },
+  transitioningSegment: {
+    opacity: 0.7,
+    transform: [{ scale: 0.98 }],
   },
   segmentTime: {
     fontSize: 64, // Exact value from mockup
@@ -1051,6 +772,12 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     fontSize: 16, // Exact value from mockup
   },
+  button: {
+    borderRadius: 25,
+    padding: 15,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   skipButton: {
     backgroundColor: 'rgba(255, 255, 255, 0.1)', // Exact value from mockup
     borderRadius: 25, // Exact value from mockup
@@ -1061,10 +788,13 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255, 255, 255, 0.2)', // Exact value from mockup
     flex: 1, // Takes 1/3 of the row as in mockup
   },
-  skipButtonText: {
+  buttonText: {
     color: COLORS.white,
     fontWeight: 'bold',
     fontSize: 16, // Exact value from mockup
+  },
+  disabledButton: {
+    opacity: 0.5,
   },
   endButton: {
     backgroundColor: 'rgba(255, 0, 0, 0.15)', // Exact value from mockup
@@ -1159,17 +889,12 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
   actionButtons: {
-    display: 'flex',
-    flexDirection: 'column',
     width: '100%',
-    maxWidth: 250,
-    gap: 15,
+    maxWidth: 300,
   },
   resumeButton: {
     backgroundColor: COLORS.accent,
-    borderRadius: 25,
-    padding: 16,
-    alignItems: 'center',
+    marginBottom: 10,
   },
   resumeButtonText: {
     color: COLORS.black,
@@ -1177,12 +902,10 @@ const styles = StyleSheet.create({
     fontSize: 16,
   },
   restartButton: {
-    backgroundColor: COLORS.mediumGray || '#222222',
-    borderRadius: 25,
-    padding: 16,
-    alignItems: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.1)',
+    borderColor: 'rgba(255, 255, 255, 0.2)',
+    marginBottom: 10,
   },
   restartButtonText: {
     color: COLORS.white,
@@ -1190,38 +913,12 @@ const styles = StyleSheet.create({
     fontSize: 16,
   },
   endButtonModal: {
-    backgroundColor: 'rgba(255, 0, 0, 0.1)',
-    borderRadius: 25,
-    padding: 16,
-    alignItems: 'center',
+    backgroundColor: 'rgba(255, 0, 0, 0.15)',
     borderWidth: 1,
-    borderColor: 'rgba(255, 0, 0, 0.2)',
+    borderColor: 'rgba(255, 0, 0, 0.3)',
   },
   endButtonModalText: {
     color: '#ff6b6b',
-    fontWeight: 'bold',
-    fontSize: 16,
-  },
-  transitioningSegment: {
-    transform: [{ scale: 1.02 }],
-    shadowColor: COLORS.white,
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.5,
-    shadowRadius: 10,
-    elevation: 5,
-  },
-  disabledButton: {
-    opacity: 0.5,
-    backgroundColor: COLORS.mediumGray,
-  },
-  button: {
-    padding: 15,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: 25,
-  },
-  buttonText: {
-    color: COLORS.white,
     fontWeight: 'bold',
     fontSize: 16,
   },

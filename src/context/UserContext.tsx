@@ -18,6 +18,7 @@ const DEFAULT_PACE_SETTINGS = {
 const DEFAULT_PREFERENCES: UserPreferences = {
   units: 'imperial',
   darkMode: true,
+  enableAudioCues: true, // Enable audio cues by default
 };
 
 // Storage keys - avoid using @ symbol which might cause issues with Expo's storage

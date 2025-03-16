@@ -40,5 +40,5 @@ module.exports = {
     url: "https://u.expo.dev/9077313c-8bee-4a2e-81a3-2e3251345818"
   },
   runtimeVersion: "1.0.0",  // ✅ Set static runtime version
-  plugins: []
+  plugins: ["expo-asset"]
 };

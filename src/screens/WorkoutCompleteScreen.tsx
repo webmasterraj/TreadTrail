@@ -17,6 +17,7 @@ import { formatTime, formatDuration, formatDate, mphToKph } from '../utils/helpe
 import Button from '../components/common/Button';
 import WorkoutTimeline from '../components/workout/WorkoutTimeline';
 import WorkoutCalendar from '../components/common/WorkoutCalendar';
+import WorkoutVisualization from '../components/workout/WorkoutVisualization';
 import { getWorkoutSessionById } from '../utils/historyUtils';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'WorkoutComplete'>;
@@ -166,6 +167,16 @@ const WorkoutCompleteScreen: React.FC<Props> = ({ route, navigation }) => {
               <Text style={styles.circleLabel}>Intervals</Text>
             </View>
           </View>
+          
+          <View style={styles.workoutVisualizationContainer}>
+            <Text style={styles.visualizationLabel}>Workout Structure</Text>
+            <WorkoutVisualization 
+              segments={segments} 
+              minutePerBar={true}
+              showOverlay={true}
+              progressPosition={duration} // Show entire workout as completed
+            />
+          </View>
         </View>
         
         <View style={styles.workoutsSection}>
@@ -256,6 +267,14 @@ const styles = StyleSheet.create({
     borderRadius: 15,
     padding: SPACING.medium,
     marginBottom: SPACING.large,
+  },
+  workoutVisualizationContainer: {
+    marginTop: SPACING.medium,
+  },
+  visualizationLabel: {
+    fontSize: FONT_SIZES.small,
+    color: 'rgba(255, 255, 255, 0.7)',
+    marginBottom: SPACING.xs,
   },
   summaryHeader: {
     flexDirection: 'row',

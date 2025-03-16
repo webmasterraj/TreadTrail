@@ -8,6 +8,7 @@ import {
   ScrollView,
   Alert,
   Linking,
+  Switch,
 } from 'react-native';
 import {NativeStackScreenProps} from '@react-navigation/native-stack';
 import {RootStackParamList} from '../types';
@@ -21,7 +22,7 @@ const APP_VERSION = '1.0.0';
 const BUILD_NUMBER = '42';
 
 const SettingsScreen: React.FC<Props> = ({navigation}) => {
-  const {authState, signOut} = useContext(UserContext);
+  const {authState, signOut, preferences, updatePreference} = useContext(UserContext);
 
   // Handle sign out
   const handleSignOut = async () => {
@@ -62,6 +63,11 @@ const SettingsScreen: React.FC<Props> = ({navigation}) => {
     navigation.navigate('Profile');
   };
 
+  // Toggle audio cues
+  const toggleAudioCues = (value: boolean) => {
+    updatePreference('enableAudioCues', value);
+  };
+
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
@@ -92,6 +98,24 @@ const SettingsScreen: React.FC<Props> = ({navigation}) => {
                 <Text style={styles.signInText}>Sign In / Create Account</Text>
               </TouchableOpacity>
             )}
+          </View>
+        </View>
+
+        {/* Preferences Section */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Preferences</Text>
+          <View style={styles.card}>
+            <View style={styles.settingsItem}>
+              <Text style={styles.itemLabel}>Audio Cues</Text>
+              <Switch
+                trackColor={{ false: COLORS.darkGray, true: COLORS.accent }}
+                thumbColor={preferences.enableAudioCues ? COLORS.white : COLORS.lightGray}
+                ios_backgroundColor={COLORS.darkGray}
+                onValueChange={toggleAudioCues}
+                value={preferences.enableAudioCues}
+                testID="audio-cues-toggle"
+              />
+            </View>
           </View>
         </View>
 
