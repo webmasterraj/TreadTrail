@@ -10,7 +10,8 @@ import {
   Modal,
   Animated,
   Easing,
-  StatusBar
+  StatusBar,
+  Platform
 } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList, PaceType } from '../types';
@@ -42,6 +43,7 @@ import { createWorkoutSession } from '../utils/historyUtils';
 import useWorkoutTimer from '../hooks/useWorkoutTimer';
 import useWorkoutAudio from '../hooks/useWorkoutAudio';
 import { addWorkoutSession } from '../redux/slices/workoutProgramsSlice';
+import { Audio, InterruptionModeIOS, InterruptionModeAndroid, AVPlaybackStatus } from 'expo-av';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'WorkoutInProgress'>;
 
@@ -52,7 +54,9 @@ const WorkoutInProgressScreen: React.FC<Props> = ({ route, navigation }) => {
   const progressAnimation = useRef(new Animated.Value(0)).current;
   const overlayAnimation = useRef(new Animated.Value(0)).current;
   
-  // Audio will be handled by useWorkoutAudio hook
+  // Audio refs
+  const audioPlayingRef = useRef<string | null>(null);
+  const sounds = useRef<Record<string, Audio.Sound>>({}).current;
   
   // Track workout position based on Redux's elapsed time
   const [workoutPosition, setWorkoutPosition] = useState(0);
@@ -88,6 +92,52 @@ const WorkoutInProgressScreen: React.FC<Props> = ({ route, navigation }) => {
   const preferences = userSettings?.preferences || { enableAudioCues: true, units: 'imperial', darkMode: false };
   console.log(`[WorkoutScreen] User preferences loaded: ${JSON.stringify(preferences)}`);
   const paceSettings = userSettings?.paceSettings || { recovery: { speed: 3, incline: 1 }, base: { speed: 5, incline: 1 }, run: { speed: 7, incline: 2 }, sprint: { speed: 9, incline: 2 } };
+
+  // Initialize audio for workout
+  useEffect(() => {
+    const setupAudio = async () => {
+      try {
+        console.log("[WorkoutScreen] Setting up audio");
+        // We don't need to explicitly request permissions here anymore
+        // as they will be handled by the system based on the app.json configuration
+        // and in the useWorkoutAudio hook
+        
+        // Check if audio is enabled in device settings
+        const { granted } = await Audio.getPermissionsAsync();
+        console.log(`[WorkoutScreen] Audio permissions status: ${granted ? 'granted' : 'not granted'}`);
+        
+        if (!granted) {
+          console.log("[WorkoutScreen] Requesting audio permissions");
+          const { granted: newGranted } = await Audio.requestPermissionsAsync();
+          console.log(`[WorkoutScreen] Audio permissions after request: ${newGranted ? 'granted' : 'not granted'}`);
+          
+          if (!newGranted) {
+            Alert.alert(
+              "Audio Permission Required",
+              "TreadTrail needs audio permission to play workout sounds. Please enable this in your device settings.",
+              [{ text: "OK" }]
+            );
+          }
+        }
+        
+        // Set audio mode for best compatibility
+        await Audio.setAudioModeAsync({
+          playsInSilentModeIOS: true,
+          staysActiveInBackground: true,
+          interruptionModeIOS: InterruptionModeIOS.DuckOthers,
+          shouldDuckAndroid: true,
+          interruptionModeAndroid: InterruptionModeAndroid.DuckOthers,
+          playThroughEarpieceAndroid: false
+        });
+        console.log("[WorkoutScreen] Audio mode set successfully");
+        
+      } catch (error) {
+        console.error("[WorkoutScreen] Error setting up audio:", error);
+      }
+    };
+    
+    setupAudio();
+  }, []);
 
   // Initialize workout when component mounts (but only once!)
   useEffect(() => {
@@ -125,18 +175,73 @@ const WorkoutInProgressScreen: React.FC<Props> = ({ route, navigation }) => {
     };
   }, []);
 
-  // Initialize audio hook for workout
-  // Ensure audio cues are enabled by default (true) if unspecified
-  const audioEnabled = preferences.enableAudioCues !== false;
-  console.log(`[WorkoutScreen] Initializing audio - enableAudioCues: ${audioEnabled}`);
-  
-  const { pauseAudio, stopAudio } = useWorkoutAudio({
-    isRunning,
-    enableAudioCues: audioEnabled,
+  // Use the audio hook for workout cues
+  const { pauseAudio, stopAudio, playTestCountdown } = useWorkoutAudio({
+    workout: activeWorkout,
     currentSegmentIndex,
     segmentElapsedTime,
-    segments: activeWorkout?.segments || []
+    isRunning,
+    isSkipping,
+    isCompleted,
   });
+
+  // Enable or disable audio based on user preferences
+  const audioEnabled = preferences.enableAudioCues;
+
+  // Handle audio cues when workout state changes
+  useEffect(() => {
+    if (activeWorkout && audioEnabled) {
+      if (isCompleted) {
+        stopAudio();
+      }
+    }
+  }, [activeWorkout, audioEnabled, stopAudio, isCompleted]);
+
+  // Preload segment audio files
+  useEffect(() => {
+    if (!activeWorkout || !preferences.enableAudioCues) return;
+    
+    const loadSegmentAudio = async () => {
+      try {
+        // Clean up any existing sounds
+        for (const key in sounds) {
+          const sound = sounds[key];
+          if (sound) {
+            await sound.unloadAsync();
+            delete sounds[key];
+          }
+        }
+        
+        // Load audio for each segment that has an audio file
+        for (let i = 0; i < activeWorkout.segments.length; i++) {
+          const segment = activeWorkout.segments[i];
+          if (segment.audio && segment.audio.uri) {
+            try {
+              console.log(`Loading audio for segment ${i}: ${segment.audio.uri}`);
+              const { sound } = await Audio.Sound.createAsync({ uri: segment.audio.uri });
+              sounds[`segment-${i}`] = sound;
+            } catch (e) {
+              console.error(`Failed to load audio for segment ${i}:`, e);
+            }
+          }
+        }
+        console.log(`Loaded ${Object.keys(sounds).length} audio files`);
+      } catch (e) {
+        console.error("Error loading segment audio:", e);
+      }
+    };
+    
+    loadSegmentAudio();
+    
+    // Clean up sounds when component unmounts
+    return () => {
+      Object.values(sounds).forEach(sound => {
+        if (sound) {
+          sound.unloadAsync().catch(e => console.error("Error unloading sound:", e));
+        }
+      });
+    };
+  }, [activeWorkout, preferences.enableAudioCues]);
 
   // Handle workout completion
   useEffect(() => {
@@ -147,80 +252,56 @@ const WorkoutInProgressScreen: React.FC<Props> = ({ route, navigation }) => {
 
   // Handle segment transitions and audio cues
   useEffect(() => {
-    if (!activeWorkout || !isRunning) return;
+    if (!activeWorkout || !isRunning || !preferences.enableAudioCues) return;
 
     // Check if we need to play audio for the next segment
-    if (preferences.enableAudioCues && 
-        currentSegmentIndex < activeWorkout.segments.length - 1) {
+    if (currentSegmentIndex < activeWorkout.segments.length - 1) {
       const nextSegment = activeWorkout.segments[currentSegmentIndex + 1];
       const currentSegment = activeWorkout.segments[currentSegmentIndex];
       
-      if (nextSegment.audio) {
-        // Calculate required durations
-        const voiceoverDuration = nextSegment.audio.duration; // Duration of voiceover
-        const countdownDuration = 3; // Fixed 3-second countdown
-        const pauseDuration = 1; // Pause between voiceover and countdown
-        const totalDuration = voiceoverDuration + pauseDuration + countdownDuration;
+      // Default voiceover duration if not available
+      const voiceoverDuration = (nextSegment.audio && nextSegment.audio.duration) || 3;
+      const countdownDuration = 3; // Fixed 3-second countdown
+      const pauseDuration = 1; // Pause between voiceover and countdown
+      const totalDuration = voiceoverDuration + pauseDuration + countdownDuration;
+      
+      const timeUntilNextSegment = currentSegment.duration - segmentElapsedTime;
+      
+      // Start playing the sequence so that the countdown ends exactly when the segment changes
+      if (timeUntilNextSegment <= totalDuration && 
+          timeUntilNextSegment > totalDuration - 1 &&
+          audioPlayingRef.current !== `segment-${currentSegmentIndex + 1}`) {
         
-        const timeUntilNextSegment = currentSegment.duration - segmentElapsedTime;
-        
-        // Start playing the sequence so that the countdown ends exactly when the segment changes
-        if (timeUntilNextSegment <= totalDuration && 
-            timeUntilNextSegment > totalDuration - 1 &&
-            audioPlayingRef.current !== `segment-${currentSegmentIndex + 1}`) {
+        const playAudioSequence = async () => {
+          // Play the voiceover for the next segment if it exists
+          const soundKey = `segment-${currentSegmentIndex + 1}`;
+          const sound = sounds[soundKey];
           
-          const playAudioSequence = async () => {
-            // Play the voiceover for the next segment if it exists
-            const soundKey = `segment-${currentSegmentIndex + 1}`;
-            const sound = sounds[soundKey];
-            
-            if (sound) {
-              console.log(`Playing voiceover for segment ${currentSegmentIndex + 1}`);
-              audioPlayingRef.current = soundKey;
+          if (sound) {
+            console.log(`Playing voiceover for segment ${currentSegmentIndex + 1}`);
+            audioPlayingRef.current = soundKey;
+            try {
               await sound.playAsync();
               
-              // Wait for voiceover to finish plus the pause duration before playing countdown
-              setTimeout(async () => {
-                playCountdown();
-              }, voiceoverDuration * 1000 + pauseDuration * 1000);
-            } else {
-              // If there's no voiceover, just play the countdown at the appropriate time
-              console.log(`No voiceover for segment ${currentSegmentIndex + 1}, playing countdown only`);
-              playCountdown();
+              // Reset the reference when done playing
+              sound.setOnPlaybackStatusUpdate((status: AVPlaybackStatus) => {
+                if (status.isLoaded && status.didJustFinish) {
+                  audioPlayingRef.current = null;
+                }
+              });
+            } catch (e) {
+              console.error("Error playing segment audio:", e);
+              audioPlayingRef.current = null;
             }
-            
-            // Helper function to play countdown
-            async function playCountdown() {
-              const countdownSound = sounds['countdown'];
-              if (countdownSound) {
-                console.log('Playing countdown audio');
-                countdownPlayingRef.current = true;
-                await countdownSound.playAsync();
-                
-                // Reset the refs when countdown finishes
-                countdownSound.setOnPlaybackStatusUpdate((status) => {
-                  if (status.isLoaded && status.didJustFinish) {
-                    audioPlayingRef.current = null;
-                    countdownPlayingRef.current = false;
-                  }
-                });
-              }
-            }
-          };
-          
-          playAudioSequence();
-        }
+          } else {
+            console.log(`No audio available for segment ${currentSegmentIndex + 1}`);
+          }
+        };
+        
+        playAudioSequence();
       }
     }
-
-    // Handle segment transitions
-    if (currentSegmentIndex !== prevSegmentIndexRef.current && !skipActionRef.current) {
-      // Segment has changed naturally (not from skip button)
-      handleSegmentTransition();
-    }
-
-    prevSegmentIndexRef.current = currentSegmentIndex;
-  }, [currentSegmentIndex, segmentElapsedTime, isRunning, preferences.enableAudioCues]);
+  }, [currentSegmentIndex, segmentElapsedTime, isRunning, activeWorkout, preferences.enableAudioCues]);
 
   // Handle skip state reset
   useEffect(() => {

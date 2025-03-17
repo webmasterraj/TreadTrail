@@ -13,22 +13,86 @@ export const DEFAULT_WORKOUT_PROGRAMS: WorkoutProgram[] = [
     "favorite": false,
     "lastUsed": null,
     "segments": [
-      { "type": "base", "duration": 120, "incline": 1 },
-      { "type": "sprint", "duration": 30, "incline": 1, "audio": { "file": "workout-1-segment-1.mp3", "duration": 2.5 } },
-      { "type": "recovery", "duration": 90, "incline": 1, "audio": { "file": "workout-1-segment-2.mp3", "duration": 4.0 } },
-      { "type": "sprint", "duration": 30, "incline": 1 },
-      { "type": "recovery", "duration": 90, "incline": 1 },
-      { "type": "sprint", "duration": 30, "incline": 1 },
-      { "type": "recovery", "duration": 90, "incline": 1 },
-      { "type": "sprint", "duration": 30, "incline": 1 },
-      { "type": "recovery", "duration": 90, "incline": 1 },
-      { "type": "sprint", "duration": 30, "incline": 1 },
-      { "type": "recovery", "duration": 90, "incline": 1 },
-      { "type": "sprint", "duration": 30, "incline": 1 },
-      { "type": "recovery", "duration": 90, "incline": 1 },
-      { "type": "sprint", "duration": 30, "incline": 1 },
-      { "type": "recovery", "duration": 90, "incline": 1 },
-      { "type": "base", "duration": 120, "incline": 1 }
+      {
+        "type": "base",
+        "duration": 15,
+        "incline": 1
+      },
+      {
+        "type": "sprint",
+        "duration": 15,
+        "incline": 1
+      },
+      {
+        "type": "recovery",
+        "duration": 90,
+        "incline": 1
+      },
+      {
+        "type": "sprint",
+        "duration": 30,
+        "incline": 1
+      },
+      {
+        "type": "recovery",
+        "duration": 90,
+        "incline": 1
+      },
+      {
+        "type": "sprint",
+        "duration": 30,
+        "incline": 1
+      },
+      {
+        "type": "recovery",
+        "duration": 90,
+        "incline": 1
+      },
+      {
+        "type": "sprint",
+        "duration": 30,
+        "incline": 1
+      },
+      {
+        "type": "recovery",
+        "duration": 90,
+        "incline": 1
+      },
+      {
+        "type": "sprint",
+        "duration": 30,
+        "incline": 1
+      },
+      {
+        "type": "recovery",
+        "duration": 90,
+        "incline": 1
+      },
+      {
+        "type": "sprint",
+        "duration": 30,
+        "incline": 1
+      },
+      {
+        "type": "recovery",
+        "duration": 90,
+        "incline": 1
+      },
+      {
+        "type": "sprint",
+        "duration": 30,
+        "incline": 1
+      },
+      {
+        "type": "recovery",
+        "duration": 90,
+        "incline": 1
+      },
+      {
+        "type": "base",
+        "duration": 120,
+        "incline": 1
+      }
     ]
   },
   {
@@ -41,19 +105,71 @@ export const DEFAULT_WORKOUT_PROGRAMS: WorkoutProgram[] = [
     "favorite": false,
     "lastUsed": null,
     "segments": [
-      { "type": "base", "duration": 120, "incline": 1 },
-      { "type": "base", "duration": 180, "incline": 2 },
-      { "type": "run", "duration": 120, "incline": 2 },
-      { "type": "base", "duration": 180, "incline": 3 },
-      { "type": "run", "duration": 120, "incline": 3 },
-      { "type": "base", "duration": 180, "incline": 4 },
-      { "type": "run", "duration": 120, "incline": 4 },
-      { "type": "base", "duration": 180, "incline": 5 },
-      { "type": "run", "duration": 120, "incline": 5 },
-      { "type": "base", "duration": 180, "incline": 3 },
-      { "type": "run", "duration": 120, "incline": 3 },
-      { "type": "base", "duration": 120, "incline": 2 },
-      { "type": "recovery", "duration": 60, "incline": 1 }
+      {
+        "type": "base",
+        "duration": 120,
+        "incline": 1
+      },
+      {
+        "type": "base",
+        "duration": 180,
+        "incline": 2
+      },
+      {
+        "type": "run",
+        "duration": 120,
+        "incline": 2
+      },
+      {
+        "type": "base",
+        "duration": 180,
+        "incline": 3
+      },
+      {
+        "type": "run",
+        "duration": 120,
+        "incline": 3
+      },
+      {
+        "type": "base",
+        "duration": 180,
+        "incline": 4
+      },
+      {
+        "type": "run",
+        "duration": 120,
+        "incline": 4
+      },
+      {
+        "type": "base",
+        "duration": 180,
+        "incline": 5
+      },
+      {
+        "type": "run",
+        "duration": 120,
+        "incline": 5
+      },
+      {
+        "type": "base",
+        "duration": 180,
+        "incline": 3
+      },
+      {
+        "type": "run",
+        "duration": 120,
+        "incline": 3
+      },
+      {
+        "type": "base",
+        "duration": 120,
+        "incline": 2
+      },
+      {
+        "type": "recovery",
+        "duration": 60,
+        "incline": 1
+      }
     ]
   },
   {
@@ -66,19 +182,71 @@ export const DEFAULT_WORKOUT_PROGRAMS: WorkoutProgram[] = [
     "favorite": false,
     "lastUsed": null,
     "segments": [
-      { "type": "base", "duration": 120, "incline": 1 },
-      { "type": "base", "duration": 300, "incline": 2 },
-      { "type": "run", "duration": 180, "incline": 2 },
-      { "type": "base", "duration": 300, "incline": 3 },
-      { "type": "run", "duration": 180, "incline": 3 },
-      { "type": "base", "duration": 300, "incline": 4 },
-      { "type": "run", "duration": 180, "incline": 4 },
-      { "type": "base", "duration": 300, "incline": 3 },
-      { "type": "run", "duration": 240, "incline": 3 },
-      { "type": "base", "duration": 300, "incline": 2 },
-      { "type": "run", "duration": 120, "incline": 2 },
-      { "type": "base", "duration": 120, "incline": 1 },
-      { "type": "recovery", "duration": 60, "incline": 1 }
+      {
+        "type": "base",
+        "duration": 120,
+        "incline": 1
+      },
+      {
+        "type": "base",
+        "duration": 300,
+        "incline": 2
+      },
+      {
+        "type": "run",
+        "duration": 180,
+        "incline": 2
+      },
+      {
+        "type": "base",
+        "duration": 300,
+        "incline": 3
+      },
+      {
+        "type": "run",
+        "duration": 180,
+        "incline": 3
+      },
+      {
+        "type": "base",
+        "duration": 300,
+        "incline": 4
+      },
+      {
+        "type": "run",
+        "duration": 180,
+        "incline": 4
+      },
+      {
+        "type": "base",
+        "duration": 300,
+        "incline": 3
+      },
+      {
+        "type": "run",
+        "duration": 240,
+        "incline": 3
+      },
+      {
+        "type": "base",
+        "duration": 300,
+        "incline": 2
+      },
+      {
+        "type": "run",
+        "duration": 120,
+        "incline": 2
+      },
+      {
+        "type": "base",
+        "duration": 120,
+        "incline": 1
+      },
+      {
+        "type": "recovery",
+        "duration": 60,
+        "incline": 1
+      }
     ]
   },
   {
@@ -91,14 +259,46 @@ export const DEFAULT_WORKOUT_PROGRAMS: WorkoutProgram[] = [
     "favorite": false,
     "lastUsed": null,
     "segments": [
-      { "type": "recovery", "duration": 15, "incline": 1 }, // Shortened for testing
-      { "type": "base", "duration": 60, "incline": 1, "audio": { "file": "countdown.mp3", "duration": 3.0 } }, // Added audio for testing
-      { "type": "base", "duration": 180, "incline": 1 },
-      { "type": "run", "duration": 60, "incline": 1 },
-      { "type": "base", "duration": 180, "incline": 2 },
-      { "type": "run", "duration": 60, "incline": 2 },
-      { "type": "base", "duration": 180, "incline": 1 },
-      { "type": "recovery", "duration": 120, "incline": 1 }
+      {
+        "type": "recovery",
+        "duration": 30,
+        "incline": 1
+      },
+      {
+        "type": "base",
+        "duration": 30,
+        "incline": 1
+      },
+      {
+        "type": "base",
+        "duration": 180,
+        "incline": 1
+      },
+      {
+        "type": "run",
+        "duration": 60,
+        "incline": 1
+      },
+      {
+        "type": "base",
+        "duration": 180,
+        "incline": 2
+      },
+      {
+        "type": "run",
+        "duration": 60,
+        "incline": 2
+      },
+      {
+        "type": "base",
+        "duration": 180,
+        "incline": 1
+      },
+      {
+        "type": "recovery",
+        "duration": 120,
+        "incline": 1
+      }
     ]
   },
   {
@@ -111,20 +311,76 @@ export const DEFAULT_WORKOUT_PROGRAMS: WorkoutProgram[] = [
     "favorite": false,
     "lastUsed": null,
     "segments": [
-      { "type": "base", "duration": 300, "incline": 1 },
-      { "type": "recovery", "duration": 60, "incline": 1 },
-      { "type": "base", "duration": 120, "incline": 1 },
-      { "type": "run", "duration": 120, "incline": 1 },
-      { "type": "sprint", "duration": 60, "incline": 1 },
-      { "type": "recovery", "duration": 120, "incline": 1 },
-      { "type": "base", "duration": 120, "incline": 2 },
-      { "type": "run", "duration": 120, "incline": 2 },
-      { "type": "sprint", "duration": 60, "incline": 2 },
-      { "type": "recovery", "duration": 180, "incline": 1 },
-      { "type": "base", "duration": 60, "incline": 1 },
-      { "type": "run", "duration": 30, "incline": 1 },
-      { "type": "sprint", "duration": 30, "incline": 1 },
-      { "type": "recovery", "duration": 120, "incline": 1 }
+      {
+        "type": "base",
+        "duration": 300,
+        "incline": 1
+      },
+      {
+        "type": "recovery",
+        "duration": 60,
+        "incline": 1
+      },
+      {
+        "type": "base",
+        "duration": 120,
+        "incline": 1
+      },
+      {
+        "type": "run",
+        "duration": 120,
+        "incline": 1
+      },
+      {
+        "type": "sprint",
+        "duration": 60,
+        "incline": 1
+      },
+      {
+        "type": "recovery",
+        "duration": 120,
+        "incline": 1
+      },
+      {
+        "type": "base",
+        "duration": 120,
+        "incline": 2
+      },
+      {
+        "type": "run",
+        "duration": 120,
+        "incline": 2
+      },
+      {
+        "type": "sprint",
+        "duration": 60,
+        "incline": 2
+      },
+      {
+        "type": "recovery",
+        "duration": 180,
+        "incline": 1
+      },
+      {
+        "type": "base",
+        "duration": 60,
+        "incline": 1
+      },
+      {
+        "type": "run",
+        "duration": 30,
+        "incline": 1
+      },
+      {
+        "type": "sprint",
+        "duration": 30,
+        "incline": 1
+      },
+      {
+        "type": "recovery",
+        "duration": 120,
+        "incline": 1
+      }
     ]
   }
 ];

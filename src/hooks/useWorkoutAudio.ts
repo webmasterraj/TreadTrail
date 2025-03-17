@@ -1,16 +1,16 @@
+import { Audio, InterruptionModeAndroid, InterruptionModeIOS, AVPlaybackStatus } from 'expo-av';
+import { Alert, Platform } from 'react-native';
+import * as FileSystem from 'expo-file-system';
 import { useRef, useEffect } from 'react';
-import { WorkoutSegment } from '../types';
-import { Platform } from 'react-native';
-
-// Import expo-av directly
-import { Audio } from 'expo-av';
+import { WorkoutSegment, WorkoutProgram } from '../types/index';
 
 interface UseWorkoutAudioOptions {
+  workout: WorkoutProgram | null;
   isRunning: boolean;
-  enableAudioCues: boolean;
   currentSegmentIndex: number;
   segmentElapsedTime: number;
-  segments: WorkoutSegment[];
+  isSkipping: boolean;
+  isCompleted: boolean;
 }
 
 /**
@@ -19,23 +19,29 @@ interface UseWorkoutAudioOptions {
  */
 export const useWorkoutAudio = (options: UseWorkoutAudioOptions) => {
   const { 
+    workout,
     isRunning, 
-    enableAudioCues, 
     currentSegmentIndex, 
-    segmentElapsedTime, 
-    segments 
+    segmentElapsedTime,
+    isSkipping,
+    isCompleted
   } = options;
   
-  const countdownSoundRef = useRef<any>(null);
+  const segments = workout?.segments || [];
+  const enableAudioCues = true; // Always enable audio cues by default
+  
+  const countdownSoundRef = useRef<Audio.Sound | null>(null);
+  const segmentAudioRef = useRef<Audio.Sound | null>(null);
   const countdownPlayingRef = useRef<boolean>(false);
+  const segmentAudioPlayingRef = useRef<boolean>(false);
+  const audioInitializedRef = useRef<boolean>(false);
+  const lastSegmentAudioTriggeredRef = useRef<number>(-1); // Track which segment audio was last triggered
+  const lastSegmentTimeRef = useRef<number>(0); // Track the last time we checked for segment audio
+  const countdownTriggeredRef = useRef<boolean>(false); // Track if countdown has been triggered for the current segment
   
   // Handle segment transitions and audio cues
   useEffect(() => {
-    // Default enableAudioCues to true if it's undefined
-    const audioEnabled = enableAudioCues !== false;
-    
-    if (!isRunning || !audioEnabled) {
-      console.log(`[Audio] Not running or audio cues disabled, skipping check (isRunning: ${isRunning}, audioEnabled: ${audioEnabled})`);
+    if (!isRunning || !enableAudioCues) {
       return;
     }
     
@@ -45,191 +51,509 @@ export const useWorkoutAudio = (options: UseWorkoutAudioOptions) => {
       const nextSegment = segments[currentSegmentIndex + 1];
       const timeUntilNextSegment = currentSegment.duration - segmentElapsedTime;
       
-      console.log(
-        `[Audio] Current segment ${currentSegmentIndex} (${currentSegment.type}), ` +
-        `time remaining: ${timeUntilNextSegment.toFixed(1)}s, ` +
-        `next segment: ${currentSegmentIndex + 1} (${nextSegment.type})`
-      );
-      
-      // Debug audio metadata if present
-      if (nextSegment.audio) {
-        console.log(
-          `[Audio] Next segment has audio: ${nextSegment.audio.file}, ` +
-          `duration: ${nextSegment.audio.duration}s`
-        );
+      // Debounce check - only check if we've moved at least 0.1 seconds since last check
+      if (Math.abs(timeUntilNextSegment - lastSegmentTimeRef.current) < 0.1) {
+        return;
       }
       
-      // Play countdown when within 3 seconds of segment change
-      if (timeUntilNextSegment <= 3 && timeUntilNextSegment > 2 && !countdownPlayingRef.current) {
-        console.log(
-          `[Audio] 🔊 PLAYING COUNTDOWN - exactly ${timeUntilNextSegment.toFixed(1)} seconds ` +
-          `before transition to segment ${currentSegmentIndex + 1}`
-        );
+      // Update last check time
+      lastSegmentTimeRef.current = timeUntilNextSegment;
+      
+      // Get the duration of the next segment's audio (if available)
+      const segmentAudioDuration = nextSegment.audio?.duration || 0;
+      // Duration of countdown sound (approximately 3 seconds)
+      const countdownDuration = 3;
+      // Buffer time between voice audio and countdown (0.5 seconds)
+      const bufferTime = 0.0;
+      
+      // Calculate when to start the segment audio based on its duration
+      // We want to ensure it finishes with enough time for the countdown to play
+      const segmentAudioStartTime = segmentAudioDuration + countdownDuration + bufferTime;
+      
+      // Calculate when to start the countdown
+      const countdownStartTime = countdownDuration + 0.5; // Add a small buffer for countdown
+      
+      // Check for segment audio first (dynamic timing based on audio duration)
+      // Only trigger if we haven't already played audio for this segment
+      if (timeUntilNextSegment <= segmentAudioStartTime && 
+          timeUntilNextSegment >= segmentAudioStartTime - 1 && 
+          !segmentAudioPlayingRef.current && 
+          !countdownPlayingRef.current &&
+          lastSegmentAudioTriggeredRef.current !== currentSegmentIndex) {
         
-        try {
-          console.log("[Audio] Playing countdown sound");
-          
-          // Mark as playing
-          countdownPlayingRef.current = true;
-          
-          // Use an async function to properly handle await
-          const playCountdown = async () => {
-            try {
-              // Use the pre-loaded sound or create one if it doesn't exist
-              if (!countdownSoundRef.current) {
-                console.log("[Audio] Creating new sound instance");
-                const sound = new Audio.Sound();
-                await sound.loadAsync(require('../assets/audio/countdown.mp3'));
-                countdownSoundRef.current = sound;
-              } else {
-                // Ensure the sound is positioned at the beginning
-                console.log("[Audio] Using pre-loaded sound");
-                await countdownSoundRef.current.setPositionAsync(0);
+        // Play the segment audio if available
+        const playSegmentAudio = async () => {
+          try {
+            // Check if the next segment has audio
+            if (nextSegment.audio?.file) {
+              // Clean up previous segment audio if any
+              if (segmentAudioRef.current) {
+                await segmentAudioRef.current.unloadAsync();
+                segmentAudioRef.current = null;
               }
               
-              // Set up a listener to mark when playback finishes
-              countdownSoundRef.current.setOnPlaybackStatusUpdate((status) => {
-                if (status.didJustFinish) {
-                  console.log("[Audio] Countdown playback finished");
-                  countdownPlayingRef.current = false;
-                }
-              });
+              // Set the flag before attempting to load
+              segmentAudioPlayingRef.current = true;
+              // Mark this segment as triggered
+              lastSegmentAudioTriggeredRef.current = currentSegmentIndex;
               
-              // Start playing
-              console.log("[Audio] Starting playback");
-              await countdownSoundRef.current.playAsync();
-              console.log("[Audio] Playback started successfully");
-            } catch (innerError) {
-              console.error("[Audio] ❌ Error during playback:", innerError);
-              countdownPlayingRef.current = false;
+              // The audio files are in the src/assets/audio directory
+              // We need to use require to load them
+              let segmentSound: Audio.Sound | null = null;
+              
+              // Use a switch statement to handle the different segment audio files
+              // This is necessary because require needs a static string
+              switch (nextSegment.audio.file) {
+                // case 'workout-1-segment-0.aac':
+                //   segmentSound = new Audio.Sound();
+                //   await segmentSound.loadAsync(require('../assets/audio/workout-1-segment-0.aac'));
+                //   break;
+                // case 'workout-1-segment-1.aac':
+                //   segmentSound = new Audio.Sound();
+                //   await segmentSound.loadAsync(require('../assets/audio/workout-1-segment-1.aac'));
+                //   break;
+                // case 'workout-1-segment-2.aac':
+                //   segmentSound = new Audio.Sound();
+                //   await segmentSound.loadAsync(require('../assets/audio/workout-1-segment-2.aac'));
+                //   break;
+                // case 'workout-1-segment-3.aac':
+                //   segmentSound = new Audio.Sound();
+                //   await segmentSound.loadAsync(require('../assets/audio/workout-1-segment-3.aac'));
+                //   break;
+                // case 'workout-1-segment-4.aac':
+                //   segmentSound = new Audio.Sound();
+                //   await segmentSound.loadAsync(require('../assets/audio/workout-1-segment-4.aac'));
+                //   break;
+                // case 'workout-1-segment-5.aac':
+                //   segmentSound = new Audio.Sound();
+                //   await segmentSound.loadAsync(require('../assets/audio/workout-1-segment-5.aac'));
+                //   break;
+                // case 'workout-1-segment-6.aac':
+                //   segmentSound = new Audio.Sound();
+                //   await segmentSound.loadAsync(require('../assets/audio/workout-1-segment-6.aac'));
+                //   break;
+                // case 'workout-1-segment-7.aac':
+                //   segmentSound = new Audio.Sound();
+                //   await segmentSound.loadAsync(require('../assets/audio/workout-1-segment-7.aac'));
+                //   break;
+                // case 'workout-1-segment-8.aac':
+                //   segmentSound = new Audio.Sound();
+                //   await segmentSound.loadAsync(require('../assets/audio/workout-1-segment-8.aac'));
+                //   break;
+                // case 'workout-1-segment-9.aac':
+                //   segmentSound = new Audio.Sound();
+                //   await segmentSound.loadAsync(require('../assets/audio/workout-1-segment-9.aac'));
+                //   break;
+                // case 'workout-1-segment-10.aac':
+                //   segmentSound = new Audio.Sound();
+                //   await segmentSound.loadAsync(require('../assets/audio/workout-1-segment-10.aac'));
+                //   break;
+                // case 'workout-1-segment-11.aac':
+                //   segmentSound = new Audio.Sound();
+                //   await segmentSound.loadAsync(require('../assets/audio/workout-1-segment-11.aac'));
+                //   break;
+                // case 'workout-1-segment-12.aac':
+                //   segmentSound = new Audio.Sound();
+                //   await segmentSound.loadAsync(require('../assets/audio/workout-1-segment-12.aac'));
+                //   break;
+                // case 'workout-1-segment-13.aac':
+                //   segmentSound = new Audio.Sound();
+                //   await segmentSound.loadAsync(require('../assets/audio/workout-1-segment-13.aac'));
+                //   break;
+                // case 'workout-1-segment-14.aac':
+                //   segmentSound = new Audio.Sound();
+                //   await segmentSound.loadAsync(require('../assets/audio/workout-1-segment-14.aac'));
+                //   break;
+                // case 'workout-1-segment-15.aac':
+                //   segmentSound = new Audio.Sound();
+                //   await segmentSound.loadAsync(require('../assets/audio/workout-1-segment-15.aac'));
+                //   break;
+                // case 'workout-2-segment-0.aac':
+                //   segmentSound = new Audio.Sound();
+                //   await segmentSound.loadAsync(require('../assets/audio/workout-2-segment-0.aac'));
+                //   break;
+                // case 'workout-2-segment-1.aac':
+                //   segmentSound = new Audio.Sound();
+                //   await segmentSound.loadAsync(require('../assets/audio/workout-2-segment-1.aac'));
+                //   break;
+                // case 'workout-2-segment-2.aac':
+                //   segmentSound = new Audio.Sound();
+                //   await segmentSound.loadAsync(require('../assets/audio/workout-2-segment-2.aac'));
+                //   break;
+                // Add more cases as needed for other workout segments
+                default:
+                  segmentAudioPlayingRef.current = false;
+                  return;
+              }
+              
+              if (segmentSound) {
+                // Set up status monitoring to play countdown after segment audio finishes
+                segmentSound.setOnPlaybackStatusUpdate((status: AVPlaybackStatus) => {
+                  if (!status.isLoaded) return;
+                  
+                  if (status.didJustFinish) {
+                    // Segment audio finished, reset the flag
+                    segmentAudioPlayingRef.current = false;
+                    segmentSound?.unloadAsync().catch(() => {});
+                    segmentAudioRef.current = null;
+                    
+                    // Check if we should play the countdown immediately after segment audio finishes
+                    if (!countdownTriggeredRef.current) {
+                      const currentTimeUntilNextSegment = currentSegment.duration - segmentElapsedTime;
+                      
+                      // If we're in the countdown window or past it, play countdown immediately
+                      if (currentTimeUntilNextSegment <= 4) {
+                        countdownTriggeredRef.current = true;
+                        playCountdown();
+                      }
+                    }
+                  }
+                });
+                
+                segmentAudioRef.current = segmentSound;
+                await segmentSound.playAsync();
+              } else {
+                // Reset flag if we couldn't load the sound
+                segmentAudioPlayingRef.current = false;
+              }
+            } else {
+              // No audio for this segment
+              segmentAudioPlayingRef.current = false;
             }
-          };
-          
-          // Start the playback
-          playCountdown();
-          
-        } catch (error) {
-          console.error("[Audio] ❌ Error playing countdown:", error);
-          countdownPlayingRef.current = false;
-        }
-      } else if (timeUntilNextSegment <= 3) {
-        console.log(
-          `[Audio] Within countdown window (${timeUntilNextSegment.toFixed(1)}s) ` +
-          `but ${countdownPlayingRef.current ? 'already playing' : 'outside 2-3s range'}`
-        );
-      }
-    } else {
-      console.log("[Audio] On last segment, no countdown needed");
-    }
-  }, [segments, segmentElapsedTime, currentSegmentIndex, isRunning, enableAudioCues]);
-  
-  // Initialize audio system when component mounts
-  useEffect(() => {
-    console.log("[Audio] Initializing workout audio hook");
-    
-    // Initialize Audio system - based on Stack Overflow solution
-    const initializeAudio = () => {
-      console.log("[Audio] Starting audio initialization");
-      
-      // We need to use this pattern to handle async code in useEffect
-      const setupAudio = async () => {
-        try {
-          console.log("[Audio] Setting audio mode");
-          await Audio.setAudioModeAsync({
-            playsInSilentModeIOS: true,
-            staysActiveInBackground: false,
-            interruptionModeIOS: Audio.INTERRUPTION_MODE_IOS_DO_NOT_MIX,
-            shouldDuckAndroid: true,
-            interruptionModeAndroid: Audio.INTERRUPTION_MODE_ANDROID_DO_NOT_MIX,
-            playThroughEarpieceAndroid: false
-          });
-          console.log("[Audio] Audio mode set successfully");
-          
-          // Pre-load the countdown sound for faster playback
-          console.log("[Audio] Pre-loading countdown sound");
-          const soundObject = new Audio.Sound();
-          await soundObject.loadAsync(require('../assets/audio/countdown.mp3'));
-          countdownSoundRef.current = soundObject;
-          console.log("[Audio] Countdown sound pre-loaded successfully");
-        } catch (error) {
-          console.error("[Audio] ❌ Error initializing audio:", error);
-        }
-      };
-      
-      // Run the async setup
-      setupAudio();
-    };
-    
-    // Run the initialization
-    initializeAudio();
-    
-    // Cleanup function
-    return () => {
-      console.log("[Audio] Cleaning up workout audio hook on unmount");
-      // Make sure to completely unload the sound to free up resources
-      if (countdownSoundRef.current) {
-        console.log("[Audio] Unloading sound on unmount");
-        // We need to handle async cleanup in a synchronous function
-        const cleanup = async () => {
-          try {
-            await countdownSoundRef.current.unloadAsync();
-            console.log("[Audio] Sound unloaded successfully");
           } catch (error) {
-            console.error("[Audio] Error unloading sound:", error);
+            // Reset flag on error
+            segmentAudioPlayingRef.current = false;
           }
         };
         
-        // Start the cleanup process
-        cleanup();
+        // Start the segment audio playback
+        playSegmentAudio();
+      }
+      
+      // Play countdown when approaching segment transition (dynamic timing based on countdown duration)
+      // ALWAYS play countdown when in the right time window, even if segment audio is playing
+      if (timeUntilNextSegment <= countdownStartTime && 
+          timeUntilNextSegment >= countdownStartTime - 0.5 && 
+          !countdownPlayingRef.current && 
+          !countdownTriggeredRef.current) {
         
-        // Reset the ref immediately
+        countdownTriggeredRef.current = true;
+        playCountdown();
+      }
+      
+      // Failsafe: If we're getting very close to transition and countdown hasn't played yet,
+      // force it to play regardless of other conditions
+      if (timeUntilNextSegment <= 1.5 && 
+          timeUntilNextSegment >= 0.5 && 
+          !countdownPlayingRef.current && 
+          !countdownTriggeredRef.current) {
+        
+        // Force stop any segment audio that might be playing
+        if (segmentAudioRef.current) {
+          try {
+            segmentAudioRef.current.stopAsync().catch(() => {});
+            segmentAudioRef.current.unloadAsync().catch(() => {});
+            segmentAudioRef.current = null;
+          } catch (e) {
+            // Ignore errors
+          }
+          segmentAudioPlayingRef.current = false;
+        }
+        
+        countdownTriggeredRef.current = true;
+        playCountdown();
+      }
+    }
+  }, [isRunning, enableAudioCues, currentSegmentIndex, segmentElapsedTime, segments]);
+  
+  // Reset flags when segment changes
+  useEffect(() => {
+    // Don't immediately reset flags and unload sounds when segment changes
+    // This allows any currently playing sounds to finish
+    setTimeout(() => {
+      countdownPlayingRef.current = false;
+      segmentAudioPlayingRef.current = false;
+      countdownTriggeredRef.current = false;
+      
+      // Unload any existing sounds
+      if (countdownSoundRef.current) {
+        countdownSoundRef.current.unloadAsync().catch(() => {});
+      }
+      
+      if (segmentAudioRef.current) {
+        segmentAudioRef.current.unloadAsync().catch(() => {});
+        segmentAudioRef.current = null;
+      }
+    }, 2000); // Wait 2 seconds before cleaning up to ensure sounds finish playing
+  }, [currentSegmentIndex]);
+  
+  // Function to play countdown sound
+  const playCountdown = async () => {
+    try {
+      // Don't play if already playing
+      if (countdownPlayingRef.current) {
+        return;
+      }
+      
+      // Set flag before attempting to play
+      countdownPlayingRef.current = true;
+      
+      // Unload any existing sound to ensure a fresh start
+      if (countdownSoundRef.current) {
+        try {
+          await countdownSoundRef.current.unloadAsync();
+        } catch (e) {
+          // Ignore errors
+        }
         countdownSoundRef.current = null;
+      }
+      
+      const sound = new Audio.Sound();
+      
+      try {
+        await sound.loadAsync(require('../assets/audio/countdown.aac'));
+        countdownSoundRef.current = sound;
+        
+        // Set up status monitoring
+        sound.setOnPlaybackStatusUpdate((status: AVPlaybackStatus) => {
+          if (!status.isLoaded) return;
+          
+          if (status.didJustFinish) {
+            // Add a small delay before resetting the flag to ensure the sound completes
+            setTimeout(() => {
+              countdownPlayingRef.current = false;
+            }, 500);
+          }
+        });
+        
+        // Play the sound with increased volume
+        await sound.setVolumeAsync(1.0);  // Ensure full volume
+        await sound.playAsync();
+      } catch (loadError) {
+        countdownPlayingRef.current = false;
+        
+        // Try alternate method as fallback
+        try {
+          const { sound: altSound } = await Audio.Sound.createAsync(
+            require('../assets/audio/countdown.aac'),
+            { shouldPlay: true, volume: 1.0 }
+          );
+          
+          countdownSoundRef.current = altSound;
+        } catch (altError) {
+          countdownPlayingRef.current = false;
+        }
+      }
+    } catch (innerError) {
+      countdownPlayingRef.current = false;
+    }
+  };
+  
+  // Clean up audio resources when component unmounts
+  useEffect(() => {
+    return () => {
+      if (countdownSoundRef.current) {
+        countdownSoundRef.current.unloadAsync();
+        countdownSoundRef.current = null;
+      }
+      
+      if (segmentAudioRef.current) {
+        segmentAudioRef.current.unloadAsync();
+        segmentAudioRef.current = null;
       }
     };
   }, []);
   
-  // Function to pause any playing audio
-  const pauseAudio = () => {
+  // Initialize audio on mount
+  useEffect(() => {
+    const initializeAudio = async () => {
+      if (audioInitializedRef.current) {
+        return;
+      }
+      
+      try {
+        // Set audio mode for best compatibility
+        await Audio.setAudioModeAsync({
+          playsInSilentModeIOS: true,
+          staysActiveInBackground: true,
+          interruptionModeIOS: InterruptionModeIOS.DuckOthers,
+          shouldDuckAndroid: true,
+          interruptionModeAndroid: InterruptionModeAndroid.DuckOthers,
+          playThroughEarpieceAndroid: false
+        });
+        
+        try {
+          const soundAsset = require('../assets/audio/countdown.aac');
+          
+          // Try to load the sound to verify it works
+          const { sound } = await Audio.Sound.createAsync(soundAsset);
+          await sound.unloadAsync();
+          
+          // Set audio as initialized
+          audioInitializedRef.current = true;
+        } catch (e) {
+          Alert.alert(
+            "Audio File Error",
+            "Could not load countdown.aac file. Please check that the file exists in the assets/audio folder."
+          );
+        }
+        
+      } catch (error) {
+        Alert.alert("Audio Error", "Failed to initialize audio system. Some workout cues may not play.");
+      }
+    };
+    
+    initializeAudio();
+  }, []);
+  
+  // Function to pause audio playback
+  const pauseAudio = async () => {
     if (countdownSoundRef.current) {
       try {
-        console.log("[Audio] Pausing countdown sound");
-        countdownSoundRef.current.pauseAsync();
-        countdownPlayingRef.current = false;
+        await countdownSoundRef.current.pauseAsync();
       } catch (e) {
-        console.error("[Audio] ❌ Error pausing countdown sound:", e);
+        // Handle error silently
       }
-    } else {
-      console.log("[Audio] No sound to pause");
+    }
+    
+    if (segmentAudioRef.current) {
+      try {
+        await segmentAudioRef.current.pauseAsync();
+      } catch (e) {
+        // Handle error silently
+      }
     }
   };
   
-  // Function to stop and cleanup any playing audio
-  const stopAudio = () => {
+  // Function to stop audio playback
+  const stopAudio = async () => {
     if (countdownSoundRef.current) {
       try {
-        console.log("[Audio] Stopping and cleaning up countdown sound");
-        // Stop the sound (will be reused next time)
-        countdownSoundRef.current.stopAsync()
-          .then(() => {
-            console.log("[Audio] Sound stopped successfully");
-          })
-          .catch(e => {
-            console.error("[Audio] Error stopping sound:", e);
-          });
-        
-        countdownPlayingRef.current = false;
+        await countdownSoundRef.current.stopAsync();
       } catch (e) {
-        console.error("[Audio] ❌ Error stopping countdown sound:", e);
+        // Handle error silently
       }
-    } else {
-      console.log("[Audio] No sound to stop");
+    }
+    
+    if (segmentAudioRef.current) {
+      try {
+        await segmentAudioRef.current.stopAsync();
+      } catch (e) {
+        // Handle error silently
+      }
+    }
+  };
+  
+  // Function to play a test countdown sound
+  const playTestCountdown = async () => {
+    try {
+      // Ensure audio mode is set correctly for maximum compatibility
+      await Audio.setAudioModeAsync({
+        playsInSilentModeIOS: true,
+        staysActiveInBackground: true,
+        interruptionModeIOS: InterruptionModeIOS.DuckOthers,
+        shouldDuckAndroid: true,
+        interruptionModeAndroid: InterruptionModeAndroid.DuckOthers,
+        playThroughEarpieceAndroid: false
+      });
+      
+      // Unload any existing sound to prevent resource conflicts
+      if (countdownSoundRef.current) {
+        await countdownSoundRef.current.unloadAsync();
+        countdownSoundRef.current = null;
+      }
+      
+      // Function to try playing a remote sound as fallback
+      const tryRemoteSound = async () => {
+        try {
+          // Try with a known working remote sound
+          const { sound: remoteSound } = await Audio.Sound.createAsync(
+            { uri: 'https://docs.expo.dev/static/examples/t-rex-roar.mp3' },
+            { shouldPlay: true, volume: 1.0, progressUpdateIntervalMillis: 100 }
+          );
+          
+          // Set up status monitoring
+          remoteSound.setOnPlaybackStatusUpdate((status) => {
+            if (!status.isLoaded) {
+              return;
+            }
+            
+            if (status.didJustFinish) {
+              // Unload the sound when done
+              remoteSound.unloadAsync().catch(e => {
+                // Handle error silently
+              });
+            }
+          });
+          
+          // Store reference
+          countdownSoundRef.current = remoteSound;
+          
+          // Alert for remote sound
+          Alert.alert(
+            "Remote Audio Test",
+            "A dinosaur roar sound should be playing from the internet. Can you hear it?",
+            [
+              { text: "Yes, I hear it", onPress: () => {} },
+              { text: "No, I don't hear anything", onPress: () => {} }
+            ]
+          );
+        } catch (remoteError) {
+          Alert.alert("Audio Error", "Failed to play any sound. Please check your device settings and ensure audio is enabled.");
+        }
+      };
+      
+      // Try with a known working sound first
+      try {
+        // Play the AAC sound file instead of MP3
+        const { sound: beepSound } = await Audio.Sound.createAsync(
+          require('../assets/audio/countdown.aac'),
+          { shouldPlay: true, volume: 1.0, progressUpdateIntervalMillis: 100 }
+        );
+        
+        // Set up status monitoring
+        beepSound.setOnPlaybackStatusUpdate((status) => {
+          if (!status.isLoaded) {
+            return;
+          }
+          
+          if (status.didJustFinish) {
+            // Unload the sound when done
+            beepSound.unloadAsync().catch(e => {
+              // Handle error silently
+            });
+          }
+        });
+        
+        // Store reference
+        countdownSoundRef.current = beepSound;
+        
+        // Alert for beep sound
+        Alert.alert(
+          "Audio Test",
+          "A beep sound (AAC format) should be playing now. Can you hear it?",
+          [
+            { text: "Yes, I hear it", onPress: () => {} },
+            { text: "No, I don't hear anything", onPress: () => {
+              // Try fallback to remote sound
+              tryRemoteSound();
+            }}
+          ]
+        );
+      } catch (aacError) {
+        // Try fallback to remote sound
+        tryRemoteSound();
+      }
+      
+    } catch (e) {
+      Alert.alert("Audio Error", "Failed to set up audio: " + (e instanceof Error ? e.message : String(e)));
     }
   };
   
   return {
     pauseAudio,
     stopAudio,
-    isPlaying: countdownPlayingRef.current
+    playTestCountdown,
   };
 };
 
