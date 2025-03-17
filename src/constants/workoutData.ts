@@ -16,82 +16,146 @@ export const DEFAULT_WORKOUT_PROGRAMS: WorkoutProgram[] = [
       {
         "type": "base",
         "duration": 15,
-        "incline": 1
+        "incline": 1,
+        "audio": {
+          "file": "workout-1-segment-0.aac",
+          "duration": 3.422
+        }
       },
       {
         "type": "sprint",
         "duration": 15,
-        "incline": 1
+        "incline": 1,
+        "audio": {
+          "file": "workout-1-segment-1.aac",
+          "duration": 2.115875
+        }
       },
       {
         "type": "recovery",
         "duration": 90,
-        "incline": 1
+        "incline": 1,
+        "audio": {
+          "file": "workout-1-segment-2.aac",
+          "duration": 2.951812
+        }
       },
       {
         "type": "sprint",
         "duration": 30,
-        "incline": 1
+        "incline": 1,
+        "audio": {
+          "file": "workout-1-segment-3.aac",
+          "duration": 1.98525
+        }
       },
       {
         "type": "recovery",
         "duration": 90,
-        "incline": 1
+        "incline": 1,
+        "audio": {
+          "file": "workout-1-segment-4.aac",
+          "duration": 2.951812
+        }
       },
       {
         "type": "sprint",
         "duration": 30,
-        "incline": 1
+        "incline": 1,
+        "audio": {
+          "file": "workout-1-segment-5.aac",
+          "duration": 1.98525
+        }
       },
       {
         "type": "recovery",
         "duration": 90,
-        "incline": 1
+        "incline": 1,
+        "audio": {
+          "file": "workout-1-segment-6.aac",
+          "duration": 2.951812
+        }
       },
       {
         "type": "sprint",
         "duration": 30,
-        "incline": 1
+        "incline": 1,
+        "audio": {
+          "file": "workout-1-segment-7.aac",
+          "duration": 1.98525
+        }
       },
       {
         "type": "recovery",
         "duration": 90,
-        "incline": 1
+        "incline": 1,
+        "audio": {
+          "file": "workout-1-segment-8.aac",
+          "duration": 2.951812
+        }
       },
       {
         "type": "sprint",
         "duration": 30,
-        "incline": 1
+        "incline": 1,
+        "audio": {
+          "file": "workout-1-segment-9.aac",
+          "duration": 2.0375
+        }
       },
       {
         "type": "recovery",
         "duration": 90,
-        "incline": 1
+        "incline": 1,
+        "audio": {
+          "file": "workout-1-segment-10.aac",
+          "duration": 2.951812
+        }
       },
       {
         "type": "sprint",
         "duration": 30,
-        "incline": 1
+        "incline": 1,
+        "audio": {
+          "file": "workout-1-segment-11.aac",
+          "duration": 1.98525
+        }
       },
       {
         "type": "recovery",
         "duration": 90,
-        "incline": 1
+        "incline": 1,
+        "audio": {
+          "file": "workout-1-segment-12.aac",
+          "duration": 2.951812
+        }
       },
       {
         "type": "sprint",
         "duration": 30,
-        "incline": 1
+        "incline": 1,
+        "audio": {
+          "file": "workout-1-segment-13.aac",
+          "duration": 1.98525
+        }
       },
       {
         "type": "recovery",
         "duration": 90,
-        "incline": 1
+        "incline": 1,
+        "audio": {
+          "file": "workout-1-segment-14.aac",
+          "duration": 2.951812
+        }
       },
       {
         "type": "base",
         "duration": 120,
-        "incline": 1
+        "incline": 1,
+        "audio": {
+          "file": "workout-1-segment-15.aac",
+          "duration": 1.750188
+        }
       }
     ]
   },
@@ -108,17 +172,29 @@ export const DEFAULT_WORKOUT_PROGRAMS: WorkoutProgram[] = [
       {
         "type": "base",
         "duration": 120,
-        "incline": 1
+        "incline": 1,
+        "audio": {
+          "file": "workout-2-segment-0.aac",
+          "duration": 2.951812
+        }
       },
       {
         "type": "base",
         "duration": 180,
-        "incline": 2
+        "incline": 2,
+        "audio": {
+          "file": "workout-2-segment-1.aac",
+          "duration": 3.186937
+        }
       },
       {
         "type": "run",
         "duration": 120,
-        "incline": 2
+        "incline": 2,
+        "audio": {
+          "file": "workout-2-segment-2.aac",
+          "duration": 1.802437
+        }
       },
       {
         "type": "base",

@@ -17,6 +17,7 @@ import { RootStackParamList } from '../types';
 import { COLORS, FONT_SIZES, SPACING, BORDER_RADIUS } from '../styles/theme';
 import { UserContext } from '../context';
 import Button from '../components/common/Button';
+import * as AppleAuthentication from 'expo-apple-authentication';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Landing'>;
 
@@ -46,29 +47,29 @@ const LandingScreen: React.FC<Props> = ({ navigation }) => {
     checkAuthStatus();
   }, [authState.isAuthenticated, userSettings, navigation]);
   
-  // Handle Sign In with test user
-  const handleTestUserSignIn = async () => {
+  // Handle Sign In with Apple
+  const handleAppleSignIn = async () => {
     try {
       setAppleSignInLoading(true);
       
-      // Call our test user sign in function
+      // Call our Apple sign in function
       const signInResult = await signInWithApple();
       
       if (!signInResult) {
         Alert.alert(
           'Sign In Failed',
-          'There was an error signing in with the test user. Please try again.'
+          'There was an error signing in with Apple. Please try again.'
         );
       }
       // On success, the useEffect will redirect
       
       setAppleSignInLoading(false);
     } catch (error) {
-      console.error('Test user sign in error:', error);
+      console.error('Apple sign in error:', error);
       
       Alert.alert(
-        'Test User Sign In Failed',
-        'There was an error signing in with the test user. Please try again.'
+        'Apple Sign In Failed',
+        'There was an error signing in with Apple. Please try again.'
       );
       
       setAppleSignInLoading(false);
@@ -123,15 +124,15 @@ const LandingScreen: React.FC<Props> = ({ navigation }) => {
             </Text>
             
             <View style={styles.buttonContainer}>
-              <Button
-                title={appleSignInLoading ? "Signing In..." : "Sign In as Test User"}
-                onPress={handleTestUserSignIn}
-                type="secondary"
-                size="large"
-                fullWidth
-                style={styles.testUserButton}
-                loading={appleSignInLoading}
-              />
+              {Platform.OS === 'ios' && (
+                <AppleAuthentication.AppleAuthenticationButton
+                  buttonType={AppleAuthentication.AppleAuthenticationButtonType.SIGN_IN}
+                  buttonStyle={AppleAuthentication.AppleAuthenticationButtonStyle.BLACK}
+                  cornerRadius={BORDER_RADIUS.medium}
+                  style={styles.appleButton}
+                  onPress={handleAppleSignIn}
+                />
+              )}
             </View>
             
             <Button 
@@ -198,47 +199,52 @@ const styles = StyleSheet.create({
     fontWeight: '800', // Extra Bold to match mockup
   },
   contentContainer: {
-    // Padding at the bottom of the screen
+    width: '100%',
+    alignItems: 'center',
+    marginBottom: 20,
   },
   title: {
     color: COLORS.white,
-    fontSize: 36, // Exact size from mockup
-    fontWeight: '800', // Extra Bold to match mockup
-    marginBottom: 10, // Exact spacing from mockup
-    lineHeight: 43.2, // 1.2 line height as in mockup
+    fontSize: 36,
+    fontWeight: '800',
+    textAlign: 'center',
+    marginBottom: 16,
   },
   highlight: {
     color: COLORS.accent,
   },
   subtitle: {
-    color: COLORS.white,
-    fontSize: 16, // Exact size from mockup
-    marginBottom: 40, // Exact spacing from mockup
-    opacity: 0.9,
-    lineHeight: 24, // 1.5 line height as in mockup
+    color: COLORS.lightGray,
+    fontSize: 16,
+    textAlign: 'center',
+    marginBottom: 40,
+    lineHeight: 24,
   },
   buttonContainer: {
-    marginBottom: 15, // Reduced spacing for the browse button
-    width: '100%', // Ensure full width
+    width: '100%',
+    marginBottom: 16,
   },
-  testUserButton: {
-    height: 50, // Match the height of the Apple button
-    marginBottom: 15,
-    paddingVertical: 0, // Override default padding to prevent text cutoff
+  appleButton: {
+    width: '100%',
+    height: 50,
+    marginBottom: 16,
   },
   browseButton: {
-    height: 50, // Match the height of the Apple button
-    marginBottom: 30,
-    paddingVertical: 0, // Override default padding to prevent text cutoff
+    backgroundColor: 'transparent',
+    borderWidth: 1,
+    borderColor: COLORS.lightGray,
   },
   browseButtonText: {
-    fontSize: 18, // Match the Apple button text size
+    color: COLORS.white,
+  },
+  testUserButton: {
+    marginBottom: 16,
   },
   terms: {
-    color: COLORS.white,
-    fontSize: 12, // Exact size from mockup
+    color: COLORS.lightGray,
+    fontSize: 12,
     textAlign: 'center',
-    opacity: 0.6,
+    marginTop: 16,
   },
 });
 

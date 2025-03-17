@@ -104,82 +104,82 @@ export const useWorkoutAudio = (options: UseWorkoutAudioOptions) => {
               // Use a switch statement to handle the different segment audio files
               // This is necessary because require needs a static string
               switch (nextSegment.audio.file) {
-                // case 'workout-1-segment-0.aac':
-                //   segmentSound = new Audio.Sound();
-                //   await segmentSound.loadAsync(require('../assets/audio/workout-1-segment-0.aac'));
-                //   break;
-                // case 'workout-1-segment-1.aac':
-                //   segmentSound = new Audio.Sound();
-                //   await segmentSound.loadAsync(require('../assets/audio/workout-1-segment-1.aac'));
-                //   break;
-                // case 'workout-1-segment-2.aac':
-                //   segmentSound = new Audio.Sound();
-                //   await segmentSound.loadAsync(require('../assets/audio/workout-1-segment-2.aac'));
-                //   break;
-                // case 'workout-1-segment-3.aac':
-                //   segmentSound = new Audio.Sound();
-                //   await segmentSound.loadAsync(require('../assets/audio/workout-1-segment-3.aac'));
-                //   break;
-                // case 'workout-1-segment-4.aac':
-                //   segmentSound = new Audio.Sound();
-                //   await segmentSound.loadAsync(require('../assets/audio/workout-1-segment-4.aac'));
-                //   break;
-                // case 'workout-1-segment-5.aac':
-                //   segmentSound = new Audio.Sound();
-                //   await segmentSound.loadAsync(require('../assets/audio/workout-1-segment-5.aac'));
-                //   break;
-                // case 'workout-1-segment-6.aac':
-                //   segmentSound = new Audio.Sound();
-                //   await segmentSound.loadAsync(require('../assets/audio/workout-1-segment-6.aac'));
-                //   break;
-                // case 'workout-1-segment-7.aac':
-                //   segmentSound = new Audio.Sound();
-                //   await segmentSound.loadAsync(require('../assets/audio/workout-1-segment-7.aac'));
-                //   break;
-                // case 'workout-1-segment-8.aac':
-                //   segmentSound = new Audio.Sound();
-                //   await segmentSound.loadAsync(require('../assets/audio/workout-1-segment-8.aac'));
-                //   break;
-                // case 'workout-1-segment-9.aac':
-                //   segmentSound = new Audio.Sound();
-                //   await segmentSound.loadAsync(require('../assets/audio/workout-1-segment-9.aac'));
-                //   break;
-                // case 'workout-1-segment-10.aac':
-                //   segmentSound = new Audio.Sound();
-                //   await segmentSound.loadAsync(require('../assets/audio/workout-1-segment-10.aac'));
-                //   break;
-                // case 'workout-1-segment-11.aac':
-                //   segmentSound = new Audio.Sound();
-                //   await segmentSound.loadAsync(require('../assets/audio/workout-1-segment-11.aac'));
-                //   break;
-                // case 'workout-1-segment-12.aac':
-                //   segmentSound = new Audio.Sound();
-                //   await segmentSound.loadAsync(require('../assets/audio/workout-1-segment-12.aac'));
-                //   break;
-                // case 'workout-1-segment-13.aac':
-                //   segmentSound = new Audio.Sound();
-                //   await segmentSound.loadAsync(require('../assets/audio/workout-1-segment-13.aac'));
-                //   break;
-                // case 'workout-1-segment-14.aac':
-                //   segmentSound = new Audio.Sound();
-                //   await segmentSound.loadAsync(require('../assets/audio/workout-1-segment-14.aac'));
-                //   break;
-                // case 'workout-1-segment-15.aac':
-                //   segmentSound = new Audio.Sound();
-                //   await segmentSound.loadAsync(require('../assets/audio/workout-1-segment-15.aac'));
-                //   break;
-                // case 'workout-2-segment-0.aac':
-                //   segmentSound = new Audio.Sound();
-                //   await segmentSound.loadAsync(require('../assets/audio/workout-2-segment-0.aac'));
-                //   break;
-                // case 'workout-2-segment-1.aac':
-                //   segmentSound = new Audio.Sound();
-                //   await segmentSound.loadAsync(require('../assets/audio/workout-2-segment-1.aac'));
-                //   break;
-                // case 'workout-2-segment-2.aac':
-                //   segmentSound = new Audio.Sound();
-                //   await segmentSound.loadAsync(require('../assets/audio/workout-2-segment-2.aac'));
-                //   break;
+                case 'workout-1-segment-0.aac':
+                  segmentSound = new Audio.Sound();
+                  await segmentSound.loadAsync(require('../assets/audio/workout-1-segment-0.aac'));
+                  break;
+                case 'workout-1-segment-1.aac':
+                  segmentSound = new Audio.Sound();
+                  await segmentSound.loadAsync(require('../assets/audio/workout-1-segment-1.aac'));
+                  break;
+                case 'workout-1-segment-2.aac':
+                  segmentSound = new Audio.Sound();
+                  await segmentSound.loadAsync(require('../assets/audio/workout-1-segment-2.aac'));
+                  break;
+                case 'workout-1-segment-3.aac':
+                  segmentSound = new Audio.Sound();
+                  await segmentSound.loadAsync(require('../assets/audio/workout-1-segment-3.aac'));
+                  break;
+                case 'workout-1-segment-4.aac':
+                  segmentSound = new Audio.Sound();
+                  await segmentSound.loadAsync(require('../assets/audio/workout-1-segment-4.aac'));
+                  break;
+                case 'workout-1-segment-5.aac':
+                  segmentSound = new Audio.Sound();
+                  await segmentSound.loadAsync(require('../assets/audio/workout-1-segment-5.aac'));
+                  break;
+                case 'workout-1-segment-6.aac':
+                  segmentSound = new Audio.Sound();
+                  await segmentSound.loadAsync(require('../assets/audio/workout-1-segment-6.aac'));
+                  break;
+                case 'workout-1-segment-7.aac':
+                  segmentSound = new Audio.Sound();
+                  await segmentSound.loadAsync(require('../assets/audio/workout-1-segment-7.aac'));
+                  break;
+                case 'workout-1-segment-8.aac':
+                  segmentSound = new Audio.Sound();
+                  await segmentSound.loadAsync(require('../assets/audio/workout-1-segment-8.aac'));
+                  break;
+                case 'workout-1-segment-9.aac':
+                  segmentSound = new Audio.Sound();
+                  await segmentSound.loadAsync(require('../assets/audio/workout-1-segment-9.aac'));
+                  break;
+                case 'workout-1-segment-10.aac':
+                  segmentSound = new Audio.Sound();
+                  await segmentSound.loadAsync(require('../assets/audio/workout-1-segment-10.aac'));
+                  break;
+                case 'workout-1-segment-11.aac':
+                  segmentSound = new Audio.Sound();
+                  await segmentSound.loadAsync(require('../assets/audio/workout-1-segment-11.aac'));
+                  break;
+                case 'workout-1-segment-12.aac':
+                  segmentSound = new Audio.Sound();
+                  await segmentSound.loadAsync(require('../assets/audio/workout-1-segment-12.aac'));
+                  break;
+                case 'workout-1-segment-13.aac':
+                  segmentSound = new Audio.Sound();
+                  await segmentSound.loadAsync(require('../assets/audio/workout-1-segment-13.aac'));
+                  break;
+                case 'workout-1-segment-14.aac':
+                  segmentSound = new Audio.Sound();
+                  await segmentSound.loadAsync(require('../assets/audio/workout-1-segment-14.aac'));
+                  break;
+                case 'workout-1-segment-15.aac':
+                  segmentSound = new Audio.Sound();
+                  await segmentSound.loadAsync(require('../assets/audio/workout-1-segment-15.aac'));
+                  break;
+                case 'workout-2-segment-0.aac':
+                  segmentSound = new Audio.Sound();
+                  await segmentSound.loadAsync(require('../assets/audio/workout-2-segment-0.aac'));
+                  break;
+                case 'workout-2-segment-1.aac':
+                  segmentSound = new Audio.Sound();
+                  await segmentSound.loadAsync(require('../assets/audio/workout-2-segment-1.aac'));
+                  break;
+                case 'workout-2-segment-2.aac':
+                  segmentSound = new Audio.Sound();
+                  await segmentSound.loadAsync(require('../assets/audio/workout-2-segment-2.aac'));
+                  break;
                 // Add more cases as needed for other workout segments
                 default:
                   segmentAudioPlayingRef.current = false;

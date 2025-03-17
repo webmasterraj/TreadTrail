@@ -7,7 +7,7 @@
  * audio files for each segment that doesn't already have audio.
  * 
  * Usage:
- *   npx ts-node generate_workout_audio.ts --api-key YOUR_API_KEY [options]
+ *   npx ts-node ./scripts/generate_workout_audio.ts
  * 
  * Options:
  *   --api-key KEY      ElevenLabs API key (required)
@@ -23,6 +23,7 @@ import { Command } from 'commander';
 import { DEFAULT_WORKOUT_PROGRAMS } from '../src/constants/workoutData';
 import { WorkoutProgram, WorkoutSegment, PaceType } from '../src/types';
 import axios from 'axios';
+import { getAudioDurationInSeconds } from 'get-audio-duration';
 
 // Default ElevenLabs voice ID (Hope)
 const API_KEY = "sk_80388a5a8a13b6a756df0ef81f9e2c2e740097d72b0d87b8";
@@ -138,12 +139,28 @@ function generateNextText(segment: WorkoutSegment): string {
 }
 
 /**
+ * Get the actual duration of an audio file in seconds.
+ * @param filePath - Path to the audio file
+ * @returns Duration in seconds
+ */
+async function getAudioDuration(filePath: string): Promise<number> {
+  try {
+    const duration = await getAudioDurationInSeconds(filePath);
+    return duration;
+  } catch (error) {
+    console.error(`Error getting audio duration: ${(error as Error).message}`);
+    // Return a fallback duration if we can't get the actual duration
+    return 3.0; // Default fallback duration
+  }
+}
+
+/**
  * Generate an audio file using ElevenLabs API.
  * @param text - Text to convert to speech
  * @param filename - Output filename
  * @param apiKey - ElevenLabs API key
  * @param voiceId - ElevenLabs voice ID
- * @returns Approximate duration of the audio file or null if failed
+ * @returns Duration of the audio file or null if failed
  */
 async function generateAudioFile(
   text: string, 
@@ -179,12 +196,10 @@ async function generateAudioFile(
     // Save audio to file
     fs.writeFileSync(filename, Buffer.from(response.data));
     
-    // Get the duration of the audio file (approximate)
-    // Each word takes about 0.5 seconds to speak
-    const wordCount = text.split(' ').length;
-    let duration = wordCount * 0.5;
+    // Get the actual duration of the audio file
+    const duration = await getAudioDuration(filename);
     
-    console.log(`Generated audio file: ${filename} (approx. ${duration.toFixed(1)}s)`);
+    console.log(`Generated audio file: ${filename} (${duration.toFixed(1)}s)`);
     return duration;
   } catch (error) {
     console.error(`Error generating audio: ${(error as Error).message}`);
@@ -233,37 +248,27 @@ function updateWorkoutData(workoutData: WorkoutProgram[], audioInfo: AudioInfo):
  * @param segment - Specific segment to remove (if any)
  */
 function removeAudioFiles(segment: string | null = null): void {
-  // Get all files in the audio directory
-  const files = fs.readdirSync(AUDIO_DIR);
-  let filesRemoved = false;
+  // Get all audio files
+  const files = fs.readdirSync(AUDIO_DIR).filter(file => file.endsWith(AUDIO_EXT));
   
-  // Remove specific segment audio file
-  if (segment) {
-    const filename = `${segment}${AUDIO_EXT}`;
-    const filePath = path.join(AUDIO_DIR, filename);
-    
-    if (fs.existsSync(filePath)) {
-      fs.unlinkSync(filePath);
-      console.log(`Removed audio file: ${filename}`);
-      filesRemoved = true;
-    } else {
-      console.log(`Audio file not found: ${filename}`);
-    }
-  } else {
-    // Remove all segment audio files but preserve countdown.aac
-    for (const file of files) {
-      if ((file.includes('segment') || file.startsWith('workout-')) && file.endsWith(AUDIO_EXT) && file !== `countdown${AUDIO_EXT}`) {
-        fs.unlinkSync(path.join(AUDIO_DIR, file));
-        console.log(`Removed audio file: ${file}`);
-        filesRemoved = true;
-      }
-    }
+  // Filter files to remove
+  const filesToRemove = segment
+    ? files.filter(file => file.startsWith(segment))
+    : files;
+  
+  // Remove files
+  for (const file of filesToRemove) {
+    const filePath = path.join(AUDIO_DIR, file);
+    fs.unlinkSync(filePath);
+    console.log(`Removed audio file: ${filePath}`);
   }
   
   // Update workout data to remove audio references
-  if (filesRemoved) {
+  if (filesToRemove.length > 0) {
     removeAudioReferencesFromWorkoutData(segment);
   }
+  
+  console.log(`Removed ${filesToRemove.length} audio files.`);
 }
 
 /**
@@ -271,43 +276,33 @@ function removeAudioFiles(segment: string | null = null): void {
  * @param segment - Specific segment to remove (if any)
  */
 function removeAudioReferencesFromWorkoutData(segment: string | null = null): void {
-  try {
-    // Read the workout data file
-    const content = fs.readFileSync(WORKOUT_DATA_PATH, 'utf8');
-    
-    // Get current workout data
-    const workoutData = DEFAULT_WORKOUT_PROGRAMS;
-    
-    // Create a copy of the workout data
-    const updatedWorkoutData = JSON.parse(JSON.stringify(workoutData)) as WorkoutProgram[];
-    
-    // Remove audio references from workout data
-    for (const workout of updatedWorkoutData) {
-      for (let i = 0; i < workout.segments.length; i++) {
-        const currentSegmentId = `${workout.id}-segment-${i}`;
-        
-        // If segment is specified, only remove that one
-        if (segment && !currentSegmentId.startsWith(segment)) {
-          continue;
-        }
-        
-        // Remove audio reference
+  // Read the original file content
+  const content = fs.readFileSync(WORKOUT_DATA_PATH, 'utf8');
+  
+  // Create a copy of the workout data
+  const workoutData = JSON.parse(JSON.stringify(DEFAULT_WORKOUT_PROGRAMS)) as WorkoutProgram[];
+  
+  // Update the audio information for each segment
+  for (const workout of workoutData) {
+    for (let i = 0; i < workout.segments.length; i++) {
+      const segmentId = `${workout.id}-segment-${i}`;
+      
+      // Remove audio reference if it matches the segment or if no segment is specified
+      if (!segment || segmentId === segment) {
         delete workout.segments[i].audio;
       }
     }
-    
-    // Create the updated content
-    const updatedContent = content.replace(
-      /export const DEFAULT_WORKOUT_PROGRAMS: WorkoutProgram\[\] = .*?;/s,
-      `export const DEFAULT_WORKOUT_PROGRAMS: WorkoutProgram[] = ${JSON.stringify(updatedWorkoutData, null, 2)};`
-    );
-    
-    // Write the updated content back to the file
-    fs.writeFileSync(WORKOUT_DATA_PATH, updatedContent, 'utf8');
-    console.log(`Updated workout data file: ${WORKOUT_DATA_PATH}`);
-  } catch (error) {
-    console.error(`Error updating workout data file: ${(error as Error).message}`);
   }
+  
+  // Create the updated content
+  const updatedContent = content.replace(
+    /export const DEFAULT_WORKOUT_PROGRAMS: WorkoutProgram\[\] = .*?;/s,
+    `export const DEFAULT_WORKOUT_PROGRAMS: WorkoutProgram[] = ${JSON.stringify(workoutData, null, 2)};`
+  );
+  
+  // Write the updated content back to the file
+  fs.writeFileSync(WORKOUT_DATA_PATH, updatedContent, 'utf8');
+  console.log(`Updated workout data file to remove audio references: ${WORKOUT_DATA_PATH}`);
 }
 
 /**

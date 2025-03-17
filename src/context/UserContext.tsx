@@ -4,6 +4,7 @@ import { UserSettings, PaceSetting, UserPreferences, AuthState, User } from '../
 import 'react-native-get-random-values'; 
 import { v4 as uuidv4 } from 'uuid';
 import { Platform } from 'react-native';
+import * as AppleAuthentication from 'expo-apple-authentication';
 
 // Default pace settings
 const DEFAULT_PACE_SETTINGS = {
@@ -332,22 +333,63 @@ export const UserProvider: React.FC<UserProviderProps> = ({ children }) => {
   // Sign in with Apple using Expo's Apple Authentication
   const signInWithApple = async (): Promise<boolean> => {
     try {
-      // Create a test user instead of using Apple authentication
-      console.log('Creating test user instead of using Apple authentication');
+      // Check if we're on iOS
+      if (Platform.OS !== 'ios') {
+        setError('Apple Sign In is only available on iOS devices');
+        return false;
+      }
+
+      // Check if Apple Authentication is available
+      const isAvailable = await AppleAuthentication.isAvailableAsync();
+      if (!isAvailable) {
+        setError('Apple Authentication is not available on this device');
+        return false;
+      }
+
+      // Request Apple authentication
+      const credential = await AppleAuthentication.signInAsync({
+        requestedScopes: [
+          AppleAuthentication.AppleAuthenticationScope.FULL_NAME,
+          AppleAuthentication.AppleAuthenticationScope.EMAIL,
+        ],
+      });
+
+      // Extract user information
+      const appleUserId = credential.user;
+      const userEmail = credential.email || `apple_${appleUserId}@treadtrail.app`;
       
-      // Generate a unique test user ID
-      const testUserId = `test_user_${uuidv4()}`;
+      // Get name information
+      let userName = 'Apple User';
+      if (credential.fullName) {
+        userName = credential.fullName.givenName || '';
+        if (credential.fullName.familyName) {
+          userName += ` ${credential.fullName.familyName}`;
+        }
+        
+        // If no name was provided, use a default
+        if (!userName.trim()) {
+          userName = 'Apple User';
+        }
+      }
       
-      // Create user object with test data
+      // Store Apple user in AsyncStorage for future sign-ins
+      const appleUserKey = `treadtrail_apple_user_${appleUserId}`;
+      await AsyncStorage.setItem(appleUserKey, JSON.stringify({
+        id: appleUserId,
+        email: userEmail,
+        name: userName,
+      }));
+      
+      // Create user object
       const user: User = {
-        id: testUserId,
-        name: 'Test User',
-        email: 'test@example.com',
-        authMethod: 'apple', // Keep this as 'apple' to maintain compatibility
+        id: appleUserId,
+        name: userName,
+        email: userEmail,
+        authMethod: 'apple',
       };
       
-      // Create a simple token
-      const token = uuidv4();
+      // Use identity token as auth token
+      const token = credential.identityToken || uuidv4();
       
       // Update auth state
       const newAuthState: AuthState = {
@@ -366,7 +408,7 @@ export const UserProvider: React.FC<UserProviderProps> = ({ children }) => {
           ...userSettings,
           profile: {
             ...userSettings.profile,
-            name: 'Test User',
+            name: userName,
             lastActive: now,
           },
         };
@@ -377,8 +419,17 @@ export const UserProvider: React.FC<UserProviderProps> = ({ children }) => {
       
       return true;
     } catch (error: any) {
-      setError('Failed to create test user');
-      console.error('Error creating test user:', error);
+      // Handle specific error cases
+      if (error.code === 'ERR_CANCELED') {
+        setError('Apple Sign In was canceled by the user');
+      } else if (error.code === 'ERR_FAILED') {
+        setError('Apple Sign In failed');
+      } else if (error.code === 'ERR_INVALID_RESPONSE') {
+        setError('Apple Sign In response was invalid');
+      } else {
+        setError('Failed to sign in with Apple');
+      }
+      console.error('Error signing in with Apple:', error);
       return false;
     }
   };
