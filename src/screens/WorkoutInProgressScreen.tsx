@@ -350,12 +350,6 @@ const WorkoutInProgressScreen: React.FC<Props> = ({ route, navigation }) => {
   const handleSkip = () => {
     if (!isWorkoutActive) return;
     
-    // Don't skip if we're on the last segment
-    if (currentSegmentIndex >= activeWorkout.segments.length - 1) {
-      console.log('[WorkoutScreen] Cannot skip - already on last segment');
-      return;
-    }
-    
     skipActionRef.current = true;
     dispatch(skipSegmentAction());
     
@@ -482,13 +476,10 @@ const WorkoutInProgressScreen: React.FC<Props> = ({ route, navigation }) => {
   }
   
   // Get the next segment (if any)
-  const nextSegment = currentSegmentIndex < activeWorkout.segments.length - 1 
+  const nextSegment = currentSegmentIndex < activeWorkout.segments.length 
     ? activeWorkout.segments[currentSegmentIndex + 1] 
     : null;
     
-  // Check if we're on the last segment
-  const isLastSegment = currentSegmentIndex === activeWorkout.segments.length - 1;
-
   return (
     <View style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor="transparent" translucent />
@@ -598,15 +589,15 @@ const WorkoutInProgressScreen: React.FC<Props> = ({ route, navigation }) => {
                 style={[
                   styles.button, 
                   styles.skipButton, 
-                  (isSkipping || isLastSegment) && styles.disabledButton
+                  isSkipping && styles.disabledButton
                 ]} 
                 onPress={handleSkip}
-                disabled={isSkipping || isPaused || isLastSegment}
+                disabled={isSkipping || isPaused}
                 testID="skip-button"
               >
                 <Text style={[
                   styles.buttonText,
-                  isLastSegment && styles.disabledButtonText
+                  isSkipping && styles.disabledButtonText
                 ]}>Skip</Text>
               </TouchableOpacity>
             </View>

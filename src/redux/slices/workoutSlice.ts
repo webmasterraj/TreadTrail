@@ -80,13 +80,9 @@ export const skipSegment = createAsyncThunk(
       return rejectWithValue('Cannot skip segment');
     }
     
-    // Prevent skipping if on last segment
-    if (workout.currentSegmentIndex >= workout.activeWorkout.segments.length - 1) {
-      return rejectWithValue('Already on last segment');
-    }
-    
     return {
       timestamp: Date.now(),
+      isLastSegment: workout.currentSegmentIndex >= workout.activeWorkout.segments.length - 1
     };
   }
 );
@@ -206,7 +202,7 @@ const workoutSlice = createSlice({
     builder.addCase(skipSegment.fulfilled, (state, action) => {
       if (!state.activeWorkout) return;
       
-      const { timestamp } = action.payload;
+      const { timestamp, isLastSegment } = action.payload;
       
       // Set skipping flag
       state.isSkipping = true;
@@ -239,6 +235,11 @@ const workoutSlice = createSlice({
       
       // Clear transition flag
       state.isTransitioning = false;
+      
+      // If this is the last segment, mark the workout as complete
+      if (isLastSegment) {
+        state.isCompleted = true;
+      }
     });
     
     // Handle skip rejection
