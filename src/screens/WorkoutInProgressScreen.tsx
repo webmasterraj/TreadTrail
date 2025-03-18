@@ -304,6 +304,15 @@ const WorkoutInProgressScreen: React.FC<Props> = ({ route, navigation }) => {
     }
   }, [currentSegmentIndex, segmentElapsedTime, isRunning, activeWorkout, audioEnabled]);
 
+  // Track when skipping occurs to ensure proper progress line positioning
+  useEffect(() => {
+    if (isSkipping && currentSegmentIndex > 0) {
+      // When skipping, ensure the progress line is positioned correctly
+      // This effect will trigger when isSkipping changes to true
+      console.log("[WorkoutInProgressScreen] Segment skipped, currentSegmentIndex:", currentSegmentIndex);
+    }
+  }, [isSkipping, currentSegmentIndex]);
+
   // Handle skip state reset
   useEffect(() => {
     if (!isSkipping && skipActionRef.current) {
@@ -597,6 +606,8 @@ const WorkoutInProgressScreen: React.FC<Props> = ({ route, navigation }) => {
                 showOverlay={true}
                 maxBars={40}
                 containerHeight={visualizationHeight - 16} // Account for padding
+                currentSegmentIndex={currentSegmentIndex} // Pass current segment index
+                isSkipping={isSkipping} // Pass isSkipping flag
               />
             </View>
             

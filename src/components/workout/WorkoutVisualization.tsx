@@ -10,6 +10,8 @@ interface WorkoutVisualizationProps {
   showOverlay?: boolean; // Show darkened overlay for completed portions
   maxBars?: number; // Maximum bars to display
   containerHeight?: number; // Optional prop for parent to specify height
+  currentSegmentIndex?: number; // Current segment index from parent
+  isSkipping?: boolean; // Whether a segment skip is in progress
 }
 
 const WorkoutVisualization: React.FC<WorkoutVisualizationProps> = ({
@@ -18,7 +20,9 @@ const WorkoutVisualization: React.FC<WorkoutVisualizationProps> = ({
   minutePerBar = true,
   showOverlay = false,
   maxBars = 40,
-  containerHeight
+  containerHeight,
+  currentSegmentIndex = -1,
+  isSkipping = false
 }) => {
   // Add state to track measured height
   const [measuredHeight, setMeasuredHeight] = useState(0);
@@ -87,14 +91,6 @@ const WorkoutVisualization: React.FC<WorkoutVisualizationProps> = ({
     displaySegments = displaySegments.filter((_, index) => index % skipFactor === 0);
   }
   
-  // Calculate the progress overlay width
-  const getProgressOverlayWidth = (): number => {
-    if (progressPosition < 0) return 0;
-    
-    const progressPercentage = Math.min(100, (progressPosition / totalDuration) * 100);
-    return progressPercentage;
-  };
-
   // Calculate positions for each segment based on duration
   const segmentPositions = useMemo(() => {
     if (!displaySegments.length || containerWidth === 0) return [];
@@ -134,6 +130,75 @@ const WorkoutVisualization: React.FC<WorkoutVisualizationProps> = ({
     return positions;
   }, [displaySegments, containerWidth]);
 
+  // Calculate the progress line position
+  const getProgressLinePosition = (): number => {
+    if (progressPosition < 0) return 0;
+    
+    // If there are no segment positions calculated yet, use percentage
+    if (!segmentPositions.length) {
+      const progressPercentage = Math.min(100, (progressPosition / totalDuration) * 100);
+      return progressPercentage;
+    }
+    
+    // Always prioritize using the currentSegmentIndex when available
+    if (currentSegmentIndex >= 0 && currentSegmentIndex < segments.length) {
+      // Find the corresponding index in displaySegments
+      let displayIndex = 0;
+      
+      // Check if we're filtering segments (when there are too many)
+      if (displaySegments.length < segments.length) {
+        // Find the closest display segment based on the skip factor
+        const skipFactor = Math.ceil(segments.length / maxBars);
+        
+        // Calculate which display segment corresponds to the current segment
+        for (let i = 0; i < displaySegments.length; i++) {
+          // Find the original segment index this display segment represents
+          const originalIndex = i * skipFactor;
+          
+          // If this display segment is closest to our current segment, use it
+          if (originalIndex >= currentSegmentIndex || i === displaySegments.length - 1) {
+            displayIndex = i;
+            break;
+          }
+        }
+      } else {
+        // No filtering, direct mapping
+        displayIndex = Math.min(currentSegmentIndex, displaySegments.length - 1);
+      }
+      
+      // Ensure the display index is valid
+      displayIndex = Math.min(displayIndex, segmentPositions.length - 1);
+      
+      // Get the position of the current segment's bar
+      if (segmentPositions[displayIndex]) {
+        // If we're skipping, always align exactly with the bar
+        if (isSkipping) {
+          const barPosition = segmentPositions[displayIndex].left;
+          // Convert to percentage of container width
+          return (barPosition / containerWidth) * 100;
+        }
+        
+        // Otherwise, calculate if we're at the start of a segment
+        // Find the time at the start of the current segment
+        let segmentStartTime = 0;
+        for (let i = 0; i < currentSegmentIndex; i++) {
+          segmentStartTime += segments[i].duration;
+        }
+        
+        // If we're within 1 second of the segment start, align with the bar
+        if (Math.abs(progressPosition - segmentStartTime) < 1) {
+          const barPosition = segmentPositions[displayIndex].left;
+          // Convert to percentage of container width
+          return (barPosition / containerWidth) * 100;
+        }
+      }
+    }
+    
+    // Fallback: calculate position based on elapsed time
+    const progressPercentage = Math.min(100, (progressPosition / totalDuration) * 100);
+    return progressPercentage;
+  };
+
   return (
     <View 
       style={[
@@ -167,12 +232,12 @@ const WorkoutVisualization: React.FC<WorkoutVisualizationProps> = ({
       {/* Connecting line at the bottom of the bars */}
       <View style={styles.connectingLine} />
       
-      {/* Progress overlay */}
+      {/* Progress line */}
       {showOverlay && progressPosition >= 0 && (
         <View
           style={[
-            styles.progressOverlay,
-            { width: `${getProgressOverlayWidth()}%` },
+            styles.progressLine,
+            { left: `${getProgressLinePosition()}%` },
           ]}
         />
       )}
@@ -211,12 +276,12 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.darkGray,
     zIndex: 0,
   },
-  progressOverlay: {
+  progressLine: {
     position: 'absolute',
     top: 0,
-    left: 0,
     bottom: 0,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    width: 2, // Thin vertical line
+    backgroundColor: COLORS.white, // White color
     zIndex: 2,
   },
 });
@@ -230,6 +295,8 @@ export default React.memo(WorkoutVisualization, (prevProps, nextProps) => {
     prevProps.showOverlay === nextProps.showOverlay &&
     prevProps.minutePerBar === nextProps.minutePerBar &&
     prevProps.maxBars === nextProps.maxBars &&
+    prevProps.currentSegmentIndex === nextProps.currentSegmentIndex &&
+    prevProps.isSkipping === nextProps.isSkipping &&
     JSON.stringify(prevProps.segments) === JSON.stringify(nextProps.segments)
   );
 });
