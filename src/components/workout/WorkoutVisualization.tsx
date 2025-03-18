@@ -2,31 +2,49 @@ import React, { useMemo, useState } from 'react';
 import { View, StyleSheet, Dimensions, Text } from 'react-native';
 import { WorkoutSegment, PaceType } from '../../types';
 import { COLORS, PACE_COLORS } from '../../styles/theme';
+import { useAppSelector } from '../../redux/store';
+import { 
+  selectProgressIndicatorPosition, 
+  selectShouldAlignWithSegment,
+  selectCurrentSegmentIndex
+} from '../../redux/slices/workoutSlice';
 
 interface WorkoutVisualizationProps {
   segments: WorkoutSegment[];
-  progressPosition?: number; // Position in seconds - for workout in progress
   minutePerBar?: boolean; // If true, each bar represents 1 minute, otherwise 30 seconds
   showOverlay?: boolean; // Show darkened overlay for completed portions
   maxBars?: number; // Maximum bars to display
   containerHeight?: number; // Optional prop for parent to specify height
-  currentSegmentIndex?: number; // Current segment index from parent
-  isSkipping?: boolean; // Whether a segment skip is in progress
 }
 
+/**
+ * WorkoutVisualization Component
+ * 
+ * Displays a visual representation of workout segments with a progress indicator.
+ * The progress indicator position is managed by Redux, ensuring consistent positioning
+ * across the app, especially during segment transitions and skips.
+ * 
+ * Key features:
+ * - Visualizes workout segments with colored bars
+ * - Shows a progress line indicating current position in the workout
+ * - Handles segment filtering when there are too many segments to display
+ * - Automatically updates as workout progresses through Redux state changes
+ */
 const WorkoutVisualization: React.FC<WorkoutVisualizationProps> = ({
   segments,
-  progressPosition = -1,
   minutePerBar = true,
   showOverlay = false,
   maxBars = 40,
-  containerHeight,
-  currentSegmentIndex = -1,
-  isSkipping = false
+  containerHeight
 }) => {
   // Add state to track measured height
   const [measuredHeight, setMeasuredHeight] = useState(0);
   const [containerWidth, setContainerWidth] = useState(0);
+  
+  // Get progress data from Redux
+  const progressIndicatorPosition = useAppSelector(selectProgressIndicatorPosition);
+  const shouldAlignWithSegment = useAppSelector(selectShouldAlignWithSegment);
+  const currentSegmentIndex = useAppSelector(selectCurrentSegmentIndex);
   
   // Calculate total duration
   const totalDuration = segments.reduce((sum, segment) => sum + segment.duration, 0);
@@ -130,75 +148,6 @@ const WorkoutVisualization: React.FC<WorkoutVisualizationProps> = ({
     return positions;
   }, [displaySegments, containerWidth]);
 
-  // Calculate the progress line position
-  const getProgressLinePosition = (): number => {
-    if (progressPosition < 0) return 0;
-    
-    // If there are no segment positions calculated yet, use percentage
-    if (!segmentPositions.length) {
-      const progressPercentage = Math.min(100, (progressPosition / totalDuration) * 100);
-      return progressPercentage;
-    }
-    
-    // Always prioritize using the currentSegmentIndex when available
-    if (currentSegmentIndex >= 0 && currentSegmentIndex < segments.length) {
-      // Find the corresponding index in displaySegments
-      let displayIndex = 0;
-      
-      // Check if we're filtering segments (when there are too many)
-      if (displaySegments.length < segments.length) {
-        // Find the closest display segment based on the skip factor
-        const skipFactor = Math.ceil(segments.length / maxBars);
-        
-        // Calculate which display segment corresponds to the current segment
-        for (let i = 0; i < displaySegments.length; i++) {
-          // Find the original segment index this display segment represents
-          const originalIndex = i * skipFactor;
-          
-          // If this display segment is closest to our current segment, use it
-          if (originalIndex >= currentSegmentIndex || i === displaySegments.length - 1) {
-            displayIndex = i;
-            break;
-          }
-        }
-      } else {
-        // No filtering, direct mapping
-        displayIndex = Math.min(currentSegmentIndex, displaySegments.length - 1);
-      }
-      
-      // Ensure the display index is valid
-      displayIndex = Math.min(displayIndex, segmentPositions.length - 1);
-      
-      // Get the position of the current segment's bar
-      if (segmentPositions[displayIndex]) {
-        // If we're skipping, always align exactly with the bar
-        if (isSkipping) {
-          const barPosition = segmentPositions[displayIndex].left;
-          // Convert to percentage of container width
-          return (barPosition / containerWidth) * 100;
-        }
-        
-        // Otherwise, calculate if we're at the start of a segment
-        // Find the time at the start of the current segment
-        let segmentStartTime = 0;
-        for (let i = 0; i < currentSegmentIndex; i++) {
-          segmentStartTime += segments[i].duration;
-        }
-        
-        // If we're within 1 second of the segment start, align with the bar
-        if (Math.abs(progressPosition - segmentStartTime) < 1) {
-          const barPosition = segmentPositions[displayIndex].left;
-          // Convert to percentage of container width
-          return (barPosition / containerWidth) * 100;
-        }
-      }
-    }
-    
-    // Fallback: calculate position based on elapsed time
-    const progressPercentage = Math.min(100, (progressPosition / totalDuration) * 100);
-    return progressPercentage;
-  };
-
   return (
     <View 
       style={[
@@ -233,11 +182,11 @@ const WorkoutVisualization: React.FC<WorkoutVisualizationProps> = ({
       <View style={styles.connectingLine} />
       
       {/* Progress line */}
-      {showOverlay && progressPosition >= 0 && (
+      {showOverlay && (
         <View
           style={[
             styles.progressLine,
-            { left: `${getProgressLinePosition()}%` },
+            { left: `${progressIndicatorPosition}%` },
           ]}
         />
       )}
@@ -291,12 +240,9 @@ export default React.memo(WorkoutVisualization, (prevProps, nextProps) => {
   // Only re-render if these props change
   return (
     prevProps.containerHeight === nextProps.containerHeight &&
-    prevProps.progressPosition === nextProps.progressPosition &&
     prevProps.showOverlay === nextProps.showOverlay &&
     prevProps.minutePerBar === nextProps.minutePerBar &&
     prevProps.maxBars === nextProps.maxBars &&
-    prevProps.currentSegmentIndex === nextProps.currentSegmentIndex &&
-    prevProps.isSkipping === nextProps.isSkipping &&
     JSON.stringify(prevProps.segments) === JSON.stringify(nextProps.segments)
   );
 });

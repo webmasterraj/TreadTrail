@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef, useCallback, useContext } from 'react';
+import React, { useEffect, useState, useRef, useCallback, useContext, useMemo } from 'react';
 import { 
   View, 
   Text, 
@@ -38,7 +38,8 @@ import {
   resumeWorkout as resumeWorkoutAction,
   skipSegment as skipSegmentAction,
   endWorkout as endWorkoutAction,
-  resetSkipState
+  resetSkipState,
+  updateProgressIndicator
 } from '../redux/slices/workoutSlice';
 import { UserContext } from '../context';
 import { createWorkoutSession } from '../utils/historyUtils';
@@ -83,6 +84,12 @@ const WorkoutInProgressScreen: React.FC<Props> = ({ route, navigation }) => {
   const isSkipping = useAppSelector(selectIsSkipping);
   const isCompleted = useAppSelector(selectIsCompleted);
   
+  // Calculate total duration
+  const totalDuration = useMemo(() => {
+    if (!activeWorkout || !activeWorkout.segments) return 0;
+    return activeWorkout.segments.reduce((total: number, segment: { duration: number }) => total + segment.duration, 0);
+  }, [activeWorkout]);
+
   // Initialize the Redux timer
   // Use the hook at the component level for proper lifecycle management
   const timer = useWorkoutTimer();
@@ -304,14 +311,39 @@ const WorkoutInProgressScreen: React.FC<Props> = ({ route, navigation }) => {
     }
   }, [currentSegmentIndex, segmentElapsedTime, isRunning, activeWorkout, audioEnabled]);
 
+  /**
+   * Progress Indicator Management
+   * 
+   * The progress indicator is managed through Redux to ensure consistent positioning
+   * across component re-renders and during segment transitions.
+   * 
+   * Two effects handle progress indicator updates:
+   * 1. When skipping segments - ensures proper alignment with segment bars
+   * 2. During normal workout progress - updates based on elapsed time
+   * 
+   * This approach provides better visual feedback during workouts, especially
+   * when transitioning between segments.
+   */
+
   // Track when skipping occurs to ensure proper progress line positioning
   useEffect(() => {
     if (isSkipping && currentSegmentIndex > 0) {
       // When skipping, ensure the progress line is positioned correctly
-      // This effect will trigger when isSkipping changes to true
-      console.log("[WorkoutInProgressScreen] Segment skipped, currentSegmentIndex:", currentSegmentIndex);
+      dispatch(updateProgressIndicator({ 
+        position: (elapsedTime / totalDuration) * 100 
+      }));
     }
-  }, [isSkipping, currentSegmentIndex]);
+  }, [isSkipping, currentSegmentIndex, elapsedTime, totalDuration, dispatch]);
+
+  // Update progress indicator on timer ticks
+  useEffect(() => {
+    if (isRunning && activeWorkout) {
+      // Update progress indicator position based on elapsed time
+      dispatch(updateProgressIndicator({ 
+        position: (elapsedTime / totalDuration) * 100 
+      }));
+    }
+  }, [elapsedTime, isRunning, activeWorkout, totalDuration, dispatch]);
 
   // Handle skip state reset
   useEffect(() => {
@@ -601,13 +633,10 @@ const WorkoutInProgressScreen: React.FC<Props> = ({ route, navigation }) => {
             >
               <WorkoutVisualization 
                 segments={activeWorkout.segments} 
-                progressPosition={elapsedTime}
                 minutePerBar={true} 
                 showOverlay={true}
                 maxBars={40}
                 containerHeight={visualizationHeight - 16} // Account for padding
-                currentSegmentIndex={currentSegmentIndex} // Pass current segment index
-                isSkipping={isSkipping} // Pass isSkipping flag
               />
             </View>
             
@@ -675,9 +704,9 @@ const WorkoutInProgressScreen: React.FC<Props> = ({ route, navigation }) => {
             <View style={styles.workoutProgress}>
               <Text style={styles.progressText}>{formatTime(elapsedTime)}</Text>
               <View style={styles.progressBarContainer}>
-                <View style={[styles.progressBar, { width: `${Math.min(100, (elapsedTime / workoutTotalTime) * 100)}%` }]} />
+                <View style={[styles.progressBar, { width: `${Math.min(100, (elapsedTime / totalDuration) * 100)}%` }]} />
               </View>
-              <Text style={styles.progressText}>{formatTime(workoutTotalTime)}</Text>
+              <Text style={styles.progressText}>{formatTime(totalDuration)}</Text>
             </View>
             
             <View style={styles.actionButtons}>

@@ -24,6 +24,10 @@ export interface WorkoutState {
   isTransitioning: boolean;        // Whether segment transition is happening
   isCompleted: boolean;            // Whether the workout has been completed
   
+  // Progress indicator state
+  progressIndicatorPosition: number; // Position as a percentage (0-100)
+  shouldAlignWithSegment: boolean;   // Flag to force alignment with segment bars
+  
   // Debug state
   debugInfo: {
     lastAction: string;
@@ -46,6 +50,8 @@ const initialState: WorkoutState = {
   isSkipping: false,
   isTransitioning: false,
   isCompleted: false,
+  progressIndicatorPosition: 0,
+  shouldAlignWithSegment: false,
   debugInfo: {
     lastAction: '',
     actionTimestamp: 0,
@@ -125,41 +131,62 @@ const workoutSlice = createSlice({
       return initialState;
     },
     timerTick: (state, action: PayloadAction<{ timestamp: number }>) => {
-      if (!state.isRunning || !state.activeWorkout) return;
+      if (!state.activeWorkout || !state.isRunning) return;
       
       const { timestamp } = action.payload;
-      const lastTickTime = state.lastTickTime || timestamp;
-      const deltaTime = (timestamp - lastTickTime) / 1000; // Convert to seconds
       
-      // Update elapsed time - always round down for elapsed time (counts up)
-      state.elapsedTime = Math.floor(state.elapsedTime + deltaTime);
-      
-      // Update segment elapsed time - always round down for elapsed time
-      if (state.currentSegmentIndex < state.activeWorkout.segments.length) {
-        const currentSegment = state.activeWorkout.segments[state.currentSegmentIndex];
-        state.segmentElapsedTime = Math.min(
-          currentSegment.duration,  // Cap at segment duration
-          Math.floor(state.segmentElapsedTime + deltaTime)
-        );
+      // Calculate elapsed time since last tick
+      if (state.lastTickTime) {
+        const elapsedSinceLastTick = (timestamp - state.lastTickTime) / 1000; // Convert to seconds
         
-        // Check if segment is complete
-        if (state.segmentElapsedTime >= currentSegment.duration && !state.isTransitioning) {
-          // Auto-advance to next segment if not on last segment
-          if (state.currentSegmentIndex < state.activeWorkout.segments.length - 1) {
-            state.isTransitioning = true;
-            state.currentSegmentIndex += 1;
-            state.segmentElapsedTime = 0;
-            state.segmentStartTime = timestamp;
-            state.isTransitioning = false;
-            state.debugInfo.lastAction = 'auto-advance';
-            state.debugInfo.actionTimestamp = timestamp;
-          } else {
-            // This is the last segment and it's complete - mark the workout as complete
-            // We don't actually end the workout here, as that would lose state
-            // Instead, we set a new state flag that the component can check
-            state.isCompleted = true;
-            state.debugInfo.lastAction = 'auto-complete';
-            state.debugInfo.actionTimestamp = timestamp;
+        // Update elapsed time (keep as integer for consistency)
+        // Use Math.floor to avoid rounding up prematurely
+        state.elapsedTime = Math.floor(state.elapsedTime + elapsedSinceLastTick);
+        
+        // Update segment elapsed time (keep as integer for consistency)
+        // Use Math.floor to avoid rounding up prematurely
+        if (state.currentSegmentIndex < state.activeWorkout.segments.length) {
+          const currentSegment = state.activeWorkout.segments[state.currentSegmentIndex];
+          state.segmentElapsedTime = Math.min(
+            currentSegment.duration,  // Cap at segment duration
+            Math.floor(state.segmentElapsedTime + elapsedSinceLastTick)
+          );
+          
+          // Update progress indicator position
+          const totalDuration = state.activeWorkout.segments.reduce(
+            (sum, segment) => sum + segment.duration, 0
+          );
+          
+          // Calculate progress percentage
+          state.progressIndicatorPosition = Math.min(
+            100, 
+            (state.elapsedTime / totalDuration) * 100
+          );
+          
+          // Reset alignment flag if we're not at the start of a segment
+          if (state.segmentElapsedTime > 1) {
+            state.shouldAlignWithSegment = false;
+          }
+          
+          // Check if segment is complete
+          if (state.segmentElapsedTime >= currentSegment.duration && !state.isTransitioning) {
+            // Auto-advance to next segment if not on last segment
+            if (state.currentSegmentIndex < state.activeWorkout.segments.length - 1) {
+              state.isTransitioning = true;
+              state.currentSegmentIndex += 1;
+              state.segmentElapsedTime = 0;
+              state.segmentStartTime = timestamp;
+              state.isTransitioning = false;
+              state.debugInfo.lastAction = 'auto-advance';
+              state.debugInfo.actionTimestamp = timestamp;
+            } else {
+              // This is the last segment and it's complete - mark the workout as complete
+              // We don't actually end the workout here, as that would lose state
+              // Instead, we set a new state flag that the component can check
+              state.isCompleted = true;
+              state.debugInfo.lastAction = 'auto-complete';
+              state.debugInfo.actionTimestamp = timestamp;
+            }
           }
         }
       }
@@ -174,6 +201,12 @@ const workoutSlice = createSlice({
     },
     resetSkipState: (state) => {
       state.isSkipping = false;
+    },
+    updateProgressIndicator: (state, action: PayloadAction<{ position: number }>) => {
+      state.progressIndicatorPosition = action.payload.position;
+    },
+    resetAlignmentFlag: (state) => {
+      state.shouldAlignWithSegment = false;
     },
   },
   extraReducers: (builder) => {
@@ -226,6 +259,22 @@ const workoutSlice = createSlice({
       state.segmentElapsedTime = 0;
       state.segmentStartTime = timestamp;
       
+      // Set flag to align progress indicator with segment
+      state.shouldAlignWithSegment = true;
+      
+      // Calculate progress indicator position based on elapsed time
+      if (state.activeWorkout) {
+        const totalDuration = state.activeWorkout.segments.reduce(
+          (sum, segment) => sum + segment.duration, 0
+        );
+        
+        // Calculate progress percentage
+        state.progressIndicatorPosition = Math.min(
+          100, 
+          (state.elapsedTime / totalDuration) * 100
+        );
+      }
+      
       // Update debug info
       state.debugInfo = {
         lastAction: 'skip',
@@ -256,7 +305,9 @@ export const {
   resumeWorkout, 
   endWorkout, 
   timerTick,
-  resetSkipState
+  resetSkipState,
+  updateProgressIndicator,
+  resetAlignmentFlag
 } = workoutSlice.actions;
 
 // Export reducer
@@ -271,6 +322,12 @@ export const selectSegmentElapsedTime = (state: { workout: WorkoutState }) => st
 export const selectIsSkipping = (state: { workout: WorkoutState }) => state.workout.isSkipping;
 export const selectIsCompleted = (state: { workout: WorkoutState }) => state.workout.isCompleted;
 export const selectDebugInfo = (state: { workout: WorkoutState }) => state.workout.debugInfo;
+
+// Progress indicator selectors
+export const selectProgressIndicatorPosition = (state: { workout: WorkoutState }) => 
+  state.workout.progressIndicatorPosition;
+export const selectShouldAlignWithSegment = (state: { workout: WorkoutState }) => 
+  state.workout.shouldAlignWithSegment;
 
 // Computed selectors
 export const selectCurrentSegment = (state: { workout: WorkoutState }) => {
