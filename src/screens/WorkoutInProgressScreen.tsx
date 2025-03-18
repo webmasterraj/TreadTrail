@@ -91,9 +91,6 @@ const WorkoutInProgressScreen: React.FC<Props> = ({ route, navigation }) => {
   // Get user preferences from context
   const { userSettings } = useContext(UserContext);
   const preferences = userSettings?.preferences || { enableAudioCues: true, units: 'imperial', darkMode: false };
-  useEffect(() => {
-    console.log(`[WorkoutScreen] User preferences loaded: ${JSON.stringify(preferences)}`);
-  }, []);
   const paceSettings = userSettings?.paceSettings || { recovery: { speed: 3, incline: 1 }, base: { speed: 5, incline: 1 }, run: { speed: 7, incline: 2 }, sprint: { speed: 9, incline: 2 } };
 
   // Initialize audio for workout
@@ -181,6 +178,7 @@ const WorkoutInProgressScreen: React.FC<Props> = ({ route, navigation }) => {
     isRunning,
     isSkipping,
     isCompleted,
+    enableAudioCues: preferences.enableAudioCues
   });
 
   // Enable or disable audio based on user preferences
@@ -189,15 +187,27 @@ const WorkoutInProgressScreen: React.FC<Props> = ({ route, navigation }) => {
   // Handle audio cues when workout state changes
   useEffect(() => {
     if (activeWorkout && audioEnabled) {
+      // Handle segment transitions
+      if (prevSegmentIndexRef.current !== currentSegmentIndex) {
+        // Update the previous segment index
+        prevSegmentIndexRef.current = currentSegmentIndex;
+        
+        // Play segment audio if available
+        if (currentSegment && currentSegment.audio && !isSkipping) {
+          // Play segment audio
+        }
+      }
+      
+      // Stop audio when workout is completed
       if (isCompleted) {
         stopAudio();
       }
     }
-  }, [activeWorkout, audioEnabled, stopAudio, isCompleted]);
+  }, [currentSegmentIndex, activeWorkout, audioEnabled, currentSegment, isSkipping, isCompleted, stopAudio]);
 
   // Preload segment audio files
   useEffect(() => {
-    if (!activeWorkout || !preferences.enableAudioCues) return;
+    if (!activeWorkout || !audioEnabled) return;
     
     const loadSegmentAudio = async () => {
       try {
@@ -238,7 +248,7 @@ const WorkoutInProgressScreen: React.FC<Props> = ({ route, navigation }) => {
         }
       });
     };
-  }, [activeWorkout, preferences.enableAudioCues]);
+  }, [activeWorkout, audioEnabled]);
 
   // Handle workout completion
   useEffect(() => {
@@ -249,7 +259,7 @@ const WorkoutInProgressScreen: React.FC<Props> = ({ route, navigation }) => {
 
   // Handle segment transitions and audio cues
   useEffect(() => {
-    if (!activeWorkout || !isRunning || !preferences.enableAudioCues) return;
+    if (!activeWorkout || !isRunning || !audioEnabled) return;
 
     // Check if we need to play audio for the next segment
     if (currentSegmentIndex < activeWorkout.segments.length - 1) {
@@ -297,7 +307,7 @@ const WorkoutInProgressScreen: React.FC<Props> = ({ route, navigation }) => {
         playAudioSequence();
       }
     }
-  }, [currentSegmentIndex, segmentElapsedTime, isRunning, activeWorkout, preferences.enableAudioCues]);
+  }, [currentSegmentIndex, segmentElapsedTime, isRunning, activeWorkout, audioEnabled]);
 
   // Handle skip state reset
   useEffect(() => {
@@ -349,7 +359,7 @@ const WorkoutInProgressScreen: React.FC<Props> = ({ route, navigation }) => {
       dispatch(resetSkipState());
     }, 100);
     
-    // Stop any playing audio
+    // Stop any playing audio if audio is enabled
     if (audioEnabled) {
       stopAudio();
     }

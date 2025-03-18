@@ -84,7 +84,7 @@ const WorkoutDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
         [
           {
             text: 'Sign In',
-            onPress: () => navigation.navigate('Signup'),
+            onPress: () => navigation.navigate('Landing'),
           },
           {
             text: 'Cancel',

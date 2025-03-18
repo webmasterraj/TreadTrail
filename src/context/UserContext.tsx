@@ -90,148 +90,151 @@ export const UserProvider: React.FC<UserProviderProps> = ({ children }) => {
 
   // Initialize settings and auth state when component mounts
   useEffect(() => {
-    const initializeSettings = async () => {
+    const initialize = async () => {
       try {
         if (DEBUG_USER_CONTEXT) {
           console.log('[DEBUG-USER-CONTEXT] Starting initialization');
         }
         
-        // Load auth state first
-        const storedAuthState = await loadAuthState();
-        setAuthState(storedAuthState);
+        setIsLoading(true);
         
-        if (DEBUG_USER_CONTEXT) {
-          console.log('[DEBUG-USER-CONTEXT] Loaded auth state, isAuthenticated:', storedAuthState.isAuthenticated);
-        }
+        // Load auth state from storage
+        const storedAuthState = await AsyncStorage.getItem(AUTH_STATE_KEY);
+        let loadedAuthState = DEFAULT_AUTH_STATE;
         
-        // Check for user-specific settings if user is authenticated
-        let settings = null;
-        
-        if (storedAuthState.isAuthenticated && storedAuthState.user?.id) {
-          const userId = storedAuthState.user.id;
+        if (storedAuthState) {
+          loadedAuthState = JSON.parse(storedAuthState);
+          setAuthState(loadedAuthState);
           
           if (DEBUG_USER_CONTEXT) {
-            console.log(`[DEBUG-USER-CONTEXT] Checking for user-specific settings for ${userId}`);
+            console.log('[DEBUG-USER-CONTEXT] Loaded auth state, isAuthenticated:', loadedAuthState.isAuthenticated);
+          }
+        } else if (DEBUG_USER_CONTEXT) {
+          console.log('[DEBUG-USER-CONTEXT] No stored auth state found');
+        }
+        
+        // Try to load user-specific settings if authenticated
+        let settingsToLoad = null;
+        if (loadedAuthState.isAuthenticated && loadedAuthState.user?.id) {
+          if (DEBUG_USER_CONTEXT) {
+            console.log(`[DEBUG-USER-CONTEXT] Checking for user-specific settings for ${loadedAuthState.user.id}`);
           }
           
-          const userKey = getUserSettingsKey(userId);
+          const userKey = getUserSettingsKey(loadedAuthState.user.id);
           const userSpecificSettings = await AsyncStorage.getItem(userKey);
           
           if (userSpecificSettings) {
             if (DEBUG_USER_CONTEXT) {
-              console.log(`[DEBUG-USER-CONTEXT] Found user-specific settings for ${userId}`);
+              console.log(`[DEBUG-USER-CONTEXT] Found user-specific settings for ${loadedAuthState.user.id}`);
             }
             
-            try {
-              settings = JSON.parse(userSpecificSettings);
-              
-              // Validate the structure of the user settings
-              if (DEBUG_USER_CONTEXT) {
-                console.log('[DEBUG-USER-CONTEXT] User settings structure:', {
-                  hasPaceSettings: !!settings.paceSettings,
-                  hasPreferences: !!settings.preferences,
-                  hasProfile: !!settings.profile,
-                });
-                
-                if (settings.preferences) {
-                  console.log('[DEBUG-USER-CONTEXT] User preferences:', settings.preferences);
-                } else {
-                  console.log('[DEBUG-USER-CONTEXT] WARNING: User settings missing preferences!');
-                  // Add default preferences if missing
-                  settings.preferences = DEFAULT_PREFERENCES;
-                  console.log('[DEBUG-USER-CONTEXT] Added default preferences:', settings.preferences);
-                }
-              }
-            } catch (parseError) {
-              console.error('[DEBUG-USER-CONTEXT] Error parsing user-specific settings:', parseError);
-              // If there's an error parsing, we'll fall back to global settings
-              settings = null;
-            }
-          } else {
+            settingsToLoad = JSON.parse(userSpecificSettings);
+            
             if (DEBUG_USER_CONTEXT) {
-              console.log(`[DEBUG-USER-CONTEXT] No user-specific settings found for ${userId}`);
+              console.log('[DEBUG-USER-CONTEXT] User settings structure:', {
+                hasProfile: !!settingsToLoad.profile,
+                hasPaceSettings: !!settingsToLoad.paceSettings,
+                hasPreferences: !!settingsToLoad.preferences,
+              });
+              
+              if (settingsToLoad.preferences) {
+                console.log('[DEBUG-USER-CONTEXT] User preferences:', settingsToLoad.preferences);
+              }
             }
+          } else if (DEBUG_USER_CONTEXT) {
+            console.log(`[DEBUG-USER-CONTEXT] No user-specific settings found for ${loadedAuthState.user.id}`);
           }
         }
         
-        // If no user-specific settings were found, try to load global settings
-        if (!settings) {
+        // If no user-specific settings, try global settings
+        if (!settingsToLoad) {
           if (DEBUG_USER_CONTEXT) {
-            console.log('[DEBUG-USER-CONTEXT] Loading stored settings');
+            console.log('[DEBUG-USER-CONTEXT] No user-specific settings found, trying global settings');
           }
           
           const storedSettings = await AsyncStorage.getItem(USER_SETTINGS_KEY);
           
           if (storedSettings) {
-            try {
-              settings = JSON.parse(storedSettings);
+            settingsToLoad = JSON.parse(storedSettings);
+            
+            if (DEBUG_USER_CONTEXT) {
+              console.log('[DEBUG-USER-CONTEXT] Found global settings');
+              console.log('[DEBUG-USER-CONTEXT] Global settings structure:', {
+                hasProfile: !!settingsToLoad.profile,
+                hasPaceSettings: !!settingsToLoad.paceSettings,
+                hasPreferences: !!settingsToLoad.preferences,
+              });
               
-              // Validate global settings structure
-              if (DEBUG_USER_CONTEXT) {
-                console.log('[DEBUG-USER-CONTEXT] Global settings structure:', {
-                  hasPaceSettings: !!settings.paceSettings,
-                  hasPreferences: !!settings.preferences,
-                  hasProfile: !!settings.profile,
-                });
-                
-                if (settings.preferences) {
-                  console.log('[DEBUG-USER-CONTEXT] Global preferences:', settings.preferences);
-                } else {
-                  console.log('[DEBUG-USER-CONTEXT] WARNING: Global settings missing preferences!');
-                  // Add default preferences if missing
-                  settings.preferences = DEFAULT_PREFERENCES;
-                  console.log('[DEBUG-USER-CONTEXT] Added default preferences:', settings.preferences);
-                }
+              if (settingsToLoad.preferences) {
+                console.log('[DEBUG-USER-CONTEXT] Global preferences:', settingsToLoad.preferences);
               }
-              
-              // Log pace settings
-              if (settings.paceSettings) {
-                if (DEBUG_USER_CONTEXT) {
-                  console.log('[DEBUG-USER-CONTEXT] Loaded pace settings:', settings.paceSettings);
-                }
-              } else {
-                if (DEBUG_USER_CONTEXT) {
-                  console.log('[DEBUG-USER-CONTEXT] WARNING: Settings missing pace settings!');
-                }
-                // Add default pace settings if missing
-                settings.paceSettings = DEFAULT_PACE_SETTINGS;
-              }
-            } catch (parseError) {
-              console.error('[DEBUG-USER-CONTEXT] Error parsing global settings:', parseError);
-              settings = null;
             }
+          } else if (DEBUG_USER_CONTEXT) {
+            console.log('[DEBUG-USER-CONTEXT] No global settings found');
           }
         }
         
-        // If no settings were found or there was an error, create default settings
-        if (!settings) {
+        if (settingsToLoad) {
+          // If settings exist, parse and use them
+          if (DEBUG_USER_CONTEXT) {
+            console.log('[DEBUG-USER-CONTEXT] Loading stored settings');
+          }
+          
+          if (settingsToLoad.paceSettings) {
+            if (DEBUG_USER_CONTEXT) {
+              console.log('[DEBUG-USER-CONTEXT] Loaded pace settings:', {
+                recovery: settingsToLoad.paceSettings.recovery?.speed,
+                base: settingsToLoad.paceSettings.base?.speed,
+                run: settingsToLoad.paceSettings.run?.speed,
+                sprint: settingsToLoad.paceSettings.sprint?.speed
+              });
+            }
+          } else if (DEBUG_USER_CONTEXT) {
+            console.log('[DEBUG-USER-CONTEXT] No pace settings found in loaded settings');
+          }
+          
+          setUserSettings(settingsToLoad);
+          
+          if (DEBUG_USER_CONTEXT) {
+            console.log('[DEBUG-USER-CONTEXT] User settings set to state');
+          }
+        } else {
+          // Otherwise create default settings
           if (DEBUG_USER_CONTEXT) {
             console.log('[DEBUG-USER-CONTEXT] No settings found, creating defaults');
           }
-          settings = getDefaultSettings();
+          
+          const now = new Date().toISOString();
+          const defaultSettings: UserSettings = {
+            profile: {
+              name: '',
+              dateCreated: now,
+              lastActive: now,
+            },
+            paceSettings: DEFAULT_PACE_SETTINGS,
+            preferences: DEFAULT_PREFERENCES,
+          };
+          
+          // Save default settings to storage
+          await AsyncStorage.setItem(USER_SETTINGS_KEY, JSON.stringify(defaultSettings));
+          setUserSettings(defaultSettings);
+          
+          if (DEBUG_USER_CONTEXT) {
+            console.log('[DEBUG-USER-CONTEXT] Default settings created and saved');
+          }
         }
-        
-        // Set the user settings in state
-        setUserSettings(settings);
-        
-        if (DEBUG_USER_CONTEXT) {
-          console.log('[DEBUG-USER-CONTEXT] User settings set to state');
-        }
-        
-        // Mark initialization as complete
+      } catch (err) {
+        setError('Failed to initialize user settings');
+        console.error('[DEBUG-USER-CONTEXT] Error initializing user settings:', err);
+      } finally {
         setIsLoading(false);
-        
         if (DEBUG_USER_CONTEXT) {
           console.log('[DEBUG-USER-CONTEXT] Initialization complete, isLoading set to false');
         }
-      } catch (err) {
-        console.error('[DEBUG-USER-CONTEXT] Error initializing user settings:', err);
-        setError('Failed to load user settings');
-        setIsLoading(false);
       }
     };
-    
-    initializeSettings();
+
+    initialize();
   }, []);
 
   // Save settings to storage whenever they change
@@ -782,18 +785,4 @@ const getDefaultSettings = (): UserSettings => {
     paceSettings: DEFAULT_PACE_SETTINGS,
     preferences: DEFAULT_PREFERENCES,
   };
-};
-
-// Helper function to load auth state from storage
-const loadAuthState = async (): Promise<AuthState> => {
-  try {
-    const storedAuthState = await AsyncStorage.getItem(AUTH_STATE_KEY);
-    if (storedAuthState) {
-      return JSON.parse(storedAuthState);
-    }
-    return DEFAULT_AUTH_STATE;
-  } catch (err) {
-    console.error('Error loading auth state:', err);
-    return DEFAULT_AUTH_STATE;
-  }
 };

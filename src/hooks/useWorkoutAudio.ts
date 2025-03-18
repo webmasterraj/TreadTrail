@@ -11,6 +11,7 @@ interface UseWorkoutAudioOptions {
   segmentElapsedTime: number;
   isSkipping: boolean;
   isCompleted: boolean;
+  enableAudioCues: boolean;
 }
 
 /**
@@ -24,11 +25,11 @@ export const useWorkoutAudio = (options: UseWorkoutAudioOptions) => {
     currentSegmentIndex, 
     segmentElapsedTime,
     isSkipping,
-    isCompleted
+    isCompleted,
+    enableAudioCues
   } = options;
   
   const segments = workout?.segments || [];
-  const enableAudioCues = true; // Always enable audio cues by default
   
   const countdownSoundRef = useRef<Audio.Sound | null>(null);
   const segmentAudioRef = useRef<Audio.Sound | null>(null);
