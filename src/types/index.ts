@@ -37,7 +37,7 @@ export interface UserSettings {
 }
 
 // Workout types
-export type DifficultyLevel = 'beginner' | 'intermediate' | 'advanced';
+export type DifficultyLevel = 'beginner' | 'intermediate' | 'advanced' | 'easy \ud83d\udc23' | 'trad hiit \ud83c\udfc3\ud83c\udffc' | 'hills \u26f0';
 export type WorkoutFocus = 'endurance' | 'hiit' | 'fat_burn';
 
 // Workout segment

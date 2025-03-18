@@ -490,7 +490,6 @@ const WorkoutInProgressScreen: React.FC<Props> = ({ route, navigation }) => {
       
       // Set visualization height to a reasonable value based on available space
       const newHeight = Math.max(availableHeight * 0.8, 120); // At least 120px or 80% of available space
-      console.log('Calculated visualization height:', newHeight);
       setVisualizationHeight(newHeight);
     }
   }, [timerSectionHeight, controlsSectionHeight]);
