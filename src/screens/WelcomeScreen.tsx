@@ -4,12 +4,14 @@ import {
   Text, 
   StyleSheet, 
   SafeAreaView, 
-  Image
+  ScrollView,
+  TouchableOpacity
 } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { RootStackParamList } from '../types';
-import { COLORS, FONT_SIZES, SPACING } from '../styles/theme';
+import { RootStackParamList, WorkoutSegment } from '../types';
+import { COLORS, FONT_SIZES, SPACING, BORDER_RADIUS, PACE_COLORS } from '../styles/theme';
 import Button from '../components/common/Button';
+import WorkoutVisualization from '../components/workout/WorkoutVisualization';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Welcome'>;
 
@@ -20,64 +22,171 @@ const WelcomeScreen: React.FC<Props> = ({ route, navigation }) => {
   const handleContinue = () => {
     navigation.navigate('EditPace');
   };
+
+  // Handle explore workouts button press
+  const handleExploreWorkouts = () => {
+    navigation.navigate('WorkoutLibrary');
+  };
+  
+  // Sample workout segments for visualization
+  const sampleWorkoutSegments: WorkoutSegment[] = [
+    { type: 'base', duration: 120, incline: 1 },
+    { type: 'base', duration: 120, incline: 1 },
+    { type: 'run', duration: 60, incline: 2 },
+    { type: 'run', duration: 60, incline: 2 },
+    { type: 'run', duration: 90, incline: 2 },
+    { type: 'recovery', duration: 120, incline: 1 },
+    { type: 'sprint', duration: 30, incline: 3 },
+    { type: 'sprint', duration: 60, incline: 3 },
+    { type: 'recovery', duration: 120, incline: 1 },
+    { type: 'run', duration: 60, incline: 2 },
+    { type: 'run', duration: 60, incline: 2 },
+    { type: 'base', duration: 90, incline: 1 },
+    { type: 'base', duration: 90, incline: 1 }
+  ];
   
   return (
     <SafeAreaView style={styles.container}>
-      <View style={styles.contentContainer}>
-        <Text style={styles.welcomeText}>
-          Welcome, {name}!
-        </Text>
+      <ScrollView 
+        style={styles.scrollView}
+        contentContainerStyle={styles.scrollViewContent}
+        showsVerticalScrollIndicator={false}
+      >
+        <View style={styles.headerContainer}>
+          <Text style={styles.welcomeText}>
+            Welcome to TreadTrail!
+          </Text>
+          
+          <Text style={styles.subtitle}>
+            Ready to crush the belt? This is how it works.
+          </Text>
+        </View>
         
-        <Text style={styles.subtitle}>
-          Let's get your treadmill workouts to the next level
-        </Text>
-        
-        <View style={styles.illustrationContainer}>
-          {/* This would ideally be a custom illustration */}
-          <View style={styles.placeholder}>
-            <Text style={styles.placeholderText}>🏃‍♂️</Text>
+        {/* Pace explanation section */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Understanding Paces</Text>
+          <Text style={styles.sectionText}>
+            TreadTrail workouts use four different paces that you'll customize to your fitness level:
+          </Text>
+          
+          <View style={styles.paceCardsContainer}>
+            <View style={styles.paceCard}>
+              <View style={[styles.paceIndicator, { backgroundColor: PACE_COLORS.recovery }]}>
+                <Text style={[styles.paceIndicatorText, { color: COLORS.black }]}>R</Text>
+              </View>
+              <View style={styles.paceTextContainer}>
+                <Text style={styles.paceName}>Recovery</Text>
+                <Text style={styles.paceDescription}>Easy walking pace to catch your breath</Text>
+              </View>
+            </View>
+            
+            <View style={styles.paceCard}>
+              <View style={[styles.paceIndicator, { backgroundColor: PACE_COLORS.base }]}>
+                <Text style={[styles.paceIndicatorText, { color: COLORS.black }]}>B</Text>
+              </View>
+              <View style={styles.paceTextContainer}>
+                <Text style={styles.paceName}>Base</Text>
+                <Text style={styles.paceDescription}>Comfortable jogging pace you can maintain</Text>
+              </View>
+            </View>
+            
+            <View style={styles.paceCard}>
+              <View style={[styles.paceIndicator, { backgroundColor: PACE_COLORS.run }]}>
+                <Text style={[styles.paceIndicatorText, { color: COLORS.black }]}>R</Text>
+              </View>
+              <View style={styles.paceTextContainer}>
+                <Text style={styles.paceName}>Run</Text>
+                <Text style={styles.paceDescription}>Challenging pace that pushes your limits</Text>
+              </View>
+            </View>
+            
+            <View style={styles.paceCard}>
+              <View style={[styles.paceIndicator, { backgroundColor: PACE_COLORS.sprint }]}>
+                <Text style={[styles.paceIndicatorText, { color: COLORS.black }]}>S</Text>
+              </View>
+              <View style={styles.paceTextContainer}>
+                <Text style={styles.paceName}>Sprint</Text>
+                <Text style={styles.paceDescription}>All-out effort for short bursts</Text>
+              </View>
+            </View>
+          </View>
+          
+          <View style={styles.noticeContainer}>
+            <Text style={styles.noticeText}>
+              You'll set your personal speeds for each pace in the next step. You can always adjust them later in settings.
+            </Text>
           </View>
         </View>
         
-        <View style={styles.stepsContainer}>
-          <Text style={styles.stepsTitle}>Next steps:</Text>
+        {/* Workout visualization section */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Reading the Workout</Text>
+          <Text style={styles.sectionText}>
+            Each workout is visualized as a series of bars. Here's how to read them:
+          </Text>
           
-          <View style={styles.stepItem}>
-            <View style={styles.stepNumber}>
-              <Text style={styles.stepNumberText}>1</Text>
+          <View style={styles.visualizationContainer}>
+            <View style={styles.workoutVisualizationWrapper}>
+              <WorkoutVisualization 
+                segments={sampleWorkoutSegments} 
+                containerHeight={150}
+                minutePerBar={true}
+              />
             </View>
-            <Text style={styles.stepText}>
-              Set up your personal pace settings
-            </Text>
-          </View>
-          
-          <View style={styles.stepItem}>
-            <View style={styles.stepNumber}>
-              <Text style={styles.stepNumberText}>2</Text>
+            
+            <View style={styles.annotationsContainer}>
+              <View style={styles.annotationItem}>
+                <View style={[styles.annotationIndicator, { backgroundColor: PACE_COLORS.run }]} />
+                <Text style={styles.annotationText}>Color = Pace</Text>
+              </View>
+              
+              <View style={styles.annotationItem}>
+                <View style={styles.heightAnnotation}>
+                  <View style={styles.heightLine} />
+                  <View style={styles.heightArrow} />
+                </View>
+                <Text style={styles.annotationText}>Height = Incline</Text>
+              </View>
+              
+              <View style={styles.annotationItem}>
+                <View style={styles.spaceAnnotation}>
+                  <View style={styles.spaceLine} />
+                  <View style={styles.spaceArrow} />
+                </View>
+                <Text style={styles.annotationText}>Space = Duration</Text>
+              </View>
             </View>
-            <Text style={styles.stepText}>
-              Browse the workout library
-            </Text>
-          </View>
-          
-          <View style={styles.stepItem}>
-            <View style={styles.stepNumber}>
-              <Text style={styles.stepNumberText}>3</Text>
+            
+            <View style={styles.legendContainer}>
+              {Object.entries(PACE_COLORS).map(([type, color]) => (
+                <View key={type} style={styles.legendItem}>
+                  <View style={[styles.legendColor, { backgroundColor: color }]} />
+                  <Text style={styles.legendText}>
+                    {type.charAt(0).toUpperCase() + type.slice(1)}
+                  </Text>
+                </View>
+              ))}
             </View>
-            <Text style={styles.stepText}>
-              Start your first interval workout
-            </Text>
           </View>
         </View>
-      </View>
+      </ScrollView>
       
       <View style={styles.buttonContainer}>
         <Button 
-          title="Continue to Pace Settings" 
+          title="Explore Workouts" 
+          onPress={handleExploreWorkouts}
+          type="secondary"
+          size="large"
+          fullWidth
+          style={styles.exploreButton}
+        />
+        <Button 
+          title="Customize Paces Now" 
           onPress={handleContinue}
           type="accent"
           size="large"
           fullWidth
+          style={styles.customizeButton}
         />
       </View>
     </SafeAreaView>
@@ -88,11 +197,17 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: COLORS.black,
-    padding: SPACING.large,
   },
-  contentContainer: {
+  scrollView: {
     flex: 1,
-    justifyContent: 'center',
+  },
+  scrollViewContent: {
+    padding: SPACING.large,
+    paddingBottom: SPACING.xxl,
+  },
+  headerContainer: {
+    alignItems: 'center',
+    marginBottom: SPACING.xl,
   },
   welcomeText: {
     color: COLORS.white,
@@ -106,58 +221,183 @@ const styles = StyleSheet.create({
     fontSize: FONT_SIZES.large,
     textAlign: 'center',
     opacity: 0.8,
+  },
+  section: {
     marginBottom: SPACING.xl,
   },
-  illustrationContainer: {
-    alignItems: 'center',
-    marginBottom: SPACING.xl,
-  },
-  placeholder: {
-    width: 150,
-    height: 150,
-    borderRadius: 75,
-    backgroundColor: COLORS.darkGray,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  placeholderText: {
-    fontSize: 70,
-  },
-  stepsContainer: {
-    marginBottom: SPACING.xl,
-  },
-  stepsTitle: {
+  sectionTitle: {
     color: COLORS.white,
-    fontSize: FONT_SIZES.large,
+    fontSize: FONT_SIZES.xl,
     fontWeight: 'bold',
     marginBottom: SPACING.medium,
   },
-  stepItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
+  sectionText: {
+    color: COLORS.white,
+    fontSize: FONT_SIZES.medium,
+    opacity: 0.9,
+    marginBottom: SPACING.medium,
+    lineHeight: 22,
+  },
+  paceCardsContainer: {
     marginBottom: SPACING.medium,
   },
-  stepNumber: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: COLORS.accent,
+  paceCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.mediumGray,
+    borderRadius: BORDER_RADIUS.card,
+    padding: SPACING.medium,
+    marginBottom: SPACING.small,
+  },
+  paceIndicator: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: SPACING.medium,
   },
-  stepNumberText: {
-    color: COLORS.black,
-    fontSize: FONT_SIZES.medium,
+  paceIndicatorText: {
     fontWeight: 'bold',
+    fontSize: FONT_SIZES.medium,
   },
-  stepText: {
+  paceTextContainer: {
+    flex: 1,
+  },
+  paceName: {
     color: COLORS.white,
     fontSize: FONT_SIZES.medium,
+    fontWeight: 'bold',
+    marginBottom: 2,
+  },
+  paceDescription: {
+    color: COLORS.white,
+    fontSize: FONT_SIZES.small,
+    opacity: 0.7,
+  },
+  noticeContainer: {
+    backgroundColor: COLORS.lightGray,
+    borderRadius: BORDER_RADIUS.card,
+    padding: SPACING.medium,
+  },
+  noticeText: {
+    color: COLORS.white,
+    fontSize: FONT_SIZES.small,
+    opacity: 0.9,
+    lineHeight: 20,
+  },
+  visualizationContainer: {
+    backgroundColor: COLORS.mediumGray,
+    borderRadius: BORDER_RADIUS.card,
+    padding: SPACING.medium,
+    marginTop: SPACING.small,
+  },
+  workoutVisualizationWrapper: {
+    height: 150,
+    marginBottom: SPACING.medium,
+  },
+  annotationsContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: SPACING.medium,
+    paddingHorizontal: SPACING.small,
+  },
+  annotationItem: {
+    alignItems: 'center',
+    flex: 1,
+  },
+  annotationIndicator: {
+    width: 20,
+    height: 20,
+    borderRadius: 3,
+    marginBottom: 5,
+  },
+  heightAnnotation: {
+    height: 20,
+    width: 4,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 5,
+  },
+  heightLine: {
+    height: 20,
+    width: 2,
+    backgroundColor: COLORS.white,
+  },
+  heightArrow: {
+    position: 'absolute',
+    top: -5,
+    width: 0,
+    height: 0,
+    borderLeftWidth: 5,
+    borderRightWidth: 5,
+    borderBottomWidth: 5,
+    borderLeftColor: 'transparent',
+    borderRightColor: 'transparent',
+    borderBottomColor: COLORS.white,
+    transform: [{ rotate: '180deg' }],
+  },
+  spaceAnnotation: {
+    width: 20,
+    height: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 5,
+  },
+  spaceLine: {
+    height: 2,
+    width: 20,
+    backgroundColor: COLORS.white,
+  },
+  spaceArrow: {
+    position: 'absolute',
+    right: -5,
+    width: 0,
+    height: 0,
+    borderTopWidth: 5,
+    borderBottomWidth: 5,
+    borderLeftWidth: 5,
+    borderTopColor: 'transparent',
+    borderBottomColor: 'transparent',
+    borderLeftColor: COLORS.white,
+  },
+  annotationText: {
+    color: COLORS.white,
+    fontSize: FONT_SIZES.xs,
+    textAlign: 'center',
+  },
+  legendContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    flexWrap: 'wrap',
+    paddingHorizontal: SPACING.small,
+  },
+  legendItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginRight: SPACING.medium,
+    marginBottom: SPACING.small,
+  },
+  legendColor: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    marginRight: 5,
+  },
+  legendText: {
+    color: COLORS.white,
+    fontSize: FONT_SIZES.xs,
   },
   buttonContainer: {
-    marginTop: SPACING.large,
+    padding: SPACING.large,
+    paddingTop: SPACING.medium,
+    backgroundColor: COLORS.black,
+  },
+  exploreButton: {
     marginBottom: SPACING.medium,
+  },
+  customizeButton: {
+    marginBottom: SPACING.small,
   },
 });
 

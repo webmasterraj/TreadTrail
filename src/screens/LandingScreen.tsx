@@ -128,7 +128,7 @@ const LandingScreen: React.FC<Props> = ({ navigation }) => {
                 <AppleAuthentication.AppleAuthenticationButton
                   buttonType={AppleAuthentication.AppleAuthenticationButtonType.SIGN_IN}
                   buttonStyle={AppleAuthentication.AppleAuthenticationButtonStyle.BLACK}
-                  cornerRadius={BORDER_RADIUS.medium}
+                  cornerRadius={BORDER_RADIUS.button}
                   style={styles.appleButton}
                   onPress={handleAppleSignIn}
                 />
@@ -192,6 +192,7 @@ const styles = StyleSheet.create({
   },
   logoContainer: {
     paddingTop: 60,
+    width: '100%',
   },
   logo: {
     color: COLORS.white,
@@ -214,7 +215,7 @@ const styles = StyleSheet.create({
     color: COLORS.accent,
   },
   subtitle: {
-    color: COLORS.lightGray,
+    color: COLORS.white,
     fontSize: 16,
     textAlign: 'center',
     marginBottom: 40,
@@ -222,26 +223,23 @@ const styles = StyleSheet.create({
   },
   buttonContainer: {
     width: '100%',
-    marginBottom: 16,
+    marginBottom: 8, // Reduced from 16
   },
   appleButton: {
     width: '100%',
     height: 50,
-    marginBottom: 16,
+    marginBottom: 8, // Reduced from 16
   },
   browseButton: {
-    backgroundColor: 'transparent',
     borderWidth: 1,
     borderColor: COLORS.lightGray,
+    // backgroundColor: 'transparent',
   },
   browseButtonText: {
     color: COLORS.white,
   },
-  testUserButton: {
-    marginBottom: 16,
-  },
   terms: {
-    color: COLORS.lightGray,
+    color: COLORS.white,
     fontSize: 12,
     textAlign: 'center',
     marginTop: 16,
