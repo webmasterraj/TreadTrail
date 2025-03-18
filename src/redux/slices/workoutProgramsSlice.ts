@@ -57,18 +57,9 @@ export const fetchWorkoutPrograms = createAsyncThunk(
   'workoutPrograms/fetch',
   async (_, { rejectWithValue }) => {
     try {
-      // Load workout programs from storage
-      const storedPrograms = await AsyncStorage.getItem(WORKOUT_PROGRAMS_KEY);
-      if (storedPrograms) {
-        return JSON.parse(storedPrograms) as WorkoutProgram[];
-      } else {
-        // If no programs exist, use default ones
-        await AsyncStorage.setItem(
-          WORKOUT_PROGRAMS_KEY,
-          JSON.stringify(DEFAULT_WORKOUT_PROGRAMS)
-        );
-        return DEFAULT_WORKOUT_PROGRAMS;
-      }
+      // Always use default workout programs
+      console.log('[workoutProgramsSlice] Using default workout programs');
+      return DEFAULT_WORKOUT_PROGRAMS;
     } catch (error) {
       return rejectWithValue('Failed to fetch workout programs');
     }

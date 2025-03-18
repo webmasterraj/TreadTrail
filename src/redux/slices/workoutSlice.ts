@@ -75,8 +75,8 @@ export const skipSegment = createAsyncThunk(
     const state = getState() as { workout: WorkoutState };
     const { workout } = state;
     
-    // Prevent skipping if already skipping or no active workout
-    if (workout.isSkipping || !workout.activeWorkout) {
+    // Prevent skipping if no active workout
+    if (!workout.activeWorkout) {
       return rejectWithValue('Cannot skip segment');
     }
     

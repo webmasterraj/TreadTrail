@@ -64,7 +64,7 @@ export const useWorkoutAudio = (options: UseWorkoutAudioOptions) => {
       // Duration of countdown sound (approximately 3 seconds)
       const countdownDuration = 3;
       // Buffer time between voice audio and countdown (0.5 seconds)
-      const bufferTime = 0.0;
+      const bufferTime = 0.5;
       
       // Calculate when to start the segment audio based on its duration
       // We want to ensure it finishes with enough time for the countdown to play

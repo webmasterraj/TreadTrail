@@ -64,6 +64,7 @@ const WorkoutInProgressScreen: React.FC<Props> = ({ route, navigation }) => {
   // Refs to handle skipping segments properly
   const skipActionRef = useRef(false);
   const prevSegmentIndexRef = useRef(0);
+  const prevIsSkippingRef = useRef(false);
   
   // Redux state
   const dispatch = useAppDispatch();
@@ -90,7 +91,9 @@ const WorkoutInProgressScreen: React.FC<Props> = ({ route, navigation }) => {
   // Get user preferences from context
   const { userSettings } = useContext(UserContext);
   const preferences = userSettings?.preferences || { enableAudioCues: true, units: 'imperial', darkMode: false };
-  console.log(`[WorkoutScreen] User preferences loaded: ${JSON.stringify(preferences)}`);
+  useEffect(() => {
+    console.log(`[WorkoutScreen] User preferences loaded: ${JSON.stringify(preferences)}`);
+  }, []);
   const paceSettings = userSettings?.paceSettings || { recovery: { speed: 3, incline: 1 }, base: { speed: 5, incline: 1 }, run: { speed: 7, incline: 2 }, sprint: { speed: 9, incline: 2 } };
 
   // Initialize audio for workout
@@ -308,6 +311,16 @@ const WorkoutInProgressScreen: React.FC<Props> = ({ route, navigation }) => {
     if (!isSkipping && skipActionRef.current) {
       skipActionRef.current = false;
     }
+    
+    // If skipping was true and is now false, we can reset the skip state
+    if (!isSkipping && prevIsSkippingRef.current) {
+      prevIsSkippingRef.current = false;
+      // This allows the next skip action to proceed
+      console.log('[WorkoutScreen] Skip state reset, ready for next skip');
+    }
+    
+    // Update previous skipping state
+    prevIsSkippingRef.current = isSkipping;
   }, [isSkipping]);
 
   // Handle pause button press
@@ -335,10 +348,21 @@ const WorkoutInProgressScreen: React.FC<Props> = ({ route, navigation }) => {
 
   // Handle skip button press
   const handleSkip = () => {
-    if (!isWorkoutActive || isSkipping) return;
+    if (!isWorkoutActive) return;
+    
+    // Don't skip if we're on the last segment
+    if (currentSegmentIndex >= activeWorkout.segments.length - 1) {
+      console.log('[WorkoutScreen] Cannot skip - already on last segment');
+      return;
+    }
     
     skipActionRef.current = true;
     dispatch(skipSegmentAction());
+    
+    // Reset skip state after a short delay to allow for multiple skips
+    setTimeout(() => {
+      dispatch(resetSkipState());
+    }, 100);
     
     // Stop any playing audio
     if (audioEnabled) {
@@ -461,6 +485,9 @@ const WorkoutInProgressScreen: React.FC<Props> = ({ route, navigation }) => {
   const nextSegment = currentSegmentIndex < activeWorkout.segments.length - 1 
     ? activeWorkout.segments[currentSegmentIndex + 1] 
     : null;
+    
+  // Check if we're on the last segment
+  const isLastSegment = currentSegmentIndex === activeWorkout.segments.length - 1;
 
   return (
     <View style={styles.container}>
@@ -568,12 +595,19 @@ const WorkoutInProgressScreen: React.FC<Props> = ({ route, navigation }) => {
                 <Text style={styles.pauseButtonText}>Pause</Text>
               </TouchableOpacity>
               <TouchableOpacity 
-                style={[styles.button, styles.skipButton, isSkipping && styles.disabledButton]} 
+                style={[
+                  styles.button, 
+                  styles.skipButton, 
+                  (isSkipping || isLastSegment) && styles.disabledButton
+                ]} 
                 onPress={handleSkip}
-                disabled={isSkipping || isPaused}
+                disabled={isSkipping || isPaused || isLastSegment}
                 testID="skip-button"
               >
-                <Text style={styles.buttonText}>Skip</Text>
+                <Text style={[
+                  styles.buttonText,
+                  isLastSegment && styles.disabledButtonText
+                ]}>Skip</Text>
               </TouchableOpacity>
             </View>
             <TouchableOpacity 
@@ -876,6 +910,9 @@ const styles = StyleSheet.create({
   },
   disabledButton: {
     opacity: 0.5,
+  },
+  disabledButtonText: {
+    color: COLORS.mediumGray,
   },
   endButton: {
     backgroundColor: 'rgba(255, 0, 0, 0.15)', // Exact value from mockup
