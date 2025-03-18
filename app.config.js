@@ -18,7 +18,8 @@ module.exports = {
   ios: {
     supportsTablet: true,
     bundleIdentifier: 'com.treadtrail.app',
-    jsEngine: 'hermes'
+    jsEngine: 'hermes',
+    deploymentTarget: '16.0'    
   },
   android: {
     adaptiveIcon: {
