@@ -100,19 +100,15 @@ const WorkoutInProgressScreen: React.FC<Props> = ({ route, navigation }) => {
   useEffect(() => {
     const setupAudio = async () => {
       try {
-        console.log("[WorkoutScreen] Setting up audio");
         // We don't need to explicitly request permissions here anymore
         // as they will be handled by the system based on the app.json configuration
         // and in the useWorkoutAudio hook
         
         // Check if audio is enabled in device settings
         const { granted } = await Audio.getPermissionsAsync();
-        console.log(`[WorkoutScreen] Audio permissions status: ${granted ? 'granted' : 'not granted'}`);
         
         if (!granted) {
-          console.log("[WorkoutScreen] Requesting audio permissions");
           const { granted: newGranted } = await Audio.requestPermissionsAsync();
-          console.log(`[WorkoutScreen] Audio permissions after request: ${newGranted ? 'granted' : 'not granted'}`);
           
           if (!newGranted) {
             Alert.alert(
@@ -132,7 +128,6 @@ const WorkoutInProgressScreen: React.FC<Props> = ({ route, navigation }) => {
           interruptionModeAndroid: InterruptionModeAndroid.DuckOthers,
           playThroughEarpieceAndroid: false
         });
-        console.log("[WorkoutScreen] Audio mode set successfully");
         
       } catch (error) {
         console.error("[WorkoutScreen] Error setting up audio:", error);
@@ -220,7 +215,6 @@ const WorkoutInProgressScreen: React.FC<Props> = ({ route, navigation }) => {
           const segment = activeWorkout.segments[i];
           if (segment.audio && segment.audio.uri) {
             try {
-              console.log(`Loading audio for segment ${i}: ${segment.audio.uri}`);
               const { sound } = await Audio.Sound.createAsync({ uri: segment.audio.uri });
               sounds[`segment-${i}`] = sound;
             } catch (e) {
@@ -228,7 +222,7 @@ const WorkoutInProgressScreen: React.FC<Props> = ({ route, navigation }) => {
             }
           }
         }
-        console.log(`Loaded ${Object.keys(sounds).length} audio files`);
+        
       } catch (e) {
         console.error("Error loading segment audio:", e);
       }
@@ -281,7 +275,6 @@ const WorkoutInProgressScreen: React.FC<Props> = ({ route, navigation }) => {
           const sound = sounds[soundKey];
           
           if (sound) {
-            console.log(`Playing voiceover for segment ${currentSegmentIndex + 1}`);
             audioPlayingRef.current = soundKey;
             try {
               await sound.playAsync();
@@ -315,8 +308,6 @@ const WorkoutInProgressScreen: React.FC<Props> = ({ route, navigation }) => {
     // If skipping was true and is now false, we can reset the skip state
     if (!isSkipping && prevIsSkippingRef.current) {
       prevIsSkippingRef.current = false;
-      // This allows the next skip action to proceed
-      console.log('[WorkoutScreen] Skip state reset, ready for next skip');
     }
     
     // Update previous skipping state
