@@ -1,4 +1,4 @@
-import React, {useContext} from 'react';
+import React, {useContext, useEffect, useState} from 'react';
 import {
   View,
   Text,
@@ -9,6 +9,8 @@ import {
   Alert,
   Linking,
   Switch,
+  ActivityIndicator,
+  Button,
 } from 'react-native';
 import {NativeStackScreenProps} from '@react-navigation/native-stack';
 import {RootStackParamList} from '../types';
@@ -21,8 +23,33 @@ type Props = NativeStackScreenProps<RootStackParamList, 'Settings'>;
 const APP_VERSION = '1.0.0';
 const BUILD_NUMBER = '42';
 
+// Debug flag - set to false to disable debug logs
+const DEBUG_SETTINGS = true;
+
 const SettingsScreen: React.FC<Props> = ({navigation}) => {
-  const {authState, signOut, preferences, updatePreference} = useContext(UserContext);
+  const {authState, signOut, preferences, updatePreference, isLoading, userSettings} = useContext(UserContext);
+  const [isError, setIsError] = useState(false);
+
+  // Add debug logging on component mount
+  useEffect(() => {
+    if (DEBUG_SETTINGS) {
+      console.log('[DEBUG-SETTINGS] SettingsScreen mounted');
+      console.log('[DEBUG-SETTINGS] isLoading:', isLoading);
+      console.log('[DEBUG-SETTINGS] userSettings:', userSettings ? 'exists' : 'null');
+      console.log('[DEBUG-SETTINGS] preferences from context:', preferences ? 'exists' : 'undefined');
+      console.log('[DEBUG-SETTINGS] userSettings.preferences:', userSettings?.preferences ? 'exists' : 'undefined');
+      
+      if (preferences) {
+        console.log('[DEBUG-SETTINGS] preferences object:', JSON.stringify(preferences));
+        console.log('[DEBUG-SETTINGS] enableAudioCues from preferences:', preferences.enableAudioCues);
+      }
+      
+      if (userSettings?.preferences) {
+        console.log('[DEBUG-SETTINGS] preferences from userSettings:', JSON.stringify(userSettings.preferences));
+        console.log('[DEBUG-SETTINGS] enableAudioCues from userSettings.preferences:', userSettings.preferences.enableAudioCues);
+      }
+    }
+  }, [isLoading, userSettings, preferences]);
 
   // Handle sign out
   const handleSignOut = async () => {
@@ -65,8 +92,58 @@ const SettingsScreen: React.FC<Props> = ({navigation}) => {
 
   // Toggle audio cues
   const toggleAudioCues = (value: boolean) => {
+    if (DEBUG_SETTINGS) {
+      console.log('[DEBUG-SETTINGS] toggleAudioCues called with value:', value);
+      console.log('[DEBUG-SETTINGS] userSettings at toggle time:', userSettings ? 'exists' : 'null');
+      console.log('[DEBUG-SETTINGS] preferences at toggle time:', preferences ? 'exists' : 'undefined');
+    }
+    
+    if (!userSettings || !userSettings.preferences) {
+      console.error('[DEBUG-SETTINGS] Cannot toggle audio cues: userSettings or preferences is undefined');
+      return;
+    }
+    
     updatePreference('enableAudioCues', value);
   };
+
+  // Render the settings screen
+  if (isLoading) {
+    if (DEBUG_SETTINGS) {
+      console.log('[DEBUG-SETTINGS] Rendering loading state');
+    }
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color={COLORS.accent} />
+        <Text style={styles.loadingText}>Loading settings...</Text>
+      </View>
+    );
+  }
+
+  // Safety check to ensure we have user settings and preferences before rendering
+  if (!userSettings || !preferences) {
+    if (DEBUG_SETTINGS) {
+      console.log('[DEBUG-SETTINGS] Rendering error state');
+      console.log('[DEBUG-SETTINGS] userSettings:', userSettings ? 'exists' : 'null');
+      console.log('[DEBUG-SETTINGS] preferences:', preferences ? 'exists' : 'undefined');
+    }
+    return (
+      <View style={styles.loadingContainer}>
+        <Text style={styles.errorText}>Error loading settings</Text>
+        <Button 
+          title="Retry" 
+          onPress={() => {
+            // Force a re-render by toggling the error state
+            setIsError(true);
+            setTimeout(() => setIsError(false), 500);
+          }} 
+        />
+      </View>
+    );
+  }
+
+  if (DEBUG_SETTINGS) {
+    console.log('[DEBUG-SETTINGS] Rendering full settings screen');
+  }
 
   return (
     <SafeAreaView style={styles.container}>
@@ -109,10 +186,10 @@ const SettingsScreen: React.FC<Props> = ({navigation}) => {
               <Text style={styles.itemLabel}>Audio Cues</Text>
               <Switch
                 trackColor={{ false: COLORS.darkGray, true: COLORS.accent }}
-                thumbColor={preferences.enableAudioCues ? COLORS.white : COLORS.lightGray}
+                thumbColor={userSettings?.preferences?.enableAudioCues ? COLORS.white : COLORS.lightGray}
                 ios_backgroundColor={COLORS.darkGray}
                 onValueChange={toggleAudioCues}
-                value={preferences.enableAudioCues}
+                value={userSettings?.preferences?.enableAudioCues}
                 testID="audio-cues-toggle"
               />
             </View>
@@ -268,6 +345,21 @@ const styles = StyleSheet.create({
     color: COLORS.accent,
     fontSize: FONT_SIZES.small,
     fontWeight: '500',
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loadingText: {
+    color: COLORS.white,
+    fontSize: FONT_SIZES.medium,
+    marginTop: SPACING.medium,
+  },
+  errorText: {
+    color: COLORS.white,
+    fontSize: FONT_SIZES.medium,
+    marginBottom: SPACING.medium,
   },
 });
 

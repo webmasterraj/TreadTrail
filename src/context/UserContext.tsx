@@ -6,6 +6,9 @@ import { v4 as uuidv4 } from 'uuid';
 import { Platform } from 'react-native';
 import * as AppleAuthentication from 'expo-apple-authentication';
 
+// Debug flag - set to false to disable debug logs
+const DEBUG_USER_CONTEXT = true;
+
 // Default pace settings
 const DEFAULT_PACE_SETTINGS = {
   recovery: { speed: 3.0, incline: 1.0 },
@@ -52,6 +55,8 @@ interface UserContextType {
   resetToDefault: () => Promise<void>;
   // Add the saveSettings function to allow direct saving
   saveSettings: (settings: UserSettings) => Promise<boolean>;
+  // Add preferences directly to the context
+  preferences: UserPreferences;
 }
 
 // Create the context
@@ -69,6 +74,7 @@ export const UserContext = createContext<UserContextType>({
   updatePreference: async () => {},
   resetToDefault: async () => {},
   saveSettings: async () => false,
+  preferences: DEFAULT_PREFERENCES,
 });
 
 // Provider component
@@ -84,107 +90,201 @@ export const UserProvider: React.FC<UserProviderProps> = ({ children }) => {
 
   // Initialize settings and auth state when component mounts
   useEffect(() => {
-    const initialize = async () => {
+    const initializeSettings = async () => {
       try {
-        setIsLoading(true);
-        
-        // Load auth state from storage
-        const storedAuthState = await AsyncStorage.getItem(AUTH_STATE_KEY);
-        let loadedAuthState = DEFAULT_AUTH_STATE;
-        
-        if (storedAuthState) {
-          loadedAuthState = JSON.parse(storedAuthState);
-          setAuthState(loadedAuthState);
+        if (DEBUG_USER_CONTEXT) {
+          console.log('[DEBUG-USER-CONTEXT] Starting initialization');
         }
         
-        // Try to load user-specific settings if authenticated
-        let settingsToLoad = null;
-        if (loadedAuthState.isAuthenticated && loadedAuthState.user?.id) {
-          console.log(`[DEBUG-INIT] Checking for user-specific settings for ${loadedAuthState.user.id}`);
-          const userKey = getUserSettingsKey(loadedAuthState.user.id);
+        // Load auth state first
+        const storedAuthState = await loadAuthState();
+        setAuthState(storedAuthState);
+        
+        if (DEBUG_USER_CONTEXT) {
+          console.log('[DEBUG-USER-CONTEXT] Loaded auth state, isAuthenticated:', storedAuthState.isAuthenticated);
+        }
+        
+        // Check for user-specific settings if user is authenticated
+        let settings = null;
+        
+        if (storedAuthState.isAuthenticated && storedAuthState.user?.id) {
+          const userId = storedAuthState.user.id;
+          
+          if (DEBUG_USER_CONTEXT) {
+            console.log(`[DEBUG-USER-CONTEXT] Checking for user-specific settings for ${userId}`);
+          }
+          
+          const userKey = getUserSettingsKey(userId);
           const userSpecificSettings = await AsyncStorage.getItem(userKey);
           
           if (userSpecificSettings) {
-            console.log(`[DEBUG-INIT] Found user-specific settings for ${loadedAuthState.user.id}`);
-            settingsToLoad = JSON.parse(userSpecificSettings);
+            if (DEBUG_USER_CONTEXT) {
+              console.log(`[DEBUG-USER-CONTEXT] Found user-specific settings for ${userId}`);
+            }
+            
+            try {
+              settings = JSON.parse(userSpecificSettings);
+              
+              // Validate the structure of the user settings
+              if (DEBUG_USER_CONTEXT) {
+                console.log('[DEBUG-USER-CONTEXT] User settings structure:', {
+                  hasPaceSettings: !!settings.paceSettings,
+                  hasPreferences: !!settings.preferences,
+                  hasProfile: !!settings.profile,
+                });
+                
+                if (settings.preferences) {
+                  console.log('[DEBUG-USER-CONTEXT] User preferences:', settings.preferences);
+                } else {
+                  console.log('[DEBUG-USER-CONTEXT] WARNING: User settings missing preferences!');
+                  // Add default preferences if missing
+                  settings.preferences = DEFAULT_PREFERENCES;
+                  console.log('[DEBUG-USER-CONTEXT] Added default preferences:', settings.preferences);
+                }
+              }
+            } catch (parseError) {
+              console.error('[DEBUG-USER-CONTEXT] Error parsing user-specific settings:', parseError);
+              // If there's an error parsing, we'll fall back to global settings
+              settings = null;
+            }
+          } else {
+            if (DEBUG_USER_CONTEXT) {
+              console.log(`[DEBUG-USER-CONTEXT] No user-specific settings found for ${userId}`);
+            }
           }
         }
         
-        // If no user-specific settings, try global settings
-        if (!settingsToLoad) {
-          console.log('[DEBUG-INIT] No user-specific settings found, trying global settings');
+        // If no user-specific settings were found, try to load global settings
+        if (!settings) {
+          if (DEBUG_USER_CONTEXT) {
+            console.log('[DEBUG-USER-CONTEXT] Loading stored settings');
+          }
+          
           const storedSettings = await AsyncStorage.getItem(USER_SETTINGS_KEY);
           
           if (storedSettings) {
-            settingsToLoad = JSON.parse(storedSettings);
+            try {
+              settings = JSON.parse(storedSettings);
+              
+              // Validate global settings structure
+              if (DEBUG_USER_CONTEXT) {
+                console.log('[DEBUG-USER-CONTEXT] Global settings structure:', {
+                  hasPaceSettings: !!settings.paceSettings,
+                  hasPreferences: !!settings.preferences,
+                  hasProfile: !!settings.profile,
+                });
+                
+                if (settings.preferences) {
+                  console.log('[DEBUG-USER-CONTEXT] Global preferences:', settings.preferences);
+                } else {
+                  console.log('[DEBUG-USER-CONTEXT] WARNING: Global settings missing preferences!');
+                  // Add default preferences if missing
+                  settings.preferences = DEFAULT_PREFERENCES;
+                  console.log('[DEBUG-USER-CONTEXT] Added default preferences:', settings.preferences);
+                }
+              }
+              
+              // Log pace settings
+              if (settings.paceSettings) {
+                if (DEBUG_USER_CONTEXT) {
+                  console.log('[DEBUG-USER-CONTEXT] Loaded pace settings:', settings.paceSettings);
+                }
+              } else {
+                if (DEBUG_USER_CONTEXT) {
+                  console.log('[DEBUG-USER-CONTEXT] WARNING: Settings missing pace settings!');
+                }
+                // Add default pace settings if missing
+                settings.paceSettings = DEFAULT_PACE_SETTINGS;
+              }
+            } catch (parseError) {
+              console.error('[DEBUG-USER-CONTEXT] Error parsing global settings:', parseError);
+              settings = null;
+            }
           }
         }
         
-        if (settingsToLoad) {
-          // If settings exist, parse and use them
-          console.log('[DEBUG-INIT] Loading stored settings');
-          if (settingsToLoad.paceSettings) {
-            console.log('[DEBUG-INIT] Loaded pace settings:', {
-              recovery: settingsToLoad.paceSettings.recovery?.speed,
-              base: settingsToLoad.paceSettings.base?.speed,
-              run: settingsToLoad.paceSettings.run?.speed,
-              sprint: settingsToLoad.paceSettings.sprint?.speed
-            });
+        // If no settings were found or there was an error, create default settings
+        if (!settings) {
+          if (DEBUG_USER_CONTEXT) {
+            console.log('[DEBUG-USER-CONTEXT] No settings found, creating defaults');
           }
-          setUserSettings(settingsToLoad);
-        } else {
-          // Otherwise create default settings
-          console.log('[DEBUG-INIT] No settings found, creating defaults');
-          const now = new Date().toISOString();
-          const defaultSettings: UserSettings = {
-            profile: {
-              name: '',
-              dateCreated: now,
-              lastActive: now,
-            },
-            paceSettings: DEFAULT_PACE_SETTINGS,
-            preferences: DEFAULT_PREFERENCES,
-          };
-          
-          // Save default settings to storage
-          await AsyncStorage.setItem(USER_SETTINGS_KEY, JSON.stringify(defaultSettings));
-          setUserSettings(defaultSettings);
+          settings = getDefaultSettings();
+        }
+        
+        // Set the user settings in state
+        setUserSettings(settings);
+        
+        if (DEBUG_USER_CONTEXT) {
+          console.log('[DEBUG-USER-CONTEXT] User settings set to state');
+        }
+        
+        // Mark initialization as complete
+        setIsLoading(false);
+        
+        if (DEBUG_USER_CONTEXT) {
+          console.log('[DEBUG-USER-CONTEXT] Initialization complete, isLoading set to false');
         }
       } catch (err) {
-        setError('Failed to initialize user settings');
-        console.error('Error initializing user settings:', err);
-      } finally {
+        console.error('[DEBUG-USER-CONTEXT] Error initializing user settings:', err);
+        setError('Failed to load user settings');
         setIsLoading(false);
       }
     };
-
-    initialize();
+    
+    initializeSettings();
   }, []);
 
   // Save settings to storage whenever they change
   const saveSettings = async (settings: UserSettings) => {
     try {
-      console.log('[DEBUG-CONTEXT] Saving settings to AsyncStorage');
+      if (DEBUG_USER_CONTEXT) {
+        console.log('[DEBUG-USER-CONTEXT] saveSettings called');
+        console.log('[DEBUG-USER-CONTEXT] Settings to save:', {
+          hasProfile: !!settings.profile,
+          hasPaceSettings: !!settings.paceSettings,
+          hasPreferences: !!settings.preferences,
+        });
+        
+        if (settings.preferences) {
+          console.log('[DEBUG-USER-CONTEXT] Preferences to save:', settings.preferences);
+        } else {
+          console.log('[DEBUG-USER-CONTEXT] WARNING: Trying to save settings without preferences!');
+        }
+      }
       
       // Always save to global settings
       await AsyncStorage.setItem(USER_SETTINGS_KEY, JSON.stringify(settings));
       
+      if (DEBUG_USER_CONTEXT) {
+        console.log('[DEBUG-USER-CONTEXT] Saved to global settings');
+      }
+      
       // If user is logged in, also save user-specific settings
       if (authState.isAuthenticated && authState.user?.id) {
         const userKey = getUserSettingsKey(authState.user.id);
-        console.log(`[DEBUG-CONTEXT] Saving user-specific settings for ${authState.user.id}`);
+        if (DEBUG_USER_CONTEXT) {
+          console.log(`[DEBUG-USER-CONTEXT] Saving user-specific settings for ${authState.user.id}`);
+        }
         await AsyncStorage.setItem(userKey, JSON.stringify(settings));
+        
+        if (DEBUG_USER_CONTEXT) {
+          console.log('[DEBUG-USER-CONTEXT] Saved to user-specific settings');
+        }
       }
       
       // Important: Update the React state with the new settings
-      console.log('[DEBUG-CONTEXT] Updating userSettings state');
+      if (DEBUG_USER_CONTEXT) {
+        console.log('[DEBUG-USER-CONTEXT] Updating userSettings state');
+      }
       setUserSettings({...settings});
       
-      console.log('[DEBUG-CONTEXT] Save complete');
+      if (DEBUG_USER_CONTEXT) {
+        console.log('[DEBUG-USER-CONTEXT] Save complete');
+      }
       return true;
     } catch (err) {
       setError('Failed to save user settings');
-      console.error('Error saving user settings:', err);
+      console.error('[DEBUG-USER-CONTEXT] Error saving user settings:', err);
       return false;
     }
   };
@@ -302,11 +402,17 @@ export const UserProvider: React.FC<UserProviderProps> = ({ children }) => {
       const userSpecificSettings = await AsyncStorage.getItem(userKey);
       
       if (userSpecificSettings) {
+        if (DEBUG_USER_CONTEXT) {
+          console.log(`[DEBUG-SIGNIN] Found user-specific settings for ${userData.id}`);
+        }
         // Use user's previously saved settings
         const parsedUserSettings = JSON.parse(userSpecificSettings);
         setUserSettings(parsedUserSettings);
       } else if (userSettings) {
         // Otherwise update current settings with user info
+        if (DEBUG_USER_CONTEXT) {
+          console.log('[DEBUG-SIGNIN] No user-specific settings found, updating current settings with user info');
+        }
         const now = new Date().toISOString();
         const updatedSettings = {
           ...userSettings,
@@ -401,6 +507,20 @@ export const UserProvider: React.FC<UserProviderProps> = ({ children }) => {
       setAuthState(newAuthState);
       await saveAuthState(newAuthState);
       
+      // Load user-specific settings if they exist
+      const userKey = getUserSettingsKey(appleUserId);
+      const userSpecificSettings = await AsyncStorage.getItem(userKey);
+      
+      if (userSpecificSettings) {
+        if (DEBUG_USER_CONTEXT) {
+          console.log(`[DEBUG-APPLE-SIGNIN] Found user-specific settings for ${appleUserId}`);
+        }
+        // Use user's previously saved settings
+        const parsedUserSettings = JSON.parse(userSpecificSettings);
+        setUserSettings(parsedUserSettings);
+        return true;
+      }
+      
       // Update user settings
       if (userSettings) {
         const now = new Date().toISOString();
@@ -412,6 +532,10 @@ export const UserProvider: React.FC<UserProviderProps> = ({ children }) => {
             lastActive: now,
           },
         };
+        
+        if (DEBUG_USER_CONTEXT) {
+          console.log('[DEBUG-APPLE-SIGNIN] Updating user settings with profile info');
+        }
         
         setUserSettings(updatedSettings);
         await saveSettings(updatedSettings);
@@ -445,28 +569,42 @@ export const UserProvider: React.FC<UserProviderProps> = ({ children }) => {
         await AsyncStorage.setItem(userKey, JSON.stringify(userSettings));
       }
       
-      // Keep the current pace settings
+      // Keep the current pace settings and preferences
       const currentPaceSettings = userSettings?.paceSettings || DEFAULT_PACE_SETTINGS;
+      const currentPreferences = userSettings?.preferences || DEFAULT_PREFERENCES;
+      
+      if (DEBUG_USER_CONTEXT) {
+        console.log('[DEBUG-SIGNOUT] Preserving user preferences:', currentPreferences);
+        console.log('[DEBUG-SIGNOUT] Preserving pace settings:', currentPaceSettings);
+      }
       
       // Reset auth state
       setAuthState(DEFAULT_AUTH_STATE);
       await saveAuthState(DEFAULT_AUTH_STATE);
       
-      // Create new settings object but preserve pace settings
+      // Create new settings object but preserve pace settings and preferences
       if (userSettings) {
         const defaultSettings = getDefaultSettings();
         const updatedSettings = {
           ...defaultSettings,
           paceSettings: currentPaceSettings, // Keep the current pace settings
+          preferences: currentPreferences, // Keep the current preferences
         };
         
-        console.log('[DEBUG-SIGNOUT] Setting user settings with preserved pace values');
+        if (DEBUG_USER_CONTEXT) {
+          console.log('[DEBUG-SIGNOUT] Setting user settings with preserved values');
+          console.log('[DEBUG-SIGNOUT] Updated settings:', {
+            hasPaceSettings: !!updatedSettings.paceSettings,
+            hasPreferences: !!updatedSettings.preferences,
+          });
+        }
+        
         setUserSettings(updatedSettings);
         await AsyncStorage.setItem(USER_SETTINGS_KEY, JSON.stringify(updatedSettings));
       }
     } catch (err) {
       setError('Failed to sign out');
-      console.error('Error signing out:', err);
+      console.error('[DEBUG-SIGNOUT] Error signing out:', err);
     }
   };
 
@@ -536,7 +674,20 @@ export const UserProvider: React.FC<UserProviderProps> = ({ children }) => {
     key: K,
     value: UserPreferences[K]
   ) => {
-    if (!userSettings) return;
+    if (DEBUG_USER_CONTEXT) {
+      console.log(`[DEBUG-USER-CONTEXT] updatePreference called for ${String(key)} with value:`, value);
+      console.log('[DEBUG-USER-CONTEXT] Current userSettings:', userSettings ? 'exists' : 'null');
+      if (userSettings) {
+        console.log('[DEBUG-USER-CONTEXT] Current preferences:', userSettings.preferences ? 'exists' : 'undefined');
+      }
+    }
+    
+    if (!userSettings) {
+      if (DEBUG_USER_CONTEXT) {
+        console.log('[DEBUG-USER-CONTEXT] Cannot update preference: userSettings is null');
+      }
+      return;
+    }
 
     try {
       // Create a deep copy of the updated settings to avoid reference issues
@@ -548,16 +699,29 @@ export const UserProvider: React.FC<UserProviderProps> = ({ children }) => {
         },
       };
       
+      if (DEBUG_USER_CONTEXT) {
+        console.log('[DEBUG-USER-CONTEXT] Created updated settings with new preference value');
+        console.log('[DEBUG-USER-CONTEXT] Updated preferences:', updatedSettings.preferences);
+      }
+      
       // Save to AsyncStorage first to ensure it persists
       await saveSettings(updatedSettings);
+      
+      if (DEBUG_USER_CONTEXT) {
+        console.log('[DEBUG-USER-CONTEXT] Saved updated settings to AsyncStorage');
+      }
       
       // Then update the state
       setUserSettings(updatedSettings);
       
+      if (DEBUG_USER_CONTEXT) {
+        console.log('[DEBUG-USER-CONTEXT] Updated userSettings state');
+      }
+      
       return updatedSettings; // Return the updated settings for immediate use
     } catch (err) {
       setError(`Failed to update ${String(key)} preference`);
-      console.error(`Error updating ${String(key)} preference:`, err);
+      console.error(`[DEBUG-USER-CONTEXT] Error updating ${String(key)} preference:`, err);
       throw err; // Re-throw to allow caller to handle error
     }
   };
@@ -599,6 +763,8 @@ export const UserProvider: React.FC<UserProviderProps> = ({ children }) => {
     updatePreference,
     resetToDefault,
     saveSettings, // Export the saveSettings function
+    // Add preferences directly to the context value to ensure it's always defined
+    preferences: userSettings?.preferences || DEFAULT_PREFERENCES,
   };
 
   return <UserContext.Provider value={value}>{children}</UserContext.Provider>;
@@ -616,4 +782,18 @@ const getDefaultSettings = (): UserSettings => {
     paceSettings: DEFAULT_PACE_SETTINGS,
     preferences: DEFAULT_PREFERENCES,
   };
+};
+
+// Helper function to load auth state from storage
+const loadAuthState = async (): Promise<AuthState> => {
+  try {
+    const storedAuthState = await AsyncStorage.getItem(AUTH_STATE_KEY);
+    if (storedAuthState) {
+      return JSON.parse(storedAuthState);
+    }
+    return DEFAULT_AUTH_STATE;
+  } catch (err) {
+    console.error('Error loading auth state:', err);
+    return DEFAULT_AUTH_STATE;
+  }
 };
