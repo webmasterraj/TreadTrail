@@ -1,4 +1,4 @@
-import React, { useContext, useEffect } from 'react';
+import React, { useContext, useEffect, useState } from 'react';
 import { 
   View, 
   Text, 
@@ -7,7 +7,10 @@ import {
   ScrollView, 
   TouchableOpacity,
   Alert,
-  StatusBar
+  StatusBar,
+  Dimensions,
+  Platform,
+  LayoutChangeEvent
 } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList, WorkoutSegment, PaceType } from '../types';
@@ -142,7 +145,28 @@ const WorkoutDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
     }
   };
   
-  // Using the new WorkoutVisualization component instead of custom implementation
+  // Add state for layout measurements
+  const [headerHeight, setHeaderHeight] = useState(0);
+  const [structureHeight, setStructureHeight] = useState(0);
+  const [visualizationHeight, setVisualizationHeight] = useState(100); // Default height
+  
+  // Calculate visualization height when other sections are measured
+  useEffect(() => {
+    if (headerHeight > 0) {
+      const screenHeight = Dimensions.get('window').height;
+      const statusBarHeight = StatusBar.currentHeight || (Platform.OS === 'ios' ? 44 : 0);
+      const navigationHeight = 60; // Approximate height of navigation header
+      const sectionTitleHeight = 30; // Approximate height of section titles
+      const verticalMargins = 40; // Total vertical margins/padding
+      
+      // Calculate available space for preview
+      const availableHeight = screenHeight * 0.25; // Use 25% of screen height as a guideline
+      
+      // Set visualization height to a reasonable value based on available space
+      const newHeight = Math.max(availableHeight * 0.6, 100); // At least 100px
+      setVisualizationHeight(newHeight);
+    }
+  }, [headerHeight]);
   
   // Render difficulty stars
   const renderDifficultyStars = () => {
@@ -163,7 +187,10 @@ const WorkoutDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
       <StatusBar barStyle="light-content" backgroundColor="transparent" translucent />
       <SafeAreaView style={styles.safeArea}>
         <ScrollView contentContainerStyle={styles.scrollContent}>
-          <View style={styles.header}>
+          <View 
+            style={styles.header}
+            onLayout={(e: LayoutChangeEvent) => setHeaderHeight(e.nativeEvent.layout.height)}
+          >
             <Text style={styles.title}>{name}</Text>
           </View>
           
@@ -188,14 +215,20 @@ const WorkoutDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
           
           <View style={styles.previewSection}>
             <Text style={styles.sectionTitle}>Workout Preview</Text>
-            <WorkoutVisualization 
-              segments={segments} 
-              minutePerBar={true}
-              showOverlay={false}
-            />
+            <View style={[styles.previewContainer, { height: visualizationHeight }]}>
+              <WorkoutVisualization 
+                segments={segments} 
+                minutePerBar={true}
+                showOverlay={false}
+                containerHeight={visualizationHeight - 10} // Account for margin
+              />
+            </View>
           </View>
           
-          <View style={styles.structureSection}>
+          <View 
+            style={styles.structureSection}
+            onLayout={(e: LayoutChangeEvent) => setStructureHeight(e.nativeEvent.layout.height)}
+          >
             <Text style={styles.sectionTitle}>Workout Structure</Text>
             <View style={styles.compactStructure}>
               {segments.map((segment, index) => (
@@ -298,6 +331,10 @@ const styles = StyleSheet.create({
     marginBottom: 20, // Exact value from mockup
     paddingHorizontal: 0, // Let the visualization component fill the width
   },
+  previewContainer: {
+    minHeight: 100, // Minimum height as a fallback
+    marginBottom: 10,
+  },
   sectionTitle: {
     color: COLORS.white,
     fontSize: 18, // Exact value from mockup
@@ -305,7 +342,6 @@ const styles = StyleSheet.create({
     marginBottom: 12, // Exact value from mockup
     opacity: 0.9,
   },
-  // Removed visualization styles as they're now handled by the WorkoutVisualization component
   structureSection: {
     marginBottom: 20, // Exact value from mockup
   },

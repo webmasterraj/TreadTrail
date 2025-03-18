@@ -1,5 +1,5 @@
-import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, Dimensions, LayoutChangeEvent } from 'react-native';
 import { COLORS, FONT_SIZES, SPACING, BORDER_RADIUS, SHADOW, PACE_COLORS } from '../../styles/theme';
 import { WorkoutProgram, WorkoutSegment } from '../../types';
 import WorkoutVisualization from './WorkoutVisualization';
@@ -21,6 +21,7 @@ const WorkoutCard: React.FC<WorkoutCardProps> = ({
   showFavoriteButton = true
 }) => {
   const { 
+    id, 
     name, 
     description, 
     duration, 
@@ -29,6 +30,10 @@ const WorkoutCard: React.FC<WorkoutCardProps> = ({
     favorite,
     segments
   } = workout;
+
+  // Add state for card dimensions and visualization height
+  const [cardWidth, setCardWidth] = useState(0);
+  const [visualizationHeight, setVisualizationHeight] = useState(60); // Default height
 
   // Get difficulty as star rating
   const getDifficultyStars = () => {
@@ -60,10 +65,21 @@ const WorkoutCard: React.FC<WorkoutCardProps> = ({
     return intervalCount;
   };
 
+  // Calculate visualization height based on card width for proper aspect ratio
+  useEffect(() => {
+    if (cardWidth > 0) {
+      // Use an aspect ratio approach - wider cards get proportionally taller visualizations
+      const aspectRatio = 4; // Width to height ratio
+      const calculatedHeight = cardWidth / aspectRatio;
+      setVisualizationHeight(Math.max(calculatedHeight, 60)); // At least 60px
+    }
+  }, [cardWidth]);
+
   return (
-    <TouchableOpacity
-      style={styles.container}
+    <TouchableOpacity 
+      style={styles.container} 
       onPress={onPress}
+      onLayout={(e: LayoutChangeEvent) => setCardWidth(e.nativeEvent.layout.width)}
       activeOpacity={0.7}
     >
       {/* Favorite Heart Icon - Only shown if showFavoriteButton is true */}
@@ -91,10 +107,11 @@ const WorkoutCard: React.FC<WorkoutCardProps> = ({
       
       {/* Visualization using the shared component */}
       {showVisualization && segments && segments.length > 0 && (
-        <View style={styles.visualizationContainer} testID="visualization-container">
+        <View style={[styles.visualizationContainer, { height: visualizationHeight }]}>
           <WorkoutVisualization 
-            segments={segments}
+            segments={segments} 
             minutePerBar={true}
+            containerHeight={visualizationHeight - 12} // Account for margins
           />
         </View>
       )}
@@ -147,9 +164,10 @@ const styles = StyleSheet.create({
     color: COLORS.accent,
   },
   visualizationContainer: {
-    height: 40, 
+    minHeight: 60, // Minimum height as a fallback
     width: '100%',
     marginTop: 8, 
+    marginBottom: 4,
   }
 });
 

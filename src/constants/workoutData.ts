@@ -15,7 +15,7 @@ export const DEFAULT_WORKOUT_PROGRAMS: WorkoutProgram[] = [
     "segments": [
       {
         "type": "base",
-        "duration": 15,
+        "duration": 60,
         "incline": 1,
         "audio": {
           "file": "workout-1-segment-0.aac",
@@ -24,7 +24,7 @@ export const DEFAULT_WORKOUT_PROGRAMS: WorkoutProgram[] = [
       },
       {
         "type": "sprint",
-        "duration": 15,
+        "duration": 60,
         "incline": 1,
         "audio": {
           "file": "workout-1-segment-1.aac",

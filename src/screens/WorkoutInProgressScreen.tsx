@@ -11,7 +11,9 @@ import {
   Animated,
   Easing,
   StatusBar,
-  Platform
+  Platform,
+  Dimensions,
+  LayoutChangeEvent
 } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList, PaceType } from '../types';
@@ -467,6 +469,32 @@ const WorkoutInProgressScreen: React.FC<Props> = ({ route, navigation }) => {
     }, 500);
   };
 
+  // Add state for layout measurements
+  const [timerSectionHeight, setTimerSectionHeight] = useState(0);
+  const [controlsSectionHeight, setControlsSectionHeight] = useState(0);
+  const [visualizationHeight, setVisualizationHeight] = useState(150); // Default height
+
+  // Calculate visualization height when other sections are measured
+  useEffect(() => {
+    if (timerSectionHeight > 0 && controlsSectionHeight > 0) {
+      const screenHeight = Dimensions.get('window').height;
+      const statusBarHeight = StatusBar.currentHeight || (Platform.OS === 'ios' ? 44 : 0);
+      const safeAreaPadding = Platform.OS === 'ios' ? 34 : 0; // Bottom safe area for iOS
+      const navigationHeight = 60; // Approximate height of navigation header
+      const verticalMargins = 40; // Total vertical margins/padding
+      
+      // Calculate available space
+      const availableHeight = screenHeight - statusBarHeight - navigationHeight - 
+                              timerSectionHeight - controlsSectionHeight - 
+                              safeAreaPadding - verticalMargins;
+      
+      // Set visualization height to a reasonable value based on available space
+      const newHeight = Math.max(availableHeight * 0.8, 120); // At least 120px or 80% of available space
+      console.log('Calculated visualization height:', newHeight);
+      setVisualizationHeight(newHeight);
+    }
+  }, [timerSectionHeight, controlsSectionHeight]);
+
   // If no active workout yet, show loading
   if (!isWorkoutActive || !activeWorkout) {
     return (
@@ -487,17 +515,20 @@ const WorkoutInProgressScreen: React.FC<Props> = ({ route, navigation }) => {
       <SafeAreaView style={styles.safeArea}>
         <View style={styles.content}>
           {/* Current Segment Panel */}
-          <View style={[
-            styles.currentSegment,
-            { 
-              backgroundColor: currentSegment?.type === 'recovery' ? COLORS.recoveryMuted :
-                              currentSegment?.type === 'base' ? COLORS.baseMuted :
-                              currentSegment?.type === 'run' ? COLORS.runMuted : 
-                              COLORS.sprintMuted, 
-              borderColor: currentSegment ? PACE_COLORS[currentSegment.type as PaceType] : COLORS.white
-            },
-            isTransitioning && styles.transitioningSegment
-          ]}>
+          <View 
+            style={[
+              styles.currentSegment,
+              { 
+                backgroundColor: currentSegment?.type === 'recovery' ? COLORS.recoveryMuted :
+                                currentSegment?.type === 'base' ? COLORS.baseMuted :
+                                currentSegment?.type === 'run' ? COLORS.runMuted : 
+                                COLORS.sprintMuted, 
+                borderColor: currentSegment ? PACE_COLORS[currentSegment.type as PaceType] : COLORS.white
+              },
+              isTransitioning && styles.transitioningSegment
+            ]}
+            onLayout={(e: LayoutChangeEvent) => setTimerSectionHeight(e.nativeEvent.layout.height)}
+          >
             {/* Position in workout (counts up, jumps when skipping) */}
             <Text style={styles.segmentTime} testID="workout-position">{formatTime(elapsedTime)}</Text>
             {currentSegment && (
@@ -536,7 +567,7 @@ const WorkoutInProgressScreen: React.FC<Props> = ({ route, navigation }) => {
             </View>
           </View>
           
-          {/* Timeline - moved up with no gap */}
+          {/* Timeline - expanded to fill available space */}
           <View style={styles.timelineContainerNoGap}>
             <Text style={styles.timelineTitle}>Workout Progress</Text>
             
@@ -559,14 +590,22 @@ const WorkoutInProgressScreen: React.FC<Props> = ({ route, navigation }) => {
               </View>
             </View>
             
-            {/* Use the shared WorkoutVisualization component */}
-            <WorkoutVisualization
-              segments={activeWorkout.segments}
-              progressPosition={elapsedTime}
-              minutePerBar={true} // Each bar represents 1 minute
-              showOverlay={true}
-              maxBars={40}
-            />
+            {/* Use the shared WorkoutVisualization component with dynamic height */}
+            <View 
+              style={[
+                styles.visualizationWrapper,
+                { height: visualizationHeight }
+              ]}
+            >
+              <WorkoutVisualization 
+                segments={activeWorkout.segments} 
+                progressPosition={elapsedTime}
+                minutePerBar={true} 
+                showOverlay={true}
+                maxBars={40}
+                containerHeight={visualizationHeight - 16} // Account for padding
+              />
+            </View>
             
             <View style={styles.timelineTimes}>
               <Text style={styles.timeText}>0'</Text>
@@ -578,7 +617,10 @@ const WorkoutInProgressScreen: React.FC<Props> = ({ route, navigation }) => {
           </View>
           
           {/* Control Buttons */}
-          <View style={styles.controlButtonsContainer}>
+          <View 
+            style={styles.controlButtonsContainer}
+            onLayout={(e: LayoutChangeEvent) => setControlsSectionHeight(e.nativeEvent.layout.height)}
+          >
             <View style={styles.controlButtonsRow}>
               <TouchableOpacity 
                 style={styles.pauseButton} 
@@ -684,18 +726,8 @@ const styles = StyleSheet.create({
     padding: 20, // Exact value from mockup
     display: 'flex',
     flexDirection: 'column',
-    justifyContent: 'space-between', // Distribute content evenly
-  },
-  debugContainer: {
-    padding: 8,
-    backgroundColor: 'rgba(0, 0, 0, 0.7)',
-    borderRadius: 5,
-    marginVertical: 5,
-  },
-  debugText: {
-    color: '#ffcc00',
-    fontFamily: 'monospace',
-    fontSize: 12,
+    justifyContent: 'flex-start', // Changed from space-between to flex-start
+    paddingBottom: 120, // Add padding at the bottom to account for absolute-positioned buttons
   },
   currentSegment: {
     borderRadius: 15, // Exact value from mockup
@@ -762,17 +794,11 @@ const styles = StyleSheet.create({
     color: COLORS.white,
     fontSize: 16, // Based on mockup
   },
-  timelineContainer: {
-    marginTop: 5, // Reduced spacing as requested in the task
-    flex: 1, // Allow timeline to flex
-    justifyContent: 'flex-end', // Push to the bottom
-    marginBottom: 20, // Space above control buttons
-  },
   timelineContainerNoGap: {
     // No top margin to remove blank space
     marginTop: 0,
     paddingTop: 10, // Small padding for spacing
-    flex: 0, // Don't flex - this keeps it close to the Next section
+    flex: 1, // Changed from 0 to 1 to allow the timeline to expand and fill available space
     justifyContent: 'flex-start', // Align at the top
     marginBottom: 20, // Space above control buttons
   },
@@ -804,48 +830,13 @@ const styles = StyleSheet.create({
     color: 'rgba(255, 255, 255, 0.7)', // Exact value from mockup
     fontSize: 12, // Exact value from mockup
   },
-  barTimeline: {
-    position: 'relative',
-    height: 40, // Exact value from mockup
+  visualizationWrapper: {
     width: '100%',
-    backgroundColor: COLORS.darkGray, // Exact value from mockup
-    borderRadius: 12, // Exact value from mockup
-    overflow: 'hidden',
-    padding: 0,
-  },
-  completedOverlay: {
-    position: 'absolute',
-    top: 0,
-    bottom: 0,
-    left: 0,
-    backgroundColor: 'rgba(0, 0, 0, 0.7)', // Exact value from mockup
-    zIndex: 1,
-    borderTopLeftRadius: 12,
-    borderBottomLeftRadius: 12,
-  },
-  progressMarker: {
-    position: 'absolute',
-    top: 0,
-    bottom: 0,
-    width: 2, // Exact value from mockup
-    backgroundColor: COLORS.white,
-    zIndex: 3, // Above the overlay and bars
-  },
-  timelineBarContainer: {
-    flexDirection: 'row',
-    height: '100%',
-    width: '100%',
-    alignItems: 'flex-end', // Align bars at the bottom
-    padding: 4, // Padding inside the container
-    position: 'relative',
-    zIndex: 0,
-    justifyContent: 'flex-start', // Align bars from the start (left)
-  },
-  timelineBar: {
-    width: 6, // Default width for a bar
-    borderRadius: 3, // Rounded corners like WorkoutLibrary
-    height: 15, // Default height, will be overridden
-    marginRight: 4, // Default spacing between bars
+    marginVertical: 10,
+    minHeight: 120, // Minimum height as a fallback
+    backgroundColor: COLORS.darkGray,
+    borderRadius: 12,
+    padding: 8,
   },
   timelineTimes: {
     flexDirection: 'row',
@@ -858,8 +849,15 @@ const styles = StyleSheet.create({
     fontSize: 11, // Exact value from mockup
   },
   controlButtonsContainer: {
-    marginTop: 'auto', // Push buttons to the bottom
-    paddingTop: 20, // Add padding above controls
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    padding: 20,
+    backgroundColor: COLORS.black,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.darkGray,
+    paddingBottom: Platform.OS === 'ios' ? 30 : 20, // Add extra padding for iOS devices with home indicator
   },
   controlButtonsRow: {
     flexDirection: 'row',

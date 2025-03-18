@@ -286,7 +286,7 @@ const WorkoutLibraryScreen: React.FC<Props> = ({ navigation }) => {
                 
                 return (
                   <WorkoutCard
-                    key={`workout-${item.id}-${reduxWorkout.favorite ? 'fav' : 'notfav'}`} // Force re-render when favorite changes
+                    key={`workout-${item.id}`} // Use a stable key that doesn't change on favorite toggle
                     workout={reduxWorkout} // Use the latest data from Redux
                     onPress={() => handleWorkoutPress(reduxWorkout.id)}
                     onFavoriteToggle={() => dispatch(toggleWorkoutFavorite(reduxWorkout.id))}

@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { View, StyleSheet, Dimensions, Text } from 'react-native';
 import { WorkoutSegment, PaceType } from '../../types';
 import { COLORS, PACE_COLORS } from '../../styles/theme';
@@ -9,6 +9,7 @@ interface WorkoutVisualizationProps {
   minutePerBar?: boolean; // If true, each bar represents 1 minute, otherwise 30 seconds
   showOverlay?: boolean; // Show darkened overlay for completed portions
   maxBars?: number; // Maximum bars to display
+  containerHeight?: number; // Optional prop for parent to specify height
 }
 
 const WorkoutVisualization: React.FC<WorkoutVisualizationProps> = ({
@@ -16,8 +17,13 @@ const WorkoutVisualization: React.FC<WorkoutVisualizationProps> = ({
   progressPosition = -1,
   minutePerBar = true,
   showOverlay = false,
-  maxBars = 40
+  maxBars = 40,
+  containerHeight
 }) => {
+  // Add state to track measured height
+  const [measuredHeight, setMeasuredHeight] = useState(0);
+  const [containerWidth, setContainerWidth] = useState(0);
+  
   // Calculate total duration
   const totalDuration = segments.reduce((sum, segment) => sum + segment.duration, 0);
   
@@ -28,168 +34,202 @@ const WorkoutVisualization: React.FC<WorkoutVisualizationProps> = ({
     }
     
     const inclineValues = new Set(segments.map(segment => segment.incline));
-    const maxIncline = Math.max(...segments.map(segment => segment.incline));
+    
+    // Explicitly find the max incline to avoid potential issues
+    let maxInclineValue = 0;
+    segments.forEach(segment => {
+      if (segment.incline > maxInclineValue) {
+        maxInclineValue = segment.incline;
+      }
+    });
     
     return {
-      maxIncline,
+      maxIncline: maxInclineValue || 1, // Ensure we never have a zero max incline
       hasSingleIncline: inclineValues.size === 1
     };
   }, [segments]);
   
   // Calculate height based on incline
   const getInclineHeight = (incline: number): number => {
+    // Use provided containerHeight, measured height, or a default
+    const effectiveHeight = containerHeight || measuredHeight || 100;
+    
     // Container height minus padding
-    const containerHeight = 32; // 40px container - 8px padding
+    const availableHeight = effectiveHeight - 16; // Account for padding
+    
+    // Ensure we have a minimum height for visibility
+    const minHeight = availableHeight * 0.15; // At least 15% of container height
     
     if (hasSingleIncline) {
-      // If only one incline value, use half the container height
-      return containerHeight / 2;
-    } else {
-      // If multiple inclines, make heights proportional to max incline
-      if (maxIncline === 0) return containerHeight / 4; // Avoid division by zero
-      return (incline / maxIncline) * containerHeight;
+      // If all inclines are the same, use a standard height
+      return availableHeight * 0.5; // 50% of available height
     }
+    
+    // Calculate height based on incline relative to max incline
+    const heightPercentage = incline / maxIncline;
+    
+    // Scale the height to fit within the container, leaving space at the top
+    const maxBarHeight = availableHeight * 0.85; // Maximum 85% of container height
+    
+    // Calculate the final height, ensuring it's at least the minimum height
+    return Math.max(minHeight, heightPercentage * maxBarHeight);
   };
   
-  // Render visualization bars
-  const renderBars = () => {
-    // For progress tracking
-    const progressPercent = progressPosition > 0 ? Math.min(1, progressPosition / totalDuration) : 0;
+  // Determine which segments to show based on minutePerBar setting
+  let displaySegments = [...segments];
+  
+  // Limit the number of bars to maxBars
+  if (displaySegments.length > maxBars) {
+    // Calculate how many segments to skip
+    const skipFactor = Math.ceil(displaySegments.length / maxBars);
     
-    // Calculate container width for proportional spacing
-    const containerWidth = Dimensions.get('window').width - 32; // Accounting for padding/margins
-    const barWidth = 6; // Fixed width for each bar
+    // Filter segments to show only every nth segment
+    displaySegments = displaySegments.filter((_, index) => index % skipFactor === 0);
+  }
+  
+  // Calculate the progress overlay width
+  const getProgressOverlayWidth = (): number => {
+    if (progressPosition < 0) return 0;
     
-    // Create elements for visualization
-    const visualizationElements: JSX.Element[] = [];
-    
-    // Add connecting line first (it will be at the bottom)
-    visualizationElements.push(
-      <View 
-        key="connecting-line"
-        style={[
-          styles.connectingLine,
-          { width: containerWidth - 12 } // Slightly shorter than container to account for bar radius
-        ]} 
-      />
-    );
-    
-    // Add a bar for each segment
-    segments.forEach((segment, index) => {
-      const paceType = segment.type as PaceType;
-      const incline = segment.incline;
-      const barHeight = getInclineHeight(incline);
-      
-      // Calculate position based on segment duration proportion
-      let positionPercent = 0;
-      
-      if (index === 0) {
-        // First bar starts at the beginning
-        positionPercent = 0;
-      } else {
-        // Calculate position based on proportion of total duration
-        const previousSegmentsDuration = segments.slice(0, index).reduce((sum, s) => sum + s.duration, 0);
-        positionPercent = (previousSegmentsDuration / totalDuration) * 100;
-      }
-      
-      // Add the segment bar
-      visualizationElements.push(
-        <View 
-          key={`segment-${index}`}
-          style={[
-            styles.segmentBar, 
-            { 
-              height: barHeight, 
-              backgroundColor: PACE_COLORS[paceType],
-              left: `${positionPercent}%`,
-            }
-          ]} 
-        />
-      );
-    });
-    
-    return visualizationElements;
+    const progressPercentage = Math.min(100, (progressPosition / totalDuration) * 100);
+    return progressPercentage;
   };
 
-  // Calculate progress for the overlay
-  const progressPercent = progressPosition > 0 ? Math.min(1, progressPosition / totalDuration) * 100 : 0;
-  
+  // Calculate positions for each segment based on duration
+  const segmentPositions = useMemo(() => {
+    if (!displaySegments.length || containerWidth === 0) return [];
+    
+    // Calculate total duration of displayed segments
+    const displayedTotalDuration = displaySegments.reduce((sum, segment) => sum + segment.duration, 0);
+    
+    // Bar dimensions
+    const barWidth = 4; // Width of each bar
+    
+    // Calculate available width for time representation (accounting for padding and all bar widths)
+    const totalBarWidth = barWidth * displaySegments.length;
+    const availableWidth = containerWidth - 16 - totalBarWidth; // Container width minus padding and total bar width
+    
+    // Calculate the time scale - how many pixels per second (excluding the space taken by bars)
+    const timeScale = availableWidth / displayedTotalDuration;
+    
+    // Calculate positions
+    const positions: { left: number; width: number }[] = [];
+    let cumulativeDuration = 0;
+    let cumulativeBarWidth = 0;
+    
+    displaySegments.forEach((segment, index) => {
+      // Position is based on the cumulative duration up to this segment plus the width of previous bars
+      const left = 8 + (cumulativeDuration * timeScale) + cumulativeBarWidth;
+      
+      positions.push({
+        left,
+        width: barWidth
+      });
+      
+      // Update cumulative duration for next segment
+      cumulativeDuration += segment.duration;
+      cumulativeBarWidth += barWidth;
+    });
+    
+    return positions;
+  }, [displaySegments, containerWidth]);
+
   return (
-    <View style={styles.visualizationContainer}>
-      <View style={styles.barContainer}>
-        {/* Progress overlay */}
-        {showOverlay && progressPosition > 0 && (
-          <View 
+    <View 
+      style={[
+        styles.container, 
+        { height: containerHeight || 100 }
+      ]}
+      onLayout={(event) => {
+        const {height, width} = event.nativeEvent.layout;
+        setMeasuredHeight(height);
+        setContainerWidth(width);
+      }}
+    >
+      <View style={styles.barsContainer}>
+        {displaySegments.map((segment, index) => (
+          <View
+            key={`bar-${index}`}
             style={[
-              styles.progressOverlay,
-              { width: `${progressPercent}%` }
-            ]} 
+              styles.bar,
+              {
+                height: getInclineHeight(segment.incline),
+                backgroundColor: PACE_COLORS[segment.type],
+                width: segmentPositions[index]?.width || 4,
+                left: segmentPositions[index]?.left || 0,
+                position: 'absolute',
+              },
+            ]}
           />
-        )}
-        
-        {/* Progress marker */}
-        {progressPosition > 0 && (
-          <View 
-            style={[
-              styles.progressMarker,
-              { left: `${progressPercent}%` }
-            ]} 
-          />
-        )}
-        
-        {/* Render bars */}
-        {renderBars()}
+        ))}
       </View>
+      
+      {/* Connecting line at the bottom of the bars */}
+      <View style={styles.connectingLine} />
+      
+      {/* Progress overlay */}
+      {showOverlay && progressPosition >= 0 && (
+        <View
+          style={[
+            styles.progressOverlay,
+            { width: `${getProgressOverlayWidth()}%` },
+          ]}
+        />
+      )}
     </View>
   );
 };
 
 const styles = StyleSheet.create({
-  visualizationContainer: {
-    height: 40,
+  container: {
     width: '100%',
-    backgroundColor: COLORS.darkGray,
-    borderRadius: 12,
-    overflow: 'hidden',
-    padding: 4,
-  },
-  barContainer: {
     height: '100%',
-    alignItems: 'flex-end',
+    backgroundColor: 'transparent',
+    padding: 8,
     position: 'relative',
-    width: '100%',
+    justifyContent: 'flex-end',
   },
-  segmentBar: {
-    position: 'absolute',
-    width: 6,
-    borderRadius: 3,
-    bottom: 0,
-    zIndex: 2,
+  barsContainer: {
+    height: '100%',
+    width: '100%',
+    position: 'relative',
+    zIndex: 1,
+  },
+  bar: {
+    width: 4, // Default width, will be overridden
+    marginHorizontal: 0, // Remove margin as we're positioning absolutely
+    borderTopLeftRadius: 2,
+    borderTopRightRadius: 2,
+    bottom: 0, // Align to bottom
   },
   connectingLine: {
     position: 'absolute',
-    height: 3,
-    backgroundColor: COLORS.lightGray,
     bottom: 0,
-    left: 6, // Offset to center with bars
-    zIndex: 1,
+    left: 8, // Adjust for container padding
+    right: 8, // Adjust for container padding
+    height: 2, // Thinner connecting line
+    backgroundColor: COLORS.darkGray,
+    zIndex: 0,
   },
   progressOverlay: {
     position: 'absolute',
     top: 0,
     left: 0,
     bottom: 0,
-    backgroundColor: 'rgba(0, 0, 0, 0.7)',
-    zIndex: 1,
-  },
-  progressMarker: {
-    position: 'absolute',
-    top: 0,
-    bottom: 0,
-    width: 2,
-    backgroundColor: COLORS.white,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
     zIndex: 2,
   },
 });
 
-export default WorkoutVisualization;
+// Export with React.memo to prevent unnecessary re-renders
+export default React.memo(WorkoutVisualization, (prevProps, nextProps) => {
+  // Only re-render if these props change
+  return (
+    prevProps.containerHeight === nextProps.containerHeight &&
+    prevProps.progressPosition === nextProps.progressPosition &&
+    prevProps.showOverlay === nextProps.showOverlay &&
+    prevProps.minutePerBar === nextProps.minutePerBar &&
+    prevProps.maxBars === nextProps.maxBars &&
+    JSON.stringify(prevProps.segments) === JSON.stringify(nextProps.segments)
+  );
+});
