@@ -58,17 +58,20 @@ const WorkoutDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
   }
   
   const { 
+    id, 
     name, 
     description, 
     duration, 
-    difficulty, 
+    intensity,
+    category,
     focus, 
-    favorite, 
-    segments 
+    segments,
+    premium,
   } = workout;
   
-  // Get difficulty and focus info for display
-  const difficultyInfo = DIFFICULTY_INDICATORS[difficulty];
+  // Get category and focus info for display
+  const categoryInfo = DIFFICULTY_INDICATORS[category];
+  const focusInfo = FOCUS_INDICATORS[focus];
   
   // Format total duration
   const formattedDuration = formatDuration(duration);
@@ -168,18 +171,10 @@ const WorkoutDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
     }
   }, [headerHeight]);
   
-  // Render difficulty stars
-  const renderDifficultyStars = () => {
-    switch(difficulty) {
-      case 'beginner':
-        return '★';
-      case 'intermediate':
-        return '★★';
-      case 'advanced':
-        return '★★★';
-      default:
-        return '★';
-    }
+  // Render intensity stars
+  const renderIntensityStars = () => {
+    const stars = '★'.repeat(intensity);
+    return stars || '★'; // Default to one star if intensity is not set
   };
   
   return (
@@ -208,7 +203,7 @@ const WorkoutDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
             </View>
             
             <View style={styles.statItem}>
-              <Text style={styles.statValue}>{renderDifficultyStars()}</Text>
+              <Text style={styles.statValue}>{renderIntensityStars()}</Text>
               <Text style={styles.statLabel}>intensity</Text>
             </View>
           </View>

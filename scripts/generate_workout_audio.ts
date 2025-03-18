@@ -15,6 +15,7 @@
  *   --limit N          Limit the number of files to generate
  *   --remove           Remove audio files instead of generating them
  *   --segment ID       Specific segment to remove (e.g., "workout-1-segment-2")
+ *   --fix              Review audio files and ensure they're in workoutData.ts and useWorkoutAudio.ts
  */
 
 import fs from 'fs';
@@ -33,6 +34,7 @@ const DEFAULT_VOICE_ID = "tnSpp4vdxKPjI9w0GnoV";
 const PROJECT_ROOT = path.resolve(__dirname, '..');
 const AUDIO_DIR = path.join(PROJECT_ROOT, 'src', 'assets', 'audio');
 const WORKOUT_DATA_PATH = path.join(PROJECT_ROOT, 'src', 'constants', 'workoutData.ts');
+const WORKOUT_AUDIO_PATH = path.join(PROJECT_ROOT, 'src', 'hooks', 'useWorkoutAudio.ts');
 
 // Audio file extension
 const AUDIO_EXT = '.aac';
@@ -53,6 +55,7 @@ program
   .option('--limit <n>', 'Limit the number of files to generate', parseInt)
   .option('--remove', 'Remove audio files instead of generating them')
   .option('--segment <id>', 'Specific segment to remove (e.g., "workout-1-segment-2")')
+  .option('--fix', 'Review audio files and ensure they\'re in workoutData.ts and useWorkoutAudio.ts')
   .parse(process.argv);
 
 const options = program.opts();
@@ -306,11 +309,208 @@ function removeAudioReferencesFromWorkoutData(segment: string | null = null): vo
 }
 
 /**
+ * Get all audio files in the audio directory.
+ * @returns Array of audio file names
+ */
+function getAllAudioFiles(): string[] {
+  return fs.readdirSync(AUDIO_DIR)
+    .filter(file => file.endsWith(AUDIO_EXT))
+    .sort();
+}
+
+/**
+ * Check if an audio file is referenced in the workout data.
+ * @param fileName - Audio file name
+ * @param workoutData - Workout data
+ * @returns True if the audio file is referenced in the workout data
+ */
+function isAudioFileReferencedInWorkoutData(fileName: string, workoutData: WorkoutProgram[]): boolean {
+  for (const workout of workoutData) {
+    for (const segment of workout.segments) {
+      if (segment.audio?.file === fileName) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+/**
+ * Check if an audio file is included in the useWorkoutAudio.ts file.
+ * @param fileName - Audio file name
+ * @returns True if the audio file is included in the useWorkoutAudio.ts file
+ */
+function isAudioFileInUseWorkoutAudio(fileName: string): boolean {
+  const content = fs.readFileSync(WORKOUT_AUDIO_PATH, 'utf8');
+  return content.includes(`case '${fileName}':`);
+}
+
+/**
+ * Update the useWorkoutAudio.ts file to include all audio files.
+ * @param audioFiles - Array of audio file names
+ */
+function updateUseWorkoutAudio(audioFiles: string[]): void {
+  const content = fs.readFileSync(WORKOUT_AUDIO_PATH, 'utf8');
+  
+  // Find the switch statement in the file
+  const switchRegex = /switch\s*\(\s*nextSegment\.audio\.file\s*\)\s*{([\s\S]*?)default:/;
+  const match = content.match(switchRegex);
+  
+  if (!match) {
+    console.error('Could not find switch statement in useWorkoutAudio.ts');
+    
+    // Try an alternative approach - find the last case statement and add after it
+    const lastCaseRegex = /case\s+'[^']+\.aac':[^}]*break;/g;
+    const lastCaseMatches = [...content.matchAll(lastCaseRegex)];
+    
+    if (lastCaseMatches.length === 0) {
+      console.error('Could not find any case statements in useWorkoutAudio.ts');
+      return;
+    }
+    
+    const lastCaseMatch = lastCaseMatches[lastCaseMatches.length - 1];
+    const lastCaseIndex = lastCaseMatch.index! + lastCaseMatch[0].length;
+    
+    // Generate case statements for all audio files
+    let caseStatements = '';
+    for (const file of audioFiles) {
+      if (!isAudioFileInUseWorkoutAudio(file)) {
+        // Check if the file name contains an apostrophe
+        if (file.includes("'")) {
+          // Use double quotes for the case statement if the file name contains an apostrophe
+          caseStatements += `\n                case "${file}":\n`;
+        } else {
+          caseStatements += `\n                case '${file}':\n`;
+        }
+        caseStatements += `                  segmentSound = new Audio.Sound();\n`;
+        // Always escape apostrophes in the require path
+        const escapedFile = file.replace(/'/g, "\\'");
+        caseStatements += `                  await segmentSound.loadAsync(require('../assets/audio/${escapedFile}'));\n`;
+        caseStatements += `                  break;`;
+      }
+    }
+    
+    // If no new case statements, nothing to update
+    if (!caseStatements) {
+      console.log('All audio files are already included in useWorkoutAudio.ts');
+      return;
+    }
+    
+    // Insert the new case statements after the last case statement
+    const updatedContent = 
+      content.substring(0, lastCaseIndex) + 
+      caseStatements + 
+      content.substring(lastCaseIndex);
+    
+    // Write the updated content back to the file
+    fs.writeFileSync(WORKOUT_AUDIO_PATH, updatedContent, 'utf8');
+    console.log(`Updated useWorkoutAudio.ts with ${caseStatements.split('case').length - 1} new audio files.`);
+    return;
+  }
+  
+  // Generate case statements for all audio files
+  let caseStatements = '';
+  for (const file of audioFiles) {
+    if (!isAudioFileInUseWorkoutAudio(file)) {
+      // Check if the file name contains an apostrophe
+      if (file.includes("'")) {
+        // Use double quotes for the case statement if the file name contains an apostrophe
+        caseStatements += `                case "${file}":\n`;
+      } else {
+        caseStatements += `                case '${file}':\n`;
+      }
+      caseStatements += `                  segmentSound = new Audio.Sound();\n`;
+      // Always escape apostrophes in the require path
+      const escapedFile = file.replace(/'/g, "\\'");
+      caseStatements += `                  await segmentSound.loadAsync(require('../assets/audio/${escapedFile}'));\n`;
+      caseStatements += `                  break;\n`;
+    }
+  }
+  
+  // If no new case statements, nothing to update
+  if (!caseStatements) {
+    console.log('All audio files are already included in useWorkoutAudio.ts');
+    return;
+  }
+  
+  // Find a good place to insert the new case statements
+  // We'll insert them right before the default case
+  const updatedContent = content.replace(
+    switchRegex,
+    (match, p1) => {
+      return `switch (nextSegment.audio.file) {${p1}${caseStatements}default:`;
+    }
+  );
+  
+  // Write the updated content back to the file
+  fs.writeFileSync(WORKOUT_AUDIO_PATH, updatedContent, 'utf8');
+  console.log(`Updated useWorkoutAudio.ts with ${caseStatements.split('case').length - 1} new audio files.`);
+}
+
+/**
+ * Fix audio references in workoutData.ts and useWorkoutAudio.ts.
+ */
+async function fixAudioReferences(): Promise<void> {
+  console.log('Fixing audio references...');
+  
+  // Get all audio files
+  const audioFiles = getAllAudioFiles();
+  console.log(`Found ${audioFiles.length} audio files in ${AUDIO_DIR}`);
+  
+  // Get workout data
+  const workoutData = DEFAULT_WORKOUT_PROGRAMS;
+  
+  // Check which audio files are not referenced in workout data
+  const unreferencedFiles = audioFiles.filter(file => !isAudioFileReferencedInWorkoutData(file, workoutData));
+  console.log(`Found ${unreferencedFiles.length} audio files not referenced in workoutData.ts`);
+  
+  // Check which audio files are not included in useWorkoutAudio.ts
+  const filesNotInUseWorkoutAudio = audioFiles.filter(file => !isAudioFileInUseWorkoutAudio(file));
+  console.log(`Found ${filesNotInUseWorkoutAudio.length} audio files not included in useWorkoutAudio.ts`);
+  
+  // Update useWorkoutAudio.ts
+  if (filesNotInUseWorkoutAudio.length > 0) {
+    updateUseWorkoutAudio(audioFiles);
+  }
+  
+  // Update workout data with audio durations for unreferenced files
+  if (unreferencedFiles.length > 0) {
+    const audioInfo: AudioInfo = {};
+    
+    for (const file of unreferencedFiles) {
+      const filePath = path.join(AUDIO_DIR, file);
+      const duration = await getAudioDuration(filePath);
+      
+      // Extract segment ID from file name (e.g., "workout-1-segment-0.aac" -> "workout-1-segment-0")
+      const segmentId = file.replace(AUDIO_EXT, '');
+      
+      audioInfo[segmentId] = {
+        file,
+        duration
+      };
+      
+      console.log(`Added audio info for ${segmentId}: ${file} (${duration.toFixed(1)}s)`);
+    }
+    
+    // Update workout data
+    updateWorkoutData(workoutData, audioInfo);
+  }
+  
+  console.log('Audio references fixed successfully.');
+}
+
+/**
  * Main function.
  */
 async function main(): Promise<void> {
   // Create audio directory if it doesn't exist
   createAudioDir();
+  
+  // Handle fix option
+  if (options.fix) {
+    await fixAudioReferences();
+    return;
+  }
   
   // Handle remove option
   if (options.remove) {

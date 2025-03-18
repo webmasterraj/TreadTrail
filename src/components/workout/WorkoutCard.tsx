@@ -25,7 +25,7 @@ const WorkoutCard: React.FC<WorkoutCardProps> = ({
     name, 
     description, 
     duration, 
-    difficulty, 
+    intensity, 
     focus, 
     favorite,
     segments
@@ -35,18 +35,10 @@ const WorkoutCard: React.FC<WorkoutCardProps> = ({
   const [cardWidth, setCardWidth] = useState(0);
   const [visualizationHeight, setVisualizationHeight] = useState(60); // Default height
 
-  // Get difficulty as star rating
-  const getDifficultyStars = () => {
-    switch(difficulty) {
-      case 'beginner':
-        return '★';
-      case 'intermediate':
-        return '★★';
-      case 'advanced':
-        return '★★★';
-      default:
-        return '★';
-    }
+  // Get intensity stars
+  const getIntensityStars = () => {
+    const stars = '★'.repeat(intensity);
+    return stars || '★'; // Default to one star if intensity is not set
   };
 
   // Count intervals in the workout
@@ -101,7 +93,7 @@ const WorkoutCard: React.FC<WorkoutCardProps> = ({
       {/* Workout Meta Information */}
       <View style={styles.metaContainer}>
         <Text style={styles.metaItem}>{formatDuration(duration)}</Text>
-        <Text style={styles.metaItem}>{getDifficultyStars()} intensity</Text>
+        <Text style={styles.metaItem}>{getIntensityStars()} intensity</Text>
         <Text style={styles.metaItem}>{countIntervals()} intervals</Text>
       </View>
       

@@ -269,9 +269,9 @@ const WorkoutLibraryScreen: React.FC<Props> = ({ navigation }) => {
           <View style={styles.librarySection}>
             <View style={styles.sectionHeader}>
               <Text style={styles.sectionTitle}>Workout Library</Text>
-              <TouchableOpacity onPress={handleSeeAllPress}>
+              {/* <TouchableOpacity onPress={handleSeeAllPress}>
                 <Text style={styles.seeAllText}>See All →</Text>
-              </TouchableOpacity>
+              </TouchableOpacity> */}
             </View>
             
             {/* Workout list */}

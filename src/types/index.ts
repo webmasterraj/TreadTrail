@@ -38,6 +38,7 @@ export interface UserSettings {
 
 // Workout types
 export type DifficultyLevel = 'beginner' | 'intermediate' | 'advanced' | 'easy \ud83d\udc23' | 'trad hiit \ud83c\udfc3\ud83c\udffc' | 'hills \u26f0';
+export type CategoryType = 'Easy \ud83d\udc23' | 'Trad HIIT \ud83c\udfc3\ud83c\udffc' | 'Hills \u26f0' | 'Endurance \ud83d\udcaa\ud83c\udffd' | 'Death \ud83d\udc80';
 export type WorkoutFocus = 'endurance' | 'hiit' | 'fat_burn';
 
 // Workout segment
@@ -57,10 +58,12 @@ export interface WorkoutProgram {
   name: string;
   description: string;
   duration: number; // Total duration in seconds
-  difficulty: DifficultyLevel;
   focus: WorkoutFocus;
   favorite: boolean;
   lastUsed: string | null; // ISO date when last used, null if never used
+  premium: boolean; // Whether this is a premium workout
+  category: CategoryType; // Category of the workout
+  intensity: number; // Number of stars to show (1-3)
   segments: WorkoutSegment[];
 }
 
@@ -98,10 +101,12 @@ export interface WorkoutStats {
   totalWorkouts: number;
   totalDuration: number; // In seconds
   totalSegmentsCompleted: number;
-  workoutsByDifficulty: {
-    beginner: number;
-    intermediate: number;
-    advanced: number;
+  workoutsByCategory: {
+    'Easy \ud83d\udc23': number;
+    'Trad HIIT \ud83c\udfc3\ud83c\udffc': number;
+    'Hills \u26f0': number;
+    'Endurance \ud83d\udcaa\ud83c\udffd': number;
+    'Death \ud83d\udc80': number;
   };
   workoutsByFocus: {
     endurance: number;

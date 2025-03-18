@@ -3,6 +3,7 @@ import { Alert, Platform } from 'react-native';
 import * as FileSystem from 'expo-file-system';
 import { useRef, useEffect } from 'react';
 import { WorkoutSegment, WorkoutProgram } from '../types/index';
+import { loadSegmentAudio } from '../utils/audioMapping';
 
 interface UseWorkoutAudioOptions {
   workout: WorkoutProgram | null;
@@ -98,94 +99,8 @@ export const useWorkoutAudio = (options: UseWorkoutAudioOptions) => {
               // Mark this segment as triggered
               lastSegmentAudioTriggeredRef.current = currentSegmentIndex;
               
-              // The audio files are in the src/assets/audio directory
-              // We need to use require to load them
-              let segmentSound: Audio.Sound | null = null;
-              
-              // Use a switch statement to handle the different segment audio files
-              // This is necessary because require needs a static string
-              switch (nextSegment.audio.file) {
-                case 'workout-1-segment-0.aac':
-                  segmentSound = new Audio.Sound();
-                  await segmentSound.loadAsync(require('../assets/audio/workout-1-segment-0.aac'));
-                  break;
-                case 'workout-1-segment-1.aac':
-                  segmentSound = new Audio.Sound();
-                  await segmentSound.loadAsync(require('../assets/audio/workout-1-segment-1.aac'));
-                  break;
-                case 'workout-1-segment-2.aac':
-                  segmentSound = new Audio.Sound();
-                  await segmentSound.loadAsync(require('../assets/audio/workout-1-segment-2.aac'));
-                  break;
-                case 'workout-1-segment-3.aac':
-                  segmentSound = new Audio.Sound();
-                  await segmentSound.loadAsync(require('../assets/audio/workout-1-segment-3.aac'));
-                  break;
-                case 'workout-1-segment-4.aac':
-                  segmentSound = new Audio.Sound();
-                  await segmentSound.loadAsync(require('../assets/audio/workout-1-segment-4.aac'));
-                  break;
-                case 'workout-1-segment-5.aac':
-                  segmentSound = new Audio.Sound();
-                  await segmentSound.loadAsync(require('../assets/audio/workout-1-segment-5.aac'));
-                  break;
-                case 'workout-1-segment-6.aac':
-                  segmentSound = new Audio.Sound();
-                  await segmentSound.loadAsync(require('../assets/audio/workout-1-segment-6.aac'));
-                  break;
-                case 'workout-1-segment-7.aac':
-                  segmentSound = new Audio.Sound();
-                  await segmentSound.loadAsync(require('../assets/audio/workout-1-segment-7.aac'));
-                  break;
-                case 'workout-1-segment-8.aac':
-                  segmentSound = new Audio.Sound();
-                  await segmentSound.loadAsync(require('../assets/audio/workout-1-segment-8.aac'));
-                  break;
-                case 'workout-1-segment-9.aac':
-                  segmentSound = new Audio.Sound();
-                  await segmentSound.loadAsync(require('../assets/audio/workout-1-segment-9.aac'));
-                  break;
-                case 'workout-1-segment-10.aac':
-                  segmentSound = new Audio.Sound();
-                  await segmentSound.loadAsync(require('../assets/audio/workout-1-segment-10.aac'));
-                  break;
-                case 'workout-1-segment-11.aac':
-                  segmentSound = new Audio.Sound();
-                  await segmentSound.loadAsync(require('../assets/audio/workout-1-segment-11.aac'));
-                  break;
-                case 'workout-1-segment-12.aac':
-                  segmentSound = new Audio.Sound();
-                  await segmentSound.loadAsync(require('../assets/audio/workout-1-segment-12.aac'));
-                  break;
-                case 'workout-1-segment-13.aac':
-                  segmentSound = new Audio.Sound();
-                  await segmentSound.loadAsync(require('../assets/audio/workout-1-segment-13.aac'));
-                  break;
-                case 'workout-1-segment-14.aac':
-                  segmentSound = new Audio.Sound();
-                  await segmentSound.loadAsync(require('../assets/audio/workout-1-segment-14.aac'));
-                  break;
-                case 'workout-1-segment-15.aac':
-                  segmentSound = new Audio.Sound();
-                  await segmentSound.loadAsync(require('../assets/audio/workout-1-segment-15.aac'));
-                  break;
-                case 'workout-2-segment-0.aac':
-                  segmentSound = new Audio.Sound();
-                  await segmentSound.loadAsync(require('../assets/audio/workout-2-segment-0.aac'));
-                  break;
-                case 'workout-2-segment-1.aac':
-                  segmentSound = new Audio.Sound();
-                  await segmentSound.loadAsync(require('../assets/audio/workout-2-segment-1.aac'));
-                  break;
-                case 'workout-2-segment-2.aac':
-                  segmentSound = new Audio.Sound();
-                  await segmentSound.loadAsync(require('../assets/audio/workout-2-segment-2.aac'));
-                  break;
-                // Add more cases as needed for other workout segments
-                default:
-                  segmentAudioPlayingRef.current = false;
-                  return;
-              }
+              // Load the segment audio using our utility function
+              const segmentSound = await loadSegmentAudio(nextSegment.audio.file);
               
               if (segmentSound) {
                 // Set up status monitoring to play countdown after segment audio finishes
@@ -304,7 +219,7 @@ export const useWorkoutAudio = (options: UseWorkoutAudioOptions) => {
         try {
           await countdownSoundRef.current.unloadAsync();
         } catch (e) {
-          // Ignore errors
+          // Handle error silently
         }
         countdownSoundRef.current = null;
       }
@@ -350,6 +265,34 @@ export const useWorkoutAudio = (options: UseWorkoutAudioOptions) => {
     }
   };
   
+  // Function to stop audio playback
+  const stopAudio = async () => {
+    if (countdownSoundRef.current) {
+      try {
+        await countdownSoundRef.current.stopAsync();
+        await countdownSoundRef.current.unloadAsync();
+        countdownSoundRef.current = null;
+      } catch (e) {
+        // Handle error silently
+      }
+    }
+    
+    if (segmentAudioRef.current) {
+      try {
+        await segmentAudioRef.current.stopAsync();
+        await segmentAudioRef.current.unloadAsync();
+        segmentAudioRef.current = null;
+      } catch (e) {
+        // Handle error silently
+      }
+    }
+    
+    // Reset playing flags
+    countdownPlayingRef.current = false;
+    segmentAudioPlayingRef.current = false;
+    countdownTriggeredRef.current = false;
+  };
+  
   // Clean up audio resources when component unmounts
   useEffect(() => {
     return () => {
@@ -380,7 +323,8 @@ export const useWorkoutAudio = (options: UseWorkoutAudioOptions) => {
           interruptionModeIOS: InterruptionModeIOS.DuckOthers,
           shouldDuckAndroid: true,
           interruptionModeAndroid: InterruptionModeAndroid.DuckOthers,
-          playThroughEarpieceAndroid: false
+          playThroughEarpieceAndroid: false,
+          allowsRecordingIOS: false, // Prevent microphone permission prompt
         });
         
         try {
@@ -426,25 +370,6 @@ export const useWorkoutAudio = (options: UseWorkoutAudioOptions) => {
     }
   };
   
-  // Function to stop audio playback
-  const stopAudio = async () => {
-    if (countdownSoundRef.current) {
-      try {
-        await countdownSoundRef.current.stopAsync();
-      } catch (e) {
-        // Handle error silently
-      }
-    }
-    
-    if (segmentAudioRef.current) {
-      try {
-        await segmentAudioRef.current.stopAsync();
-      } catch (e) {
-        // Handle error silently
-      }
-    }
-  };
-  
   // Function to play a test countdown sound
   const playTestCountdown = async () => {
     try {
@@ -455,7 +380,8 @@ export const useWorkoutAudio = (options: UseWorkoutAudioOptions) => {
         interruptionModeIOS: InterruptionModeIOS.DuckOthers,
         shouldDuckAndroid: true,
         interruptionModeAndroid: InterruptionModeAndroid.DuckOthers,
-        playThroughEarpieceAndroid: false
+        playThroughEarpieceAndroid: false,
+        allowsRecordingIOS: false, // Prevent microphone permission prompt
       });
       
       // Unload any existing sound to prevent resource conflicts
@@ -513,7 +439,7 @@ export const useWorkoutAudio = (options: UseWorkoutAudioOptions) => {
         );
         
         // Set up status monitoring
-        beepSound.setOnPlaybackStatusUpdate((status) => {
+        beepSound.setOnPlaybackStatusUpdate((status: AVPlaybackStatus) => {
           if (!status.isLoaded) {
             return;
           }

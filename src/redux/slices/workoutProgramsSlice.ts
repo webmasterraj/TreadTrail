@@ -16,10 +16,12 @@ const INITIAL_STATS: Stats = {
     totalWorkouts: 0,
     totalDuration: 0,
     totalSegmentsCompleted: 0,
-    workoutsByDifficulty: {
-      beginner: 0,
-      intermediate: 0,
-      advanced: 0,
+    workoutsByCategory: {
+      'Easy \ud83d\udc23': 0,
+      'Trad HIIT \ud83c\udfc3\ud83c\udffc': 0,
+      'Hills \u26f0': 0,
+      'Endurance \ud83d\udcaa\ud83c\udffd': 0,
+      'Death \ud83d\udc80': 0,
     },
     workoutsByFocus: {
       endurance: 0,
@@ -203,10 +205,12 @@ const updateStats = createAsyncThunk(
           }
           return sum + session.segments.filter(segment => segment && !segment.skipped).length;
         }, 0),
-        workoutsByDifficulty: {
-          beginner: 0,
-          intermediate: 0,
-          advanced: 0,
+        workoutsByCategory: {
+          'Easy \ud83d\udc23': 0,
+          'Trad HIIT \ud83c\udfc3\ud83c\udffc': 0,
+          'Hills \u26f0': 0,
+          'Endurance \ud83d\udcaa\ud83c\udffd': 0,
+          'Death \ud83d\udc80': 0,
         },
         workoutsByFocus: {
           endurance: 0,
@@ -235,12 +239,12 @@ const updateStats = createAsyncThunk(
           return;
         }
         
-        // Count by difficulty and focus
+        // Count by category and focus
         const workout = getWorkoutById(session.workoutId);
         if (workout) {
           // Make sure the values exist in our enum objects
-          if (workout.difficulty && calculatedStats.workoutsByDifficulty[workout.difficulty] !== undefined) {
-            calculatedStats.workoutsByDifficulty[workout.difficulty]++;
+          if (workout.category && calculatedStats.workoutsByCategory[workout.category] !== undefined) {
+            calculatedStats.workoutsByCategory[workout.category]++;
           }
           
           if (workout.focus && calculatedStats.workoutsByFocus[workout.focus] !== undefined) {
@@ -440,10 +444,12 @@ function calculateStats(workoutHistory: WorkoutSession[], workoutPrograms: Worko
       }
       return sum + session.segments.filter(segment => segment && !segment.skipped).length;
     }, 0),
-    workoutsByDifficulty: {
-      beginner: 0,
-      intermediate: 0,
-      advanced: 0,
+    workoutsByCategory: {
+      'Easy \ud83d\udc23': 0,
+      'Trad HIIT \ud83c\udfc3\ud83c\udffc': 0,
+      'Hills \u26f0': 0,
+      'Endurance \ud83d\udcaa\ud83c\udffd': 0,
+      'Death \ud83d\udc80': 0,
     },
     workoutsByFocus: {
       endurance: 0,
@@ -472,12 +478,12 @@ function calculateStats(workoutHistory: WorkoutSession[], workoutPrograms: Worko
       return;
     }
 
-    // Count by difficulty and focus
+    // Count by category and focus
     const workout = workoutPrograms.find(workout => workout.id === session.workoutId);
     if (workout) {
       // Make sure the values exist in our enum objects
-      if (workout.difficulty && statsData.workoutsByDifficulty[workout.difficulty] !== undefined) {
-        statsData.workoutsByDifficulty[workout.difficulty]++;
+      if (workout.category && statsData.workoutsByCategory[workout.category] !== undefined) {
+        statsData.workoutsByCategory[workout.category]++;
       }
 
       if (workout.focus && statsData.workoutsByFocus[workout.focus] !== undefined) {

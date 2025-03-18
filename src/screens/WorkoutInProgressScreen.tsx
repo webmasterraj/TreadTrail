@@ -99,26 +99,8 @@ const WorkoutInProgressScreen: React.FC<Props> = ({ route, navigation }) => {
   useEffect(() => {
     const setupAudio = async () => {
       try {
-        // We don't need to explicitly request permissions here anymore
-        // as they will be handled by the system based on the app.json configuration
-        // and in the useWorkoutAudio hook
-        
-        // Check if audio is enabled in device settings
-        const { granted } = await Audio.getPermissionsAsync();
-        
-        if (!granted) {
-          const { granted: newGranted } = await Audio.requestPermissionsAsync();
-          
-          if (!newGranted) {
-            Alert.alert(
-              "Audio Permission Required",
-              "TreadTrail needs audio permission to play workout sounds. Please enable this in your device settings.",
-              [{ text: "OK" }]
-            );
-          }
-        }
-        
-        // Set audio mode for best compatibility
+        // We don't need to explicitly request permissions for audio playback
+        // Just set audio mode for best compatibility
         await Audio.setAudioModeAsync({
           playsInSilentModeIOS: true,
           staysActiveInBackground: true,
@@ -134,6 +116,13 @@ const WorkoutInProgressScreen: React.FC<Props> = ({ route, navigation }) => {
     };
     
     setupAudio();
+    
+    // Cleanup audio when component unmounts
+    return () => {
+      if (preferences.enableAudioCues) {
+        stopAudio();
+      }
+    };
   }, []);
 
   // Initialize workout when component mounts (but only once!)
@@ -169,6 +158,10 @@ const WorkoutInProgressScreen: React.FC<Props> = ({ route, navigation }) => {
     // Cleanup
     return () => {
       backHandler.remove();
+      // Make sure to stop all audio when component unmounts
+      if (preferences.enableAudioCues) {
+        stopAudio();
+      }
     };
   }, []);
 
@@ -378,13 +371,14 @@ const WorkoutInProgressScreen: React.FC<Props> = ({ route, navigation }) => {
           text: 'End Workout', 
           style: 'destructive',
           onPress: () => {
-            dispatch(endWorkoutAction());
-            navigation.goBack();
-            
-            // Stop any playing audio
+            // Stop any playing audio first
             if (audioEnabled) {
               stopAudio();
             }
+            
+            // Then end the workout and navigate back
+            dispatch(endWorkoutAction());
+            navigation.goBack();
           }
         }
       ]

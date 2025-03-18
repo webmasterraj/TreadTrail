@@ -105,17 +105,25 @@ export const PACE_COLORS = {
 
 // Maps difficulty levels to visual indicators
 export const DIFFICULTY_INDICATORS = {
-  beginner: {
+  'Easy \ud83d\udc23': {
     color: COLORS.base,
-    label: 'Beginner',
+    label: 'Easy',
   },
-  intermediate: {
+  'Trad HIIT \ud83c\udfc3\ud83c\udffc': {
     color: COLORS.run,
-    label: 'Intermediate',
+    label: 'Trad HIIT',
   },
-  advanced: {
+  'Hills \u26f0': {
     color: COLORS.sprint,
-    label: 'Advanced',
+    label: 'Hills',
+  },
+  'Endurance \ud83d\udcaa\ud83c\udffd': {
+    color: COLORS.recovery,
+    label: 'Endurance',
+  },
+  'Death \ud83d\udc80': {
+    color: COLORS.black,
+    label: 'Death',
   },
 };
 

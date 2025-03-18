@@ -15,10 +15,12 @@ const INITIAL_STATS: Stats = {
     totalWorkouts: 0,
     totalDuration: 0,
     totalSegmentsCompleted: 0,
-    workoutsByDifficulty: {
-      beginner: 0,
-      intermediate: 0,
-      advanced: 0,
+    workoutsByCategory: {
+      'Easy \ud83d\udc23': 0,
+      'Trad HIIT \ud83c\udfc3\ud83c\udffc': 0,
+      'Hills \u26f0': 0,
+      'Endurance \ud83d\udcaa\ud83c\udffd': 0,
+      'Death \ud83d\udc80': 0,
     },
     workoutsByFocus: {
       endurance: 0,
@@ -212,10 +214,12 @@ export const DataProvider: React.FC<DataProviderProps> = ({ children }) => {
         totalDuration: workoutHistory.reduce((sum, session) => sum + session.duration, 0),
         totalSegmentsCompleted: workoutHistory.reduce((sum, session) => 
           sum + session.segments.filter(segment => !segment.skipped).length, 0),
-        workoutsByDifficulty: {
-          beginner: 0,
-          intermediate: 0,
-          advanced: 0,
+        workoutsByCategory: {
+          'Easy \ud83d\udc23': 0,
+          'Trad HIIT \ud83c\udfc3\ud83c\udffc': 0,
+          'Hills \u26f0': 0,
+          'Endurance \ud83d\udcaa\ud83c\udffd': 0,
+          'Death \ud83d\udc80': 0,
         },
         workoutsByFocus: {
           endurance: 0,
@@ -239,10 +243,10 @@ export const DataProvider: React.FC<DataProviderProps> = ({ children }) => {
           longestDate = session.date;
         }
         
-        // Count by difficulty and focus
+        // Count by category and focus
         const workout = getWorkoutById(session.workoutId);
         if (workout) {
-          updatedStats.workoutsByDifficulty[workout.difficulty]++;
+          updatedStats.workoutsByCategory[workout.category]++;
           updatedStats.workoutsByFocus[workout.focus]++;
         }
       });
