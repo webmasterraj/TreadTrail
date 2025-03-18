@@ -7,6 +7,7 @@ import { DEFAULT_WORKOUT_PROGRAMS } from '../../constants/workoutData';
 const WORKOUT_PROGRAMS_KEY = '@treadtrail:workout_programs';
 const WORKOUT_HISTORY_KEY = '@treadtrail:workout_history';
 const STATS_KEY = '@treadtrail:stats';
+const FAVORITE_WORKOUTS_KEY = '@treadtrail:favorite_workouts';
 
 // Initial stats
 const INITIAL_STATS: Stats = {
@@ -53,20 +54,34 @@ const initialState: WorkoutProgramsState = {
 };
 
 // Async thunks
-export const fetchWorkoutPrograms = createAsyncThunk(
+const fetchWorkoutPrograms = createAsyncThunk(
   'workoutPrograms/fetch',
   async (_, { rejectWithValue }) => {
     try {
-      // Always use default workout programs
-      console.log('[workoutProgramsSlice] Using default workout programs');
-      return DEFAULT_WORKOUT_PROGRAMS;
+      // Always use default workout programs for structure
+      const workoutPrograms = [...DEFAULT_WORKOUT_PROGRAMS];
+      
+      // Try to load favorite workout IDs from storage
+      const storedFavorites = await AsyncStorage.getItem(FAVORITE_WORKOUTS_KEY);
+      
+      if (storedFavorites) {
+        const favoriteIds = JSON.parse(storedFavorites) as string[];
+        
+        // Apply favorite status to workout programs
+        return workoutPrograms.map(workout => ({
+          ...workout,
+          favorite: favoriteIds.includes(workout.id)
+        }));
+      } else {
+        return workoutPrograms;
+      }
     } catch (error) {
       return rejectWithValue('Failed to fetch workout programs');
     }
   }
 );
 
-export const fetchWorkoutHistory = createAsyncThunk(
+const fetchWorkoutHistory = createAsyncThunk(
   'workoutPrograms/fetchHistory',
   async (_, { rejectWithValue }) => {
     try {
@@ -85,30 +100,34 @@ export const fetchWorkoutHistory = createAsyncThunk(
   }
 );
 
-export const fetchStats = createAsyncThunk(
+const fetchStats = createAsyncThunk(
   'workoutPrograms/fetchStats',
-  async (_, { dispatch, getState, rejectWithValue }) => {
+  async (_, { getState, rejectWithValue }) => {
     try {
       // Load stats from storage
       const storedStats = await AsyncStorage.getItem(STATS_KEY);
-      let stats;
       
+      let stats: Stats;
       if (storedStats) {
-        stats = JSON.parse(storedStats) as Stats;
+        // Use stored stats if available
+        stats = JSON.parse(storedStats);
       } else {
-        // Initialize empty stats
-        await AsyncStorage.setItem(STATS_KEY, JSON.stringify(INITIAL_STATS));
+        // Use initial stats if none stored
         stats = INITIAL_STATS;
       }
       
-      // Force a recalculation of stats based on current workout history
-      await dispatch(updateStats()).unwrap();
+      // Get current state
+      const state = getState() as { workoutPrograms: WorkoutProgramsState };
+      const { workoutHistory, workoutPrograms } = state.workoutPrograms;
       
-      // Return the recalculated stats by getting them from state after updateStats
-      const newState = getState() as { workoutPrograms: WorkoutProgramsState };
-      return newState.workoutPrograms.stats;
+      // Recalculate stats based on current workout history
+      const updatedStats = calculateStats(workoutHistory, workoutPrograms);
+      
+      // Save stats to AsyncStorage
+      await AsyncStorage.setItem(STATS_KEY, JSON.stringify(updatedStats));
+      
+      return updatedStats;
     } catch (error) {
-      console.error('Error in fetchStats:', error);
       return rejectWithValue('Failed to fetch stats');
     }
   }
@@ -116,8 +135,8 @@ export const fetchStats = createAsyncThunk(
 
 // We've removed the toggleFavorite thunk and are using directSetFavorite reducer instead
 
-export const addWorkoutSession = createAsyncThunk(
-  'workoutPrograms/addSession',
+const addWorkoutSession = createAsyncThunk(
+  'workoutPrograms/addWorkoutSession',
   async (session: WorkoutSession, { getState, rejectWithValue, dispatch }) => {
     try {
       const state = getState() as { workoutPrograms: WorkoutProgramsState };
@@ -140,30 +159,33 @@ export const addWorkoutSession = createAsyncThunk(
       // Persist updated programs
       await AsyncStorage.setItem(WORKOUT_PROGRAMS_KEY, JSON.stringify(updatedPrograms));
       
-      // Trigger stats update
-      await dispatch(updateStats()).unwrap();
+      // Update stats after adding a new workout session
+      const updatedStats = calculateStats(updatedHistory, state.workoutPrograms.workoutPrograms);
+      await AsyncStorage.setItem(STATS_KEY, JSON.stringify(updatedStats));
       
       return {
         session,
         updatedPrograms,
       };
     } catch (error) {
-      console.error('Error in addWorkoutSession thunk:', error);
       return rejectWithValue('Failed to save workout session');
     }
   }
 );
 
-export const updateStats = createAsyncThunk(
+const updateStats = createAsyncThunk(
   'workoutPrograms/updateStats',
-  async (_, { getState, rejectWithValue }) => {
+  async (newStats: Partial<Stats>, { getState, rejectWithValue }) => {
     try {
       const state = getState() as { workoutPrograms: WorkoutProgramsState };
       const { workoutHistory, workoutPrograms, stats } = state.workoutPrograms;
       
       // Clone current stats
-      const newStats: Stats = JSON.parse(JSON.stringify(stats));
-      newStats.lastUpdated = new Date().toISOString();
+      const updatedStats: Stats = {
+        ...state.workoutPrograms.stats,
+        ...newStats,
+        lastUpdated: new Date().toISOString(),
+      };
       
       // Helper function to find workout by ID
       const getWorkoutById = (id: string): WorkoutProgram | undefined => {
@@ -171,7 +193,7 @@ export const updateStats = createAsyncThunk(
       };
       
       // Calculate new stats
-      const updatedStats = {
+      const calculatedStats = {
         totalWorkouts: workoutHistory.length,
         totalDuration: workoutHistory.reduce((sum, session) => sum + (session.duration || 0), 0),
         totalSegmentsCompleted: workoutHistory.reduce((sum, session) => {
@@ -210,7 +232,6 @@ export const updateStats = createAsyncThunk(
         
         // Skip invalid sessions
         if (!session.workoutId) {
-          console.log(`DEBUG_STATS: Session has no workoutId`, session);
           return;
         }
         
@@ -218,29 +239,50 @@ export const updateStats = createAsyncThunk(
         const workout = getWorkoutById(session.workoutId);
         if (workout) {
           // Make sure the values exist in our enum objects
-          if (workout.difficulty && updatedStats.workoutsByDifficulty[workout.difficulty] !== undefined) {
-            updatedStats.workoutsByDifficulty[workout.difficulty]++;
+          if (workout.difficulty && calculatedStats.workoutsByDifficulty[workout.difficulty] !== undefined) {
+            calculatedStats.workoutsByDifficulty[workout.difficulty]++;
           }
           
-          if (workout.focus && updatedStats.workoutsByFocus[workout.focus] !== undefined) {
-            updatedStats.workoutsByFocus[workout.focus]++;
+          if (workout.focus && calculatedStats.workoutsByFocus[workout.focus] !== undefined) {
+            calculatedStats.workoutsByFocus[workout.focus]++;
           }
         }
       });
       
-      updatedStats.longestWorkout = {
+      calculatedStats.longestWorkout = {
         duration: longestDuration,
         date: longestDate,
       };
       
       // Save updated stats
-      newStats.stats = updatedStats;
-      await AsyncStorage.setItem(STATS_KEY, JSON.stringify(newStats));
+      updatedStats.stats = calculatedStats;
+      await AsyncStorage.setItem(STATS_KEY, JSON.stringify(updatedStats));
       
-      return newStats;
+      return updatedStats;
     } catch (error) {
-      console.error('Error in updateStats thunk:', error);
       return rejectWithValue('Failed to update stats');
+    }
+  }
+);
+
+const initializeFavoriteWorkouts = createAsyncThunk(
+  'workoutPrograms/initializeFavorites',
+  async (_, { dispatch, getState }) => {
+    try {
+      const state = getState() as { workoutPrograms: WorkoutProgramsState };
+      
+      // Get all favorite workout IDs from current state
+      const favoriteIds = state.workoutPrograms.workoutPrograms
+        .filter(workout => Boolean(workout.favorite))
+        .map(workout => workout.id);
+      
+      // Store them in AsyncStorage
+      await AsyncStorage.setItem(FAVORITE_WORKOUTS_KEY, JSON.stringify(favoriteIds));
+      console.log('[workoutProgramsSlice] Initialized favorite workouts:', favoriteIds);
+      
+      return favoriteIds;
+    } catch (error) {
+      return [];
     }
   }
 );
@@ -268,8 +310,13 @@ const workoutProgramsSlice = createSlice({
           favorite: newFavoriteStatus
         };
         
-        // Persist to storage asynchronously
-        AsyncStorage.setItem(WORKOUT_PROGRAMS_KEY, JSON.stringify(state.workoutPrograms))
+        // Get all favorite workout IDs
+        const favoriteIds = state.workoutPrograms
+          .filter(workout => Boolean(workout.favorite))
+          .map(workout => workout.id);
+        
+        // Persist only the favorite IDs to storage asynchronously
+        AsyncStorage.setItem(FAVORITE_WORKOUTS_KEY, JSON.stringify(favoriteIds))
           .catch(err => console.error('AsyncStorage error:', err));
       }
     }
@@ -336,30 +383,42 @@ const workoutProgramsSlice = createSlice({
     builder.addCase(updateStats.rejected, (state, action) => {
       // Handle error
     });
+    
+    // Handle initializeFavoriteWorkouts
+    builder.addCase(initializeFavoriteWorkouts.pending, (state) => {
+      // Processing
+    });
+    builder.addCase(initializeFavoriteWorkouts.fulfilled, (state, action) => {
+      // No state update needed
+    });
+    builder.addCase(initializeFavoriteWorkouts.rejected, (state, action) => {
+      // Handle error
+    });
   },
 });
 
-// Export actions
+// Export actions and selectors
 export const { toggleWorkoutFavorite } = workoutProgramsSlice.actions;
+
+// Export selectors
+export const selectWorkoutPrograms = (state: { workoutPrograms: WorkoutProgramsState }) => state.workoutPrograms.workoutPrograms;
+export const selectWorkoutHistory = (state: { workoutPrograms: WorkoutProgramsState }) => state.workoutPrograms.workoutHistory;
+export const selectStats = (state: { workoutPrograms: WorkoutProgramsState }) => state.workoutPrograms.stats;
+export const selectIsLoading = (state: { workoutPrograms: WorkoutProgramsState }) => state.workoutPrograms.isLoading;
+export const selectError = (state: { workoutPrograms: WorkoutProgramsState }) => state.workoutPrograms.error;
 
 // Export reducer
 export default workoutProgramsSlice.reducer;
 
-// Selectors
-export const selectWorkoutPrograms = (state: { workoutPrograms: WorkoutProgramsState }) => 
-  state.workoutPrograms.workoutPrograms;
-
-export const selectWorkoutHistory = (state: { workoutPrograms: WorkoutProgramsState }) => 
-  state.workoutPrograms.workoutHistory;
-
-export const selectStats = (state: { workoutPrograms: WorkoutProgramsState }) => 
-  state.workoutPrograms.stats;
-
-export const selectIsLoading = (state: { workoutPrograms: WorkoutProgramsState }) => 
-  state.workoutPrograms.isLoading;
-
-export const selectError = (state: { workoutPrograms: WorkoutProgramsState }) => 
-  state.workoutPrograms.error;
+// Export async thunks
+export {
+  fetchWorkoutPrograms,
+  fetchWorkoutHistory,
+  fetchStats,
+  addWorkoutSession,
+  updateStats,
+  initializeFavoriteWorkouts
+};
 
 // Helper selectors
 export const selectWorkoutById = (id: string) => 
@@ -369,3 +428,73 @@ export const selectWorkoutById = (id: string) =>
 export const selectSessionById = (id: string) => 
   (state: { workoutPrograms: WorkoutProgramsState }) => 
     state.workoutPrograms.workoutHistory.find(session => session.id === id);
+
+function calculateStats(workoutHistory: WorkoutSession[], workoutPrograms: WorkoutProgram[]): Stats {
+  const statsData = {
+    totalWorkouts: workoutHistory.length,
+    totalDuration: workoutHistory.reduce((sum, session) => sum + (session.duration || 0), 0),
+    totalSegmentsCompleted: workoutHistory.reduce((sum, session) => {
+      // Add safety check for sessions that might have undefined segments
+      if (!session.segments) {
+        return sum;
+      }
+      return sum + session.segments.filter(segment => segment && !segment.skipped).length;
+    }, 0),
+    workoutsByDifficulty: {
+      beginner: 0,
+      intermediate: 0,
+      advanced: 0,
+    },
+    workoutsByFocus: {
+      endurance: 0,
+      hiit: 0,
+      fat_burn: 0,
+    },
+    lastWorkoutDate: workoutHistory.length > 0 ? workoutHistory[0].date : null,
+    longestWorkout: {
+      duration: 0,
+      date: '',
+    },
+  };
+
+  // Find longest workout
+  let longestDuration = 0;
+  let longestDate = '';
+
+  workoutHistory.forEach(session => {
+    if (session.duration && session.duration > longestDuration) {
+      longestDuration = session.duration;
+      longestDate = session.date || '';
+    }
+
+    // Skip invalid sessions
+    if (!session.workoutId) {
+      return;
+    }
+
+    // Count by difficulty and focus
+    const workout = workoutPrograms.find(workout => workout.id === session.workoutId);
+    if (workout) {
+      // Make sure the values exist in our enum objects
+      if (workout.difficulty && statsData.workoutsByDifficulty[workout.difficulty] !== undefined) {
+        statsData.workoutsByDifficulty[workout.difficulty]++;
+      }
+
+      if (workout.focus && statsData.workoutsByFocus[workout.focus] !== undefined) {
+        statsData.workoutsByFocus[workout.focus]++;
+      }
+    }
+  });
+
+  statsData.longestWorkout = {
+    duration: longestDuration,
+    date: longestDate,
+  };
+
+  // Create the full Stats object
+  return {
+    stats: statsData,
+    lastUpdated: new Date().toISOString(),
+    achievements: []
+  };
+}

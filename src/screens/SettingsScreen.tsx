@@ -24,7 +24,7 @@ const APP_VERSION = '1.0.0';
 const BUILD_NUMBER = '42';
 
 // Debug flag - set to false to disable debug logs
-const DEBUG_SETTINGS = true;
+const DEBUG_SETTINGS = false;
 
 const SettingsScreen: React.FC<Props> = ({navigation}) => {
   const {authState, signOut, preferences, updatePreference, isLoading, userSettings} = useContext(UserContext);
