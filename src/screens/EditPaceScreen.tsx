@@ -3,15 +3,17 @@ import {
   View, 
   Text, 
   StyleSheet, 
+  TouchableOpacity, 
   ScrollView, 
-  TextInput,
-  TouchableOpacity,
+  Platform, 
+  StatusBar, 
   Alert,
-  StatusBar
+  TextInput,
+  Keyboard
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { RootStackParamList, PaceType, PaceSetting } from '../types';
+import { RootStackParamList, PaceType, PaceSettings, PaceSetting } from '../types';
 import { COLORS, FONT_SIZES, SPACING, BORDER_RADIUS, PACE_COLORS } from '../styles/theme';
 import { UserContext } from '../context';
 import Button from '../components/common/Button';
@@ -50,40 +52,123 @@ const EditPaceScreen: React.FC<Props> = ({ navigation }) => {
       return false;
     } 
   } = useContext(UserContext);
+  
+  // Reference to the ScrollView
+  const scrollViewRef = useRef<ScrollView>(null);
+  
+  // Track which input is currently focused
+  const [focusedInput, setFocusedInput] = useState<PaceType | null>(null);
+  
+  // State to track keyboard height for scrolling adjustments
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
+  const [keyboardVisible, setKeyboardVisible] = useState(false);
+  
   // Create a ref to track the most up-to-date unit preference
   const unitPreferenceRef = useRef<'imperial' | 'metric'>('imperial');
   
   // Initialize pace settings from user context or use defaults
-  const [paceSettings, setPaceSettings] = useState<Record<PaceType, PaceSetting>>({
+  const [paceSettings, setPaceSettings] = useState<PaceSettings>({
     recovery: { speed: 4.5, incline: 1.0 },
     base: { speed: 5.5, incline: 1.5 },
     run: { speed: 7.0, incline: 2.0 },
     sprint: { speed: 9.0, incline: 2.5 },
   });
   
+  const [inputValues, setInputValues] = useState<Record<PaceType, string>>({
+    recovery: paceSettings.recovery.speed.toFixed(1),
+    base: paceSettings.base.speed.toFixed(1),
+    run: paceSettings.run.speed.toFixed(1),
+    sprint: paceSettings.sprint.speed.toFixed(1),
+  });
+  
   const [isSubmitting, setIsSubmitting] = useState(false);
   // Toggle between mph and km/h
   const [useMetric, setUseMetric] = useState(false);
   
-  // Load user settings when component mounts
+  // Initialize from user settings when component mounts
   useEffect(() => {
     if (userSettings?.paceSettings) {
       setPaceSettings(userSettings.paceSettings);
-    }
-    
-    // If the user has a preference for units, use that
-    if (userSettings?.preferences) {
-      // Check the units preference
-      const unitsPreference = userSettings.preferences.units;
       
-      if (unitsPreference) {
-        // Update the ref to the current preference
-        unitPreferenceRef.current = unitsPreference;
-        // Update the state
-        setUseMetric(unitsPreference === 'metric');
-      }
+      // Check if the user has a preference for units
+      const isMetric = userSettings.preferences?.units === 'metric';
+      setUseMetric(isMetric);
+      unitPreferenceRef.current = isMetric ? 'metric' : 'imperial';
+      
+      // Initialize input values based on pace settings and unit preference
+      const updatedValues: Record<PaceType, string> = {
+        recovery: '',
+        base: '',
+        run: '',
+        sprint: ''
+      };
+      
+      (['recovery', 'base', 'run', 'sprint'] as PaceType[]).forEach(paceType => {
+        const currentSpeed = userSettings.paceSettings[paceType].speed;
+        
+        if (isMetric) {
+          // Display in km/h
+          updatedValues[paceType] = convertToMetric(currentSpeed);
+        } else {
+          // Display in mph
+          updatedValues[paceType] = currentSpeed.toFixed(1);
+        }
+      });
+      
+      setInputValues(updatedValues);
+      
+      console.log('[DEBUG] Initialized pace settings from user settings:', {
+        recovery: userSettings.paceSettings.recovery.speed,
+        base: userSettings.paceSettings.base.speed,
+        run: userSettings.paceSettings.run.speed,
+        sprint: userSettings.paceSettings.sprint.speed
+      });
+      
+      console.log('[DEBUG] Initialized input values:', updatedValues);
     }
   }, [userSettings]);
+  
+  // Add keyboard listeners
+  useEffect(() => {
+    const keyboardDidShowListener = Keyboard.addListener(
+      Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow',
+      (e) => {
+        setKeyboardVisible(true);
+        setKeyboardHeight(e.endCoordinates.height);
+      }
+    );
+    
+    const keyboardDidHideListener = Keyboard.addListener(
+      Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide',
+      () => {
+        setKeyboardVisible(false);
+        setKeyboardHeight(0);
+      }
+    );
+    
+    // Clean up listeners
+    return () => {
+      keyboardDidShowListener.remove();
+      keyboardDidHideListener.remove();
+    };
+  }, []);
+  
+  // Scroll to the focused input when keyboard appears
+  useEffect(() => {
+    if (focusedInput && scrollViewRef.current && keyboardVisible) {
+      // Add a slight delay to ensure the keyboard is fully shown
+      setTimeout(() => {
+        // Find the position to scroll to based on the focused input
+        const scrollPosition = 
+          focusedInput === 'recovery' ? 300 :
+          focusedInput === 'base' ? 380 :
+          focusedInput === 'run' ? 460 :
+          focusedInput === 'sprint' ? 540 : 0;
+        
+        scrollViewRef.current?.scrollTo({ y: scrollPosition, animated: true });
+      }, 300);
+    }
+  }, [focusedInput, keyboardVisible]);
   
   // Convert mph to km/h for display
   const convertToMetric = (speed: number) => {
@@ -95,23 +180,53 @@ const EditPaceScreen: React.FC<Props> = ({ navigation }) => {
     return speed / 1.60934;
   };
   
-  // Get displayed speed value based on current unit setting
-  const getDisplaySpeed = (paceType: PaceType) => {
-    const speedValue = paceSettings[paceType].speed;
-    return useMetric ? convertToMetric(speedValue) : speedValue.toFixed(1);
+  // Handle input change without losing focus
+  const handleInputChange = (paceType: PaceType, value: string) => {
+    // Allow only valid numeric input with at most one decimal point
+    // This regex allows empty string, digits, and one decimal point with up to one decimal place
+    if (value === '' || /^(\d+)?(\.\d{0,1})?$/.test(value)) {
+      // Update the local input value
+      setInputValues(prev => ({
+        ...prev,
+        [paceType]: value
+      }));
+      
+      console.log(`[DEBUG-INPUT] Changed ${paceType} input to: ${value}`);
+    }
   };
-  
-  // Handle input change with unit conversion
-  const handleSpeedChange = (paceType: PaceType, value: string) => {
-    const numValue = parseFloat(value) || 0;
+
+  // Handle blur event to update the actual pace settings
+  const handleInputBlur = (paceType: PaceType) => {
+    // If empty, default to 0
+    let numValue = 0;
+    
+    if (inputValues[paceType] !== '') {
+      numValue = parseFloat(inputValues[paceType]);
+      
+      // Ensure the value is within a reasonable range (0.1 to 15)
+      numValue = Math.max(0.1, Math.min(numValue, 15));
+      
+      // Update the input value to show the constrained value
+      setInputValues(prev => ({
+        ...prev,
+        [paceType]: numValue.toFixed(1)
+      }));
+    }
+    
+    // Convert from display units to storage units (always in mph)
+    const speedInMph = useMetric ? convertFromMetric(numValue) : numValue;
+    
+    console.log(`[DEBUG] Setting ${paceType} pace: ${numValue} ${useMetric ? 'km/h' : 'mph'} (stored as ${speedInMph} mph)`);
     
     setPaceSettings(prev => ({
       ...prev,
       [paceType]: {
         ...prev[paceType],
-        speed: useMetric ? convertFromMetric(numValue) : numValue,
+        speed: speedInMph,
       },
     }));
+    
+    setFocusedInput(null);
   };
   
   // Toggle between miles and kilometers
@@ -121,6 +236,31 @@ const EditPaceScreen: React.FC<Props> = ({ navigation }) => {
     unitPreferenceRef.current = unitPref;
     // Update the state
     setUseMetric(useMetricUnits);
+    
+    // Update the displayed values based on the new unit system
+    const updatedValues: Record<PaceType, string> = {};
+    
+    (['recovery', 'base', 'run', 'sprint'] as PaceType[]).forEach(paceType => {
+      const currentSpeed = paceSettings[paceType].speed;
+      
+      if (useMetricUnits) {
+        // Converting from mph to km/h
+        updatedValues[paceType] = convertToMetric(currentSpeed);
+      } else {
+        // Converting from km/h to mph
+        updatedValues[paceType] = currentSpeed.toFixed(1);
+      }
+    });
+    
+    setInputValues(updatedValues);
+    
+    console.log(`[DEBUG] Toggled units to ${unitPref}. Pace settings remain in mph:`, {
+      recovery: paceSettings.recovery.speed,
+      base: paceSettings.base.speed,
+      run: paceSettings.run.speed,
+      sprint: paceSettings.sprint.speed
+    });
+    
     // Units preference is saved when user clicks Save
   };
   
@@ -129,11 +269,67 @@ const EditPaceScreen: React.FC<Props> = ({ navigation }) => {
     setIsSubmitting(true);
     
     try {
+      // If there's a currently focused input, process its value before saving
+      if (focusedInput) {
+        handleInputBlur(focusedInput);
+        // Small delay to ensure state updates before proceeding
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
+      
+      // Create a fresh pace settings object directly from input values
+      const freshInputPaceSettings: PaceSettings = {
+        recovery: { 
+          speed: inputValues.recovery ? 
+            (useMetric ? convertFromMetric(parseFloat(inputValues.recovery) || 0.1) : parseFloat(inputValues.recovery) || 0.1) : 
+            paceSettings.recovery.speed,
+          incline: paceSettings.recovery.incline 
+        },
+        base: { 
+          speed: inputValues.base ? 
+            (useMetric ? convertFromMetric(parseFloat(inputValues.base) || 0.1) : parseFloat(inputValues.base) || 0.1) : 
+            paceSettings.base.speed,
+          incline: paceSettings.base.incline 
+        },
+        run: { 
+          speed: inputValues.run ? 
+            (useMetric ? convertFromMetric(parseFloat(inputValues.run) || 0.1) : parseFloat(inputValues.run) || 0.1) : 
+            paceSettings.run.speed,
+          incline: paceSettings.run.incline 
+        },
+        sprint: { 
+          speed: inputValues.sprint ? 
+            (useMetric ? convertFromMetric(parseFloat(inputValues.sprint) || 0.1) : parseFloat(inputValues.sprint) || 0.1) : 
+            paceSettings.sprint.speed,
+          incline: paceSettings.sprint.incline 
+        }
+      };
+      
+      // Update pace settings state with fresh values
+      setPaceSettings(freshInputPaceSettings);
+      
+      console.log('[DEBUG-SAVE] Fresh input-based pace settings:', {
+        recovery: freshInputPaceSettings.recovery.speed,
+        base: freshInputPaceSettings.base.speed,
+        run: freshInputPaceSettings.run.speed,
+        sprint: freshInputPaceSettings.sprint.speed
+      });
+      
+      // Small delay to ensure state updates before proceeding
+      await new Promise(resolve => setTimeout(resolve, 100));
+      
+      // Log current pace settings before validation
+      console.log('[DEBUG-SAVE] Current pace settings before save:', {
+        recovery: freshInputPaceSettings.recovery.speed,
+        base: freshInputPaceSettings.base.speed,
+        run: freshInputPaceSettings.run.speed,
+        sprint: freshInputPaceSettings.sprint.speed
+      });
+      
       // Validate that settings follow the expected pattern (recovery < base < run < sprint)
       if (
-        paceSettings.recovery.speed >= paceSettings.base.speed ||
-        paceSettings.base.speed >= paceSettings.run.speed ||
-        paceSettings.run.speed >= paceSettings.sprint.speed
+        freshInputPaceSettings.recovery.speed >= freshInputPaceSettings.base.speed ||
+        freshInputPaceSettings.base.speed >= freshInputPaceSettings.run.speed ||
+        freshInputPaceSettings.run.speed >= freshInputPaceSettings.sprint.speed
       ) {
         Alert.alert(
           'Invalid Pace Settings',
@@ -169,9 +365,7 @@ const EditPaceScreen: React.FC<Props> = ({ navigation }) => {
       // Create updated settings object with all pace settings updated at once
       const updatedSettings = {
         ...currentSettings,
-        paceSettings: {
-          ...paceSettings
-        },
+        paceSettings: freshInputPaceSettings,
         // Explicitly set the preferences to ensure they don't get overwritten
         preferences: {
           ...currentSettings.preferences,
@@ -182,7 +376,7 @@ const EditPaceScreen: React.FC<Props> = ({ navigation }) => {
       // Save the complete updated settings
       try {
         // Debug log before saving
-        console.log('[DEBUG-EDIT] About to save settings with paces:', {
+        console.log('[DEBUG-SAVE] About to save settings with paces:', {
           recovery: updatedSettings.paceSettings.recovery.speed,
           base: updatedSettings.paceSettings.base.speed,
           run: updatedSettings.paceSettings.run.speed,
@@ -192,8 +386,8 @@ const EditPaceScreen: React.FC<Props> = ({ navigation }) => {
         const success = await saveSettings(updatedSettings);
         
         // Debug log after saving
-        console.log('[DEBUG-EDIT] Settings saved successfully:', success);
-        console.log('[DEBUG-EDIT] Navigate back to Workouts screen');
+        console.log('[DEBUG-SAVE] Settings saved successfully:', success);
+        console.log('[DEBUG-SAVE] Navigate back to Workouts screen');
       } catch (error) {
         console.error('Error saving settings:', error);
         Alert.alert('Error', 'Failed to save pace settings');
@@ -238,7 +432,14 @@ const EditPaceScreen: React.FC<Props> = ({ navigation }) => {
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <StatusBar barStyle="light-content" backgroundColor={COLORS.black} />
-      <ScrollView contentContainerStyle={styles.scrollContent}>
+      <ScrollView 
+        ref={scrollViewRef}
+        contentContainerStyle={[
+          styles.scrollContent,
+          { paddingBottom: keyboardVisible ? keyboardHeight : 20 }
+        ]}
+        keyboardShouldPersistTaps="handled"
+      >
         {/* Header with back arrow and title */}
         <View style={styles.navRow}>
           <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
@@ -274,10 +475,12 @@ const EditPaceScreen: React.FC<Props> = ({ navigation }) => {
             <View style={styles.inputContainer}>
               <TextInput
                 style={[styles.paceInput, styles[`${paceType}Input`]]}
-                value={getDisplaySpeed(paceType)}
-                onChangeText={(value) => handleSpeedChange(paceType, value)}
+                value={inputValues[paceType]}
+                onChangeText={(value) => handleInputChange(paceType, value)}
+                onBlur={() => handleInputBlur(paceType)}
                 keyboardType="decimal-pad"
                 selectTextOnFocus
+                onFocus={() => setFocusedInput(paceType)}
               />
               <Text style={styles.unitLabel}>{useMetric ? 'km/h' : 'mph'}</Text>
             </View>
@@ -306,7 +509,7 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     padding: SPACING.medium,
-    paddingBottom: 100, // Extra padding at the bottom
+    paddingBottom: 20, // Extra padding at the bottom to ensure space for keyboard
   },
   navRow: {
     flexDirection: 'row',
@@ -338,10 +541,6 @@ const styles = StyleSheet.create({
     marginBottom: SPACING.large,
     lineHeight: 22,
     opacity: 0.87,
-  },
-  note: {
-    fontStyle: 'italic',
-    color: 'rgba(255, 255, 255, 0.6)',
   },
   unitsToggleContainer: {
     flexDirection: 'row',
