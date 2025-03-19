@@ -270,6 +270,23 @@ const WorkoutVisualization: React.FC<WorkoutVisualizationProps> = ({
         ))}
       </View>
       
+      {/* Dark overlay for completed portions */}
+      {showOverlay && progressIndicatorPosition > 0 && (
+        <View 
+          style={[
+            styles.completedOverlay, 
+            { 
+              width: `${progressIndicatorPosition}%`,
+              borderTopLeftRadius: 12,
+              borderBottomLeftRadius: 12,
+              // If we're at the end, make sure both corners are rounded
+              borderTopRightRadius: progressIndicatorPosition >= 99 ? 12 : 0,
+              borderBottomRightRadius: progressIndicatorPosition >= 99 ? 12 : 0,
+            }
+          ]} 
+        />
+      )}
+      
       {/* Progress indicator line */}
       {progressIndicatorPosition > 0 && (
         <View 
@@ -426,6 +443,14 @@ const styles = StyleSheet.create({
     width: 2, 
     backgroundColor: COLORS.white, // White color
     zIndex: 10, // Higher z-index to ensure it's visible
+  },
+  completedOverlay: {
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    left: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)', // Dark overlay as in the mock
+    zIndex: 1,
   },
   timelineTimes: {
     flexDirection: 'row',
