@@ -7,7 +7,7 @@ import { Platform } from 'react-native';
 import * as AppleAuthentication from 'expo-apple-authentication';
 
 // Debug flag - set to false to disable debug logs
-const DEBUG_USER_CONTEXT = true;
+const DEBUG_USER_CONTEXT = false;
 
 // Default pace settings
 const DEFAULT_PACE_SETTINGS = {

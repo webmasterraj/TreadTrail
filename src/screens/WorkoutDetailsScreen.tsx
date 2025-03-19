@@ -216,6 +216,8 @@ const WorkoutDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
                 minutePerBar={true}
                 showOverlay={false}
                 containerHeight={visualizationHeight - 10} // Account for margin
+                showTimeLabels={true} // Explicitly enable time labels
+                connectingLineOffset={10} // Add connecting line offset
               />
             </View>
           </View>
@@ -343,10 +345,10 @@ const styles = StyleSheet.create({
   compactStructure: {
     borderRadius: 12, // Exact value from mockup
     overflow: 'hidden',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.3,
-    shadowRadius: 3,
+    // shadowColor: '#000',
+    // shadowOffset: { width: 0, height: 1 },
+    // shadowOpacity: 0.3,
+    // shadowRadius: 3,
     elevation: 3,
   },
   structureRow: {

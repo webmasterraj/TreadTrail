@@ -12,8 +12,8 @@ import {
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { RootStackParamList, WorkoutProgram, PaceType } from '../types';
-import { COLORS, FONT_SIZES, SPACING, BORDER_RADIUS, SHADOW, PACE_COLORS } from '../styles/theme';
+import { RootStackParamList, WorkoutProgram } from '../types';
+import { COLORS, FONT_SIZES, SPACING } from '../styles/theme';
 import { UserContext } from '../context';
 import WorkoutCard from '../components/workout/WorkoutCard';
 import BottomTabBar from '../components/common/BottomTabBar';

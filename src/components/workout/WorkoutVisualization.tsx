@@ -1,11 +1,10 @@
-import React, { useMemo, useState } from 'react';
-import { View, StyleSheet, Dimensions, Text } from 'react-native';
-import { WorkoutSegment, PaceType } from '../../types';
+import React, { useMemo, useState, useEffect, useRef, useCallback } from 'react';
+import { View, StyleSheet, LayoutChangeEvent, Text } from 'react-native';
+import { WorkoutSegment } from '../../types';
 import { COLORS, PACE_COLORS } from '../../styles/theme';
-import { useAppSelector } from '../../redux/store';
+import { useAppSelector, useAppDispatch } from '../../redux/hooks';
 import { 
   selectProgressIndicatorPosition, 
-  selectShouldAlignWithSegment,
   selectCurrentSegmentIndex
 } from '../../redux/slices/workoutSlice';
 
@@ -15,6 +14,12 @@ interface WorkoutVisualizationProps {
   showOverlay?: boolean; // Show darkened overlay for completed portions
   maxBars?: number; // Maximum bars to display
   containerHeight?: number; // Optional prop for parent to specify height
+  currentSegmentIndex?: number;
+  progressIndicatorPosition?: number;
+  showTimeLabels?: boolean; // Control time labels visibility
+  showTicks?: boolean; // Control ticks visibility
+  connectingLineOffset?: number; // Add this prop
+  showConnectingLine?: boolean; // New prop to control connecting line visibility
 }
 
 /**
@@ -32,34 +37,125 @@ interface WorkoutVisualizationProps {
  */
 const WorkoutVisualization: React.FC<WorkoutVisualizationProps> = ({
   segments,
-  minutePerBar = true,
+  minutePerBar = false,
   showOverlay = false,
   maxBars = 40,
-  containerHeight
+  containerHeight,
+  currentSegmentIndex = 0,
+  progressIndicatorPosition = 0,
+  showTimeLabels = true, // Default to showing time labels
+  showTicks = true, // Default to showing ticks
+  connectingLineOffset = 0, // Default to 0 (bottom)
+  showConnectingLine = true, // Default to showing connecting line
 }) => {
   // Add state to track measured height
   const [measuredHeight, setMeasuredHeight] = useState(0);
+  
+  // Use ref for container width to prevent frequent re-renders
+  const containerWidthRef = useRef(0);
   const [containerWidth, setContainerWidth] = useState(0);
   
+  // Debounce timer for container width changes
+  const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
+  
   // Get progress data from Redux
-  const progressIndicatorPosition = useAppSelector(selectProgressIndicatorPosition);
-  const shouldAlignWithSegment = useAppSelector(selectShouldAlignWithSegment);
-  const currentSegmentIndex = useAppSelector(selectCurrentSegmentIndex);
+  const progressIndicatorPositionFromRedux = useAppSelector(selectProgressIndicatorPosition);
+  const currentSegmentIndexFromRedux = useAppSelector(selectCurrentSegmentIndex);
   
+  // Get dispatch function
+  const dispatch = useAppDispatch();
+  
+  // Memoize the segments and positions to avoid unnecessary recalculations
+  const memoizedSegments = useMemo(() => {
+    if (!segments || segments.length === 0 || !containerWidth) {
+      return [];
+    }
+    
+    // Calculate total duration for all segments
+    const totalDuration = segments.reduce((sum, segment) => sum + segment.duration, 0);
+    
+    // Calculate positions and widths for each segment
+    let startPosition = 0;
+    
+    return segments.map((segment, index) => {
+      // Calculate segment width as a percentage of the total width
+      const segmentWidth = (segment.duration / totalDuration) * containerWidth;
+      
+      // Create segment object with position information
+      const segmentObject = {
+        ...segment,
+        left: startPosition,
+        width: segmentWidth,
+        index,
+      };
+      
+      // Update start position for the next segment
+      startPosition += segmentWidth;
+      
+      return segmentObject;
+    });
+  }, [segments, containerWidth]);
+  
+  // Calculate the position of the progress line based on the progress indicator position
+  const getProgressLinePosition = useCallback(() => {
+    // Get the progress indicator position (0-100%)
+    const progressPosition = progressIndicatorPosition || progressIndicatorPositionFromRedux;
+    
+    // Calculate the pixel position based on the percentage 
+    const pixelPosition = (containerWidth * progressPosition) / 100;
+    
+    // Ensure the position is within bounds
+    if (progressPosition <= 0) return 0; 
+    if (progressPosition >= 100) return containerWidth; 
+    
+    return pixelPosition;
+  }, [containerWidth, progressIndicatorPosition, progressIndicatorPositionFromRedux]);
+  
+  // Handle container width changes with debounce
+  const updateContainerWidth = (width: number) => {
+    // Store the latest width in the ref immediately
+    containerWidthRef.current = width;
+    
+    // Clear any existing timer
+    if (debounceTimerRef.current) {
+      clearTimeout(debounceTimerRef.current);
+    }
+    
+    // Set a new timer to update the state after a delay
+    debounceTimerRef.current = setTimeout(() => {
+      // Only update if the width has actually changed
+      if (containerWidth !== containerWidthRef.current) {
+        setContainerWidth(containerWidthRef.current);
+      }
+    }, 300); // 300ms debounce
+  };
+  
+  // Clean up the debounce timer
+  useEffect(() => {
+    return () => {
+      if (debounceTimerRef.current) {
+        clearTimeout(debounceTimerRef.current);
+      }
+    };
+  }, []);
+
   // Calculate total duration
-  const totalDuration = segments.reduce((sum, segment) => sum + segment.duration, 0);
-  
+  const getTotalDuration = useCallback(() => {
+    if (!segments || segments.length === 0) return 0;
+    return segments.reduce((sum, segment) => sum + segment.duration, 0);
+  }, [segments]);
+
   // Calculate the maximum incline and check if there's only one incline value
   const { maxIncline, hasSingleIncline } = useMemo(() => {
-    if (!segments || segments.length === 0) {
+    if (!memoizedSegments || memoizedSegments.length === 0) {
       return { maxIncline: 0, hasSingleIncline: true };
     }
     
-    const inclineValues = new Set(segments.map(segment => segment.incline));
+    const inclineValues = new Set(memoizedSegments.map(segment => segment.incline));
     
     // Explicitly find the max incline to avoid potential issues
     let maxInclineValue = 0;
-    segments.forEach(segment => {
+    memoizedSegments.forEach(segment => {
       if (segment.incline > maxInclineValue) {
         maxInclineValue = segment.incline;
       }
@@ -69,49 +165,52 @@ const WorkoutVisualization: React.FC<WorkoutVisualizationProps> = ({
       maxIncline: maxInclineValue || 1, // Ensure we never have a zero max incline
       hasSingleIncline: inclineValues.size === 1
     };
-  }, [segments]);
+  }, [memoizedSegments]);
   
   // Calculate height based on incline
   const getInclineHeight = (incline: number): number => {
     // Use provided containerHeight, measured height, or a default
     const effectiveHeight = containerHeight || measuredHeight || 100;
     
-    // Container height minus padding
-    const availableHeight = effectiveHeight - 16; // Account for padding
-    
     // Ensure we have a minimum height for visibility
-    const minHeight = availableHeight * 0.15; // At least 15% of container height
+    const minHeight = effectiveHeight * 0.15; // At least 15% of container height
     
     if (hasSingleIncline) {
       // If all inclines are the same, use a standard height
-      return availableHeight * 0.5; // 50% of available height
+      return effectiveHeight * 0.35; // 35% of available height
     }
     
     // Calculate height based on incline relative to max incline
     const heightPercentage = incline / maxIncline;
     
     // Scale the height to fit within the container, leaving space at the top
-    const maxBarHeight = availableHeight * 0.85; // Maximum 85% of container height
+    const maxBarHeight = effectiveHeight * 0.85; // Maximum 85% of container height
     
     // Calculate the final height, ensuring it's at least the minimum height
     return Math.max(minHeight, heightPercentage * maxBarHeight);
   };
   
   // Determine which segments to show based on minutePerBar setting
-  let displaySegments = [...segments];
-  
-  // Limit the number of bars to maxBars
-  if (displaySegments.length > maxBars) {
-    // Calculate how many segments to skip
-    const skipFactor = Math.ceil(displaySegments.length / maxBars);
+  const displaySegments = useMemo(() => {
+    let result = [...memoizedSegments];
     
-    // Filter segments to show only every nth segment
-    displaySegments = displaySegments.filter((_, index) => index % skipFactor === 0);
-  }
+    // Limit the number of bars to maxBars
+    if (result.length > maxBars) {
+      // Calculate how many segments to skip
+      const skipFactor = Math.ceil(result.length / maxBars);
+      
+      // Filter segments to show only every nth segment
+      result = result.filter((_, index) => index % skipFactor === 0);
+    }
+    
+    return result;
+  }, [memoizedSegments, maxBars]);
   
   // Calculate positions for each segment based on duration
   const segmentPositions = useMemo(() => {
-    if (!displaySegments.length || containerWidth === 0) return [];
+    const positions: { left: number; width: number; segment: WorkoutSegment }[] = [];
+    
+    if (!displaySegments.length || containerWidth === 0) return positions;
     
     // Calculate total duration of displayed segments
     const displayedTotalDuration = displaySegments.reduce((sum, segment) => sum + segment.duration, 0);
@@ -119,30 +218,23 @@ const WorkoutVisualization: React.FC<WorkoutVisualizationProps> = ({
     // Bar dimensions
     const barWidth = 4; // Width of each bar
     
-    // Calculate available width for time representation (accounting for padding and all bar widths)
-    const totalBarWidth = barWidth * displaySegments.length;
-    const availableWidth = containerWidth - 16 - totalBarWidth; // Container width minus padding and total bar width
+    // Calculate time scale - how many pixels per second using full container width
+    const timeScale = containerWidth / displayedTotalDuration;
     
-    // Calculate the time scale - how many pixels per second (excluding the space taken by bars)
-    const timeScale = availableWidth / displayedTotalDuration;
-    
-    // Calculate positions
-    const positions: { left: number; width: number }[] = [];
     let cumulativeDuration = 0;
-    let cumulativeBarWidth = 0;
     
     displaySegments.forEach((segment, index) => {
-      // Position is based on the cumulative duration up to this segment plus the width of previous bars
-      const left = 8 + (cumulativeDuration * timeScale) + cumulativeBarWidth;
+      // Position is based on the cumulative duration up to this segment
+      const left = cumulativeDuration * timeScale;
       
       positions.push({
         left,
-        width: barWidth
+        width: barWidth,
+        segment
       });
       
       // Update cumulative duration for next segment
       cumulativeDuration += segment.duration;
-      cumulativeBarWidth += barWidth;
     });
     
     return positions;
@@ -154,13 +246,13 @@ const WorkoutVisualization: React.FC<WorkoutVisualizationProps> = ({
         styles.container, 
         { height: containerHeight || 100 }
       ]}
-      onLayout={(event) => {
+      onLayout={(event: LayoutChangeEvent) => {
         const {height, width} = event.nativeEvent.layout;
         setMeasuredHeight(height);
-        setContainerWidth(width);
+        updateContainerWidth(width);
       }}
     >
-      <View style={styles.barsContainer}>
+      <View style={[styles.barsContainer, { paddingLeft: 8, paddingRight: 8 }]}>
         {displaySegments.map((segment, index) => (
           <View
             key={`bar-${index}`}
@@ -179,14 +271,116 @@ const WorkoutVisualization: React.FC<WorkoutVisualizationProps> = ({
       </View>
       
       {/* Connecting line at the bottom of the bars */}
-      <View style={styles.connectingLine} />
+      {showConnectingLine && (
+        <View 
+          style={[
+            styles.connectingLine, 
+            { 
+              left: 0, 
+              right: 0, 
+              // Calculate position dynamically based on container height
+              bottom: connectingLineOffset === 0 ? 0 : Math.min(connectingLineOffset, (containerHeight || 100) * 0.1),
+              zIndex: 2 
+            }
+          ]} 
+        />
+      )}
+      
+      {/* Minute ticks and time labels */}
+      {(showTicks || showTimeLabels) && displaySegments && displaySegments.length > 0 && (() => {
+        const totalMinutes = Math.floor(getTotalDuration() / 60);
+        
+        // Define the type for major ticks
+        interface MajorTick {
+          minute: number;
+          percentPosition: number;
+          percentile: number; // Add percentile value to track which position it corresponds to
+        }
+        
+        // Calculate desired quarter positions
+        const desiredPositions = [0, 0.25, 0.5, 0.75, 1];
+        
+        // Find the closest minute to each desired position
+        const majorTicks: MajorTick[] = [];
+        
+        desiredPositions.forEach(desiredPos => {
+          // Convert position to minute
+          const exactMinute = desiredPos * totalMinutes;
+          // Round to nearest minute
+          const closestMinute = Math.round(exactMinute);
+          // Calculate the actual percentage position based on the minute
+          const actualPercentPosition = (closestMinute * 100) / totalMinutes;
+          
+          majorTicks.push({
+            minute: closestMinute,
+            percentPosition: actualPercentPosition,
+            percentile: desiredPos // Store the original percentile
+          });
+        });
+        
+        return (
+          <>
+            {/* Ticks */}
+            {showTicks && (
+              <View style={styles.ticksContainer}>
+                {Array.from({ length: totalMinutes + 1 }).map((_, index) => {
+                  // Check if this is a major tick using the stored data
+                  const isMajorTick = majorTicks.some(tick => 
+                    tick.minute === index
+                  );
+                  
+                  return (
+                    <View 
+                      key={`tick-${index}`} 
+                      style={[
+                        isMajorTick ? styles.majorTick : styles.tick, 
+                        { left: `${(index * 100) / totalMinutes}%` }
+                      ]} 
+                    />
+                  );
+                })}
+              </View>
+            )}
+            
+            {/* Time labels - using the same major tick positions */}
+            {showTimeLabels && (
+              <View style={styles.timelineTimes}>
+                {majorTicks.map((tick, index) => {
+                  // Only show labels for 0%, 50%, and 100% based on percentile
+                  if (tick.percentile === 0 || tick.percentile === 0.5 || tick.percentile === 1) {
+                    return (
+                      <Text 
+                        key={`label-${index}`}
+                        style={[
+                          styles.timeText, 
+                          { 
+                            position: 'absolute', 
+                            left: `${tick.percentPosition}%`,
+                            transform: [{ translateX: -5 }], // Center the text
+                            textAlign: 'center',
+                          }
+                        ]}
+                      >
+                        {tick.minute}'
+                      </Text>
+                    );
+                  }
+                  
+                  // Return null for ticks that shouldn't have labels
+                  return null;
+                })}
+              </View>
+            )}
+          </>
+        );
+      })()}
       
       {/* Progress line */}
       {showOverlay && (
         <View
           style={[
             styles.progressLine,
-            { left: `${progressIndicatorPosition}%` },
+            { left: getProgressLinePosition() },
           ]}
         />
       )}
@@ -199,7 +393,7 @@ const styles = StyleSheet.create({
     width: '100%',
     height: '100%',
     backgroundColor: 'transparent',
-    padding: 8,
+    padding: 0,
     position: 'relative',
     justifyContent: 'flex-end',
   },
@@ -218,12 +412,10 @@ const styles = StyleSheet.create({
   },
   connectingLine: {
     position: 'absolute',
-    bottom: 0,
-    left: 8, // Adjust for container padding
-    right: 8, // Adjust for container padding
+    bottom: 0, // This will be overridden by the inline style
     height: 2, // Thinner connecting line
-    backgroundColor: COLORS.darkGray,
-    zIndex: 0,
+    backgroundColor: COLORS.lightGray,
+    zIndex: 1,
   },
   progressLine: {
     position: 'absolute',
@@ -233,16 +425,58 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.white, // White color
     zIndex: 2,
   },
+  timelineTimes: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 12, // Increase margin to make room for ticks
+    width: '100%',
+  },
+  timeText: {
+    color: 'rgba(255, 255, 255, 0.5)',
+    fontSize: 11,
+    textAlign: 'center',
+  },
+  ticksContainer: {
+    position: 'absolute',
+    bottom: 4, // Position above the time labels
+    left: 0,
+    right: 0,
+    height: 6,
+    zIndex: 0, // Lower z-index so connecting line appears above
+  },
+  tick: {
+    position: 'absolute',
+    width: 1,
+    height: 4,
+    backgroundColor: 'rgba(255, 255, 255, 0.3)',
+    bottom: 0,
+  },
+  majorTick: {
+    position: 'absolute',
+    height: 8,
+    width: 2,
+    backgroundColor: 'rgba(255, 255, 255, 0.5)',
+    bottom: 0,
+    transform: [{ translateX: -0.75 }], // Center the tick
+  },
 });
 
 // Export with React.memo to prevent unnecessary re-renders
 export default React.memo(WorkoutVisualization, (prevProps, nextProps) => {
   // Only re-render if these props change
-  return (
+  const segmentsEqual = JSON.stringify(prevProps.segments) === JSON.stringify(nextProps.segments);
+  
+  const result = (
     prevProps.containerHeight === nextProps.containerHeight &&
     prevProps.showOverlay === nextProps.showOverlay &&
     prevProps.minutePerBar === nextProps.minutePerBar &&
     prevProps.maxBars === nextProps.maxBars &&
-    JSON.stringify(prevProps.segments) === JSON.stringify(nextProps.segments)
+    prevProps.showTimeLabels === nextProps.showTimeLabels &&
+    prevProps.showTicks === nextProps.showTicks &&
+    prevProps.connectingLineOffset === nextProps.connectingLineOffset &&
+    prevProps.showConnectingLine === nextProps.showConnectingLine &&
+    segmentsEqual
   );
+  
+  return result;
 });

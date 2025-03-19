@@ -1,22 +1,25 @@
-import React, { useEffect, useState, useRef, useCallback, useContext, useMemo } from 'react';
-import { 
-  View, 
-  Text, 
-  StyleSheet, 
-  SafeAreaView, 
-  Alert,
-  BackHandler,
+import React, { useState, useEffect, useRef, useMemo, useCallback, useContext } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
   TouchableOpacity,
-  Modal,
-  Animated,
-  Easing,
-  StatusBar,
+  Alert,
+  ScrollView,
   Platform,
+  ActivityIndicator,
+  SafeAreaView,
+  StatusBar,
+  Image,
   Dimensions,
-  LayoutChangeEvent
+  Animated,
+  LayoutChangeEvent,
+  Modal,
+  Easing,
+  BackHandler
 } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { RootStackParamList, PaceType } from '../types';
+import { RootStackParamList, PaceType, WorkoutSegment } from '../types';
 import { COLORS, FONT_SIZES, SPACING, PACE_COLORS } from '../styles/theme';
 import { WorkoutVisualization } from '../components/workout';
 import { useAppDispatch, useAppSelector } from '../redux/store';
@@ -87,7 +90,11 @@ const WorkoutInProgressScreen: React.FC<Props> = ({ route, navigation }) => {
   // Calculate total duration
   const totalDuration = useMemo(() => {
     if (!activeWorkout || !activeWorkout.segments) return 0;
-    return activeWorkout.segments.reduce((total: number, segment: { duration: number }) => total + segment.duration, 0);
+    
+    // Calculate total duration for all segments
+    return activeWorkout.segments.reduce((sum: number, segment: { duration: number }) => {
+      return sum + segment.duration;
+    }, 0);
   }, [activeWorkout]);
 
   // Initialize the Redux timer
@@ -328,29 +335,26 @@ const WorkoutInProgressScreen: React.FC<Props> = ({ route, navigation }) => {
   // Track when skipping occurs to ensure proper progress line positioning
   useEffect(() => {
     if (isSkipping && currentSegmentIndex > 0) {
+      // Calculate segment start times for debugging
+      const segmentStartTimes = [];
+      let accumulatedTime = 0;
+      
+      if (activeWorkout && activeWorkout.segments) {
+        for (let i = 0; i < activeWorkout.segments.length; i++) {
+          segmentStartTimes.push(accumulatedTime);
+          accumulatedTime += activeWorkout.segments[i].duration;
+        }
+      }
+      
       // When skipping, ensure the progress line is positioned correctly
-      dispatch(updateProgressIndicator({ 
-        position: (elapsedTime / totalDuration) * 100 
-      }));
+      if (totalDuration > 0) {
+        const position = (elapsedTime / totalDuration) * 100;
+      }
     }
-  }, [isSkipping, currentSegmentIndex, elapsedTime, totalDuration, dispatch]);
-
-  // Update progress indicator on timer ticks
-  useEffect(() => {
-    if (isRunning && activeWorkout) {
-      // Update progress indicator position based on elapsed time
-      dispatch(updateProgressIndicator({ 
-        position: (elapsedTime / totalDuration) * 100 
-      }));
-    }
-  }, [elapsedTime, isRunning, activeWorkout, totalDuration, dispatch]);
+  }, [isSkipping, currentSegmentIndex, elapsedTime, totalDuration, dispatch, activeWorkout]);
 
   // Handle skip state reset
   useEffect(() => {
-    if (!isSkipping && skipActionRef.current) {
-      skipActionRef.current = false;
-    }
-    
     // If skipping was true and is now false, we can reset the skip state
     if (!isSkipping && prevIsSkippingRef.current) {
       prevIsSkippingRef.current = false;
@@ -358,7 +362,7 @@ const WorkoutInProgressScreen: React.FC<Props> = ({ route, navigation }) => {
     
     // Update previous skipping state
     prevIsSkippingRef.current = isSkipping;
-  }, [isSkipping]);
+  }, [isSkipping, elapsedTime, totalDuration, dispatch]);
 
   // Handle pause button press
   const handlePause = () => {
@@ -387,13 +391,20 @@ const WorkoutInProgressScreen: React.FC<Props> = ({ route, navigation }) => {
   const handleSkip = () => {
     if (!isWorkoutActive) return;
     
+    // Prevent multiple skips by checking if already skipping
+    if (isSkipping || skipActionRef.current) {
+      return;
+    }
+    
     skipActionRef.current = true;
+    
     dispatch(skipSegmentAction());
     
-    // Reset skip state after a short delay to allow for multiple skips
+    // Reset skip state after a longer delay to prevent multiple skips
     setTimeout(() => {
       dispatch(resetSkipState());
-    }, 100);
+      skipActionRef.current = false;
+    }, 500); // Increased from 100ms to 500ms for better debounce
     
     // Stop any playing audio if audio is enabled
     if (audioEnabled) {
@@ -601,7 +612,7 @@ const WorkoutInProgressScreen: React.FC<Props> = ({ route, navigation }) => {
             </View>
           </View>
           
-          {/* Timeline - expanded to fill available space */}
+          {/* Timeline */}
           <View style={styles.timelineContainerNoGap}>
             <Text style={styles.timelineTitle}>Workout Progress</Text>
             
@@ -636,16 +647,9 @@ const WorkoutInProgressScreen: React.FC<Props> = ({ route, navigation }) => {
                 minutePerBar={true} 
                 showOverlay={true}
                 maxBars={40}
-                containerHeight={visualizationHeight - 16} // Account for padding
+                containerHeight={visualizationHeight - 50} // Account for increased padding and ticks
+                connectingLineOffset={10} // Add connecting line offset
               />
-            </View>
-            
-            <View style={styles.timelineTimes}>
-              <Text style={styles.timeText}>0'</Text>
-              <Text style={styles.timeText}>{Math.floor(workoutTotalTime / 60 / 4)}'</Text>
-              <Text style={styles.timeText}>{Math.floor(workoutTotalTime / 60 / 2)}'</Text>
-              <Text style={styles.timeText}>{Math.floor(workoutTotalTime / 60 * 3 / 4)}'</Text>
-              <Text style={styles.timeText}>{Math.floor(workoutTotalTime / 60)}'</Text>
             </View>
           </View>
           
@@ -869,17 +873,7 @@ const styles = StyleSheet.create({
     minHeight: 120, // Minimum height as a fallback
     backgroundColor: COLORS.darkGray,
     borderRadius: 12,
-    padding: 8,
-  },
-  timelineTimes: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginTop: 5, // Exact value from mockup
-    fontSize: 11, // Exact value from mockup
-  },
-  timeText: {
-    color: 'rgba(255, 255, 255, 0.5)', // Exact value from mockup
-    fontSize: 11, // Exact value from mockup
+    padding: 16, // Increase padding for better alignment
   },
   controlButtonsContainer: {
     position: 'absolute',

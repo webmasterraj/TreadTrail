@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Dimensions, LayoutChangeEvent } from 'react-native';
-import { COLORS, FONT_SIZES, SPACING, BORDER_RADIUS, SHADOW, PACE_COLORS } from '../../styles/theme';
-import { WorkoutProgram, WorkoutSegment } from '../../types';
+import { View, Text, StyleSheet, TouchableOpacity, LayoutChangeEvent } from 'react-native';
+import { COLORS } from '../../styles/theme';
+import { WorkoutProgram } from '../../types';
 import WorkoutVisualization from './WorkoutVisualization';
 import { formatDuration } from '../../utils/helpers';
 
@@ -11,6 +11,9 @@ interface WorkoutCardProps {
   onFavoriteToggle: () => void;
   showVisualization?: boolean;
   showFavoriteButton?: boolean;
+  showTicks?: boolean;
+  showTimeLabels?: boolean;
+  showConnectingLine?: boolean;
 }
 
 const WorkoutCard: React.FC<WorkoutCardProps> = ({ 
@@ -18,7 +21,10 @@ const WorkoutCard: React.FC<WorkoutCardProps> = ({
   onPress, 
   onFavoriteToggle,
   showVisualization = false,
-  showFavoriteButton = true
+  showFavoriteButton = true,
+  showTicks = true,
+  showTimeLabels = true,
+  showConnectingLine = true
 }) => {
   const { 
     id, 
@@ -104,6 +110,10 @@ const WorkoutCard: React.FC<WorkoutCardProps> = ({
             segments={segments} 
             minutePerBar={true}
             containerHeight={visualizationHeight - 12} // Account for margins
+            showTimeLabels={showTimeLabels} 
+            showTicks={showTicks} 
+            showConnectingLine={showConnectingLine}
+            connectingLineOffset={20} // Match the offset used in other screens
           />
         </View>
       )}
