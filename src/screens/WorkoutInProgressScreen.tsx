@@ -649,6 +649,7 @@ const WorkoutInProgressScreen: React.FC<Props> = ({ route, navigation }) => {
                 maxBars={40}
                 containerHeight={visualizationHeight - 50} // Account for increased padding and ticks
                 connectingLineOffset={10} // Add connecting line offset
+                useDarkOverlay={true} // Update to use dark overlay for completed portions
               />
             </View>
           </View>

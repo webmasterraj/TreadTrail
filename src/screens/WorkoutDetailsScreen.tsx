@@ -193,7 +193,20 @@ const WorkoutDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
           
           <View style={styles.statsContainer}>
             <View style={styles.statItem}>
-              <Text style={styles.statValue}>{Math.round(duration / 60)}</Text>
+              <Text style={styles.statValue}>
+                {(() => {
+                  const minutes = Math.floor(duration / 60);
+                  const seconds = duration % 60;
+                  
+                  if (seconds === 0) {
+                    return minutes; // Exact minutes, no decimal
+                  } else if (seconds === 30) {
+                    return `${minutes}.5`; // Half minute, show as .5
+                  } else {
+                    return parseFloat((minutes + seconds / 60).toFixed(1)); // Other seconds, round to 1 decimal
+                  }
+                })()}
+              </Text>
               <Text style={styles.statLabel}>minutes</Text>
             </View>
             

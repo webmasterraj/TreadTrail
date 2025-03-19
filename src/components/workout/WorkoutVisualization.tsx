@@ -20,6 +20,7 @@ interface WorkoutVisualizationProps {
   showTicks?: boolean; // Control ticks visibility
   connectingLineOffset?: number; // Add this prop
   showConnectingLine?: boolean; // New prop to control connecting line visibility
+  showProgressOverlay?: boolean; // New prop to control progress overlay visibility
 }
 
 /**
@@ -47,6 +48,7 @@ const WorkoutVisualization: React.FC<WorkoutVisualizationProps> = ({
   showTicks = true, // Default to showing ticks
   connectingLineOffset = 0, // Default to 0 (bottom)
   showConnectingLine = true, // Default to showing connecting line
+  showProgressOverlay = false, // Default to not showing progress overlay
 }) => {
   // Add state to track measured height
   const [measuredHeight, setMeasuredHeight] = useState(0);
@@ -270,6 +272,35 @@ const WorkoutVisualization: React.FC<WorkoutVisualizationProps> = ({
         ))}
       </View>
       
+      {/* Dark overlay for completed portions */}
+      {showOverlay && progressIndicatorPosition > 0 && (
+        <View 
+          style={[
+            styles.completedOverlay, 
+            { 
+              width: `${progressIndicatorPosition}%`,
+              borderTopLeftRadius: 12,
+              borderBottomLeftRadius: 12,
+              // If we're at the end, make sure both corners are rounded
+              borderTopRightRadius: progressIndicatorPosition >= 99 ? 12 : 0,
+              borderBottomRightRadius: progressIndicatorPosition >= 99 ? 12 : 0,
+            }
+          ]} 
+        />
+      )}
+      
+      {/* Progress indicator line */}
+      {showOverlay && progressIndicatorPosition > 0 && progressIndicatorPosition < 100 && (
+        <View 
+          style={[
+            styles.progressLine, 
+            { 
+              left: `${progressIndicatorPosition}%` 
+            }
+          ]} 
+        />
+      )}
+      
       {/* Connecting line at the bottom of the bars */}
       {showConnectingLine && (
         <View 
@@ -374,16 +405,6 @@ const WorkoutVisualization: React.FC<WorkoutVisualizationProps> = ({
           </>
         );
       })()}
-      
-      {/* Progress line */}
-      {showOverlay && (
-        <View
-          style={[
-            styles.progressLine,
-            { left: getProgressLinePosition() },
-          ]}
-        />
-      )}
     </View>
   );
 };
@@ -424,6 +445,14 @@ const styles = StyleSheet.create({
     width: 2, // Thin vertical line
     backgroundColor: COLORS.white, // White color
     zIndex: 2,
+  },
+  completedOverlay: {
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    left: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)', // Dark overlay as in the mock
+    zIndex: 1,
   },
   timelineTimes: {
     flexDirection: 'row',
@@ -475,6 +504,7 @@ export default React.memo(WorkoutVisualization, (prevProps, nextProps) => {
     prevProps.showTicks === nextProps.showTicks &&
     prevProps.connectingLineOffset === nextProps.connectingLineOffset &&
     prevProps.showConnectingLine === nextProps.showConnectingLine &&
+    prevProps.showProgressOverlay === nextProps.showProgressOverlay &&
     segmentsEqual
   );
   

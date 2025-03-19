@@ -98,7 +98,7 @@ const WorkoutCard: React.FC<WorkoutCardProps> = ({
       
       {/* Workout Meta Information */}
       <View style={styles.metaContainer}>
-        <Text style={styles.metaItem}>{formatDuration(duration)}</Text>
+        <Text style={styles.metaItem}>{formatDuration(duration, 'decimal')}</Text>
         <Text style={styles.metaItem}>{getIntensityStars()} intensity</Text>
         <Text style={styles.metaItem}>{countIntervals()} intervals</Text>
       </View>

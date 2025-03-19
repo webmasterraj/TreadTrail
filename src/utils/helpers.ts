@@ -28,11 +28,13 @@ export const formatTime = (seconds: number): string => {
  * @param format Optional format to use (can be basic, hours, days, or auto)
  * @returns Formatted duration string
  */
-export const formatDuration = (seconds: number, format: 'basic' | 'hours' | 'days' | 'auto' = 'basic'): string => {
+export const formatDuration = (seconds: number, format: 'basic' | 'hours' | 'days' | 'auto' | 'decimal' = 'basic'): string => {
   // Handle zero time specially
   if (seconds === 0) {
     if (format === 'basic') {
       return '0 sec';
+    } else if (format === 'decimal') {
+      return '0 min';
     } else {
       return '0.0h';  // Show exactly 0.0h for zero duration
     }
@@ -41,8 +43,23 @@ export const formatDuration = (seconds: number, format: 'basic' | 'hours' | 'day
   if (seconds < 60) {
     if (format === 'basic') {
       return `${seconds} sec`;
+    } else if (format === 'decimal') {
+      return '0.1 min'; // Show small durations as 0.1 min
     } else {
       return '0.1h'; // Minimum display for non-zero but small durations
+    }
+  }
+  
+  if (format === 'decimal') {
+    const minutes = Math.floor(seconds / 60);
+    const remainingSeconds = seconds % 60;
+    
+    if (remainingSeconds === 0) {
+      return `${minutes} min`;
+    } else if (remainingSeconds === 30) {
+      return `${minutes}.5 min`; // Half minute, show as .5
+    } else {
+      return `${parseFloat((minutes + remainingSeconds / 60).toFixed(1))} min`;
     }
   }
   
