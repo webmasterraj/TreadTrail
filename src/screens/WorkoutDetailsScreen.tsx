@@ -227,7 +227,6 @@ const WorkoutDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
               <WorkoutVisualization 
                 segments={segments} 
                 minutePerBar={true}
-                showOverlay={false}
                 containerHeight={visualizationHeight - 10} // Account for margin
                 showTimeLabels={true} // Explicitly enable time labels
                 connectingLineOffset={10} // Add connecting line offset

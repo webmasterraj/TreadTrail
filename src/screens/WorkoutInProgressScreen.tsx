@@ -644,12 +644,12 @@ const WorkoutInProgressScreen: React.FC<Props> = ({ route, navigation }) => {
             >
               <WorkoutVisualization 
                 segments={activeWorkout.segments} 
-                minutePerBar={true} 
-                showOverlay={true}
+                currentSegmentIndex={currentSegmentIndex}
+                progressIndicatorPosition={Math.min((elapsedTime / totalDuration) * 100, 99.9)}
+                minutePerBar={false}
                 maxBars={40}
                 containerHeight={visualizationHeight - 50} // Account for increased padding and ticks
                 connectingLineOffset={10} // Add connecting line offset
-                useDarkOverlay={true} // Update to use dark overlay for completed portions
               />
             </View>
           </View>
