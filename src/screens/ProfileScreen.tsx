@@ -161,6 +161,9 @@ const ProfileScreen: React.FC<Props> = ({ navigation, route }) => {
 
         {/* Lifetime Stats */}
         <View style={styles.lifetimeStats}>
+        <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>Lifetime Stats</Text>
+          </View>
           <View style={styles.statsRow}>
             <View style={styles.statCard}>
               <Animated.View 
@@ -242,7 +245,7 @@ const ProfileScreen: React.FC<Props> = ({ navigation, route }) => {
         {/* Calendar View */}
         <View style={styles.calendarSection}>
           <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Your Workouts</Text>
+            <Text style={styles.sectionTitle}>Your History</Text>
           </View>
           
           <WorkoutCalendar workoutHistory={workoutHistory} />
