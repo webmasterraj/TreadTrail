@@ -8,11 +8,12 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   StatusBar,
-  Alert
+  Alert,
+  ScrollView
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { RootStackParamList, WorkoutProgram } from '../types';
+import { RootStackParamList, WorkoutProgram, CategoryType } from '../types';
 import { COLORS, FONT_SIZES, SPACING } from '../styles/theme';
 import { UserContext } from '../context';
 import WorkoutCard from '../components/workout/WorkoutCard';
@@ -42,6 +43,17 @@ const WorkoutLibraryScreen: React.FC<Props> = ({ navigation }) => {
   const [updateKey, setUpdateKey] = useState(Date.now());
   // Track if we're using metric units
   const [isMetric, setIsMetric] = useState(userSettings?.preferences?.units === 'metric');
+  // Track selected categories
+  const [selectedCategories, setSelectedCategories] = useState<CategoryType[]>([]);
+  
+  // All available categories in the desired order
+  const CATEGORIES: CategoryType[] = [
+    'Easy 🐣',
+    'Trad HIIT 🏃🏼',
+    'Hills ⛰',
+    'Endurance 💪🏽',
+    'Death 💀'
+  ];
   
   // Initialize data on component mount
   useEffect(() => {
@@ -105,19 +117,39 @@ const WorkoutLibraryScreen: React.FC<Props> = ({ navigation }) => {
     }, [userSettings])
   );
   
-  // Apply filters whenever workouts change
+  // Toggle category selection
+  const toggleCategorySelection = (category: CategoryType) => {
+    setSelectedCategories(prevSelected => {
+      if (prevSelected.includes(category)) {
+        // Remove category if already selected
+        return prevSelected.filter(cat => cat !== category);
+      } else {
+        // Add category if not selected
+        return [...prevSelected, category];
+      }
+    });
+  };
+  
+  // Apply filters whenever workouts or selected categories change
   useEffect(() => {
     if (!workoutPrograms || workoutPrograms.length === 0) return;
     
     // Make sure we're creating a new array reference
-    const workoutsWithFavoriteStatus = workoutPrograms.map(workout => ({
+    let filtered = workoutPrograms.map(workout => ({
       ...workout,
       // Ensure favorite is always a boolean
       favorite: Boolean(workout.favorite)
     }));
     
-    setFilteredWorkouts(workoutsWithFavoriteStatus);
-  }, [workoutPrograms]);
+    // Apply category filter if any categories are selected
+    if (selectedCategories.length > 0) {
+      filtered = filtered.filter(workout => 
+        selectedCategories.includes(workout.category)
+      );
+    }
+    
+    setFilteredWorkouts(filtered);
+  }, [workoutPrograms, selectedCategories]);
   
   // Navigate to workout details
   const handleWorkoutPress = (workoutId: string) => {
@@ -180,8 +212,6 @@ const WorkoutLibraryScreen: React.FC<Props> = ({ navigation }) => {
     navigation.navigate('Settings');
   };
   
-  // Removed debug functions
-
   // Show loading indicator while data is loading
   if (isLoading) {
     return (
@@ -274,11 +304,44 @@ const WorkoutLibraryScreen: React.FC<Props> = ({ navigation }) => {
               </TouchableOpacity> */}
             </View>
             
+            {/* Category Filters */}
+            <ScrollView 
+              horizontal 
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.categoryFiltersContainer}
+              scrollEnabled={true}
+              bounces={false}
+              directionalLockEnabled={true} // Lock scrolling to horizontal only
+              showsVerticalScrollIndicator={false}
+              alwaysBounceVertical={false}
+              nestedScrollEnabled={false}
+            >
+              {CATEGORIES.map((category) => (
+                <TouchableOpacity
+                  key={category}
+                  style={[
+                    styles.categoryPill,
+                    selectedCategories.includes(category) && styles.categoryPillSelected
+                  ]}
+                  onPress={() => toggleCategorySelection(category)}
+                >
+                  <Text 
+                    style={[
+                      styles.categoryPillText,
+                      selectedCategories.includes(category) && styles.categoryPillTextSelected
+                    ]}
+                  >
+                    {category}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+            
             {/* Workout list */}
             <FlatList
               data={filteredWorkouts}
               keyExtractor={(item) => item.id}
-              extraData={workoutPrograms} // Force re-render when Redux state changes
+              extraData={[workoutPrograms, selectedCategories]} // Force re-render when Redux state or filters change
               contentContainerStyle={styles.listContent}
               renderItem={({ item }) => {
                 // Look up the latest data from Redux for this item
@@ -298,7 +361,9 @@ const WorkoutLibraryScreen: React.FC<Props> = ({ navigation }) => {
               ListEmptyComponent={
                 <View style={styles.emptyContainer}>
                   <Text style={styles.emptyText}>
-                    No workouts found.
+                    {selectedCategories.length > 0 
+                      ? 'No workouts found for the selected categories.' 
+                      : 'No workouts found.'}
                   </Text>
                 </View>
               }
@@ -361,9 +426,9 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.darkGray,
     borderRadius: 16,
     padding: 15,
-    marginBottom: 25,
+    marginBottom: 10,
     borderWidth: 1,
-    borderColor: COLORS.lightGray,
+    borderColor: COLORS.darkGray,
   },
   paceCircles: {
     flexDirection: 'row',
@@ -407,7 +472,7 @@ const styles = StyleSheet.create({
   },
   librarySection: {
     flex: 1,
-    marginTop: 20,
+    marginTop: 10, // Reduced from 20 to 10
   },
   listContent: {
     paddingBottom: 80, // Leave room for tab bar
@@ -420,6 +485,37 @@ const styles = StyleSheet.create({
     color: COLORS.white,
     fontSize: FONT_SIZES.medium,
     textAlign: 'center',
+  },
+  // Category filter styles
+  categoryFiltersContainer: {
+    paddingBottom: 12,
+    flexDirection: 'row',
+    height: 45, // Fixed height instead of minHeight to prevent vertical scrolling
+    alignItems: 'center', // Center items vertically
+    // overflow: 'hidden', // Hide any content that overflows
+  },
+  categoryPill: {
+    backgroundColor: 'rgba(40, 40, 40, 0.8)',
+    borderRadius: 16,
+    paddingHorizontal: 12, // Reduced from 15 to 12
+    paddingVertical: 6, // Reduced from 8 to 6
+    marginRight: 8, // Reduced from 10 to 8
+    borderWidth: 1,
+    borderColor: 'rgba(60, 60, 60, 0.8)',
+    height: 32, // Fixed height to ensure consistency
+    justifyContent: 'center', // Center text vertically
+  },
+  categoryPillSelected: {
+    backgroundColor: 'rgba(0, 150, 255, 0.2)',
+    borderColor: COLORS.accent,
+  },
+  categoryPillText: {
+    color: COLORS.lightGray,
+    fontSize: 13, // Reduced from 14 to 13
+  },
+  categoryPillTextSelected: {
+    color: COLORS.white,
+    fontWeight: '600',
   },
 });
 

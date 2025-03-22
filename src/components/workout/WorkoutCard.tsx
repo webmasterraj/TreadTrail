@@ -128,7 +128,7 @@ const styles = StyleSheet.create({
     padding: 14, 
     marginBottom: 15, 
     borderWidth: 1,
-    borderColor: COLORS.lightGray,
+    borderColor: COLORS.darkGray,
     position: 'relative',
   },
   title: {
