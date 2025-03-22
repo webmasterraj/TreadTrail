@@ -25,7 +25,8 @@ const WelcomeScreen: React.FC<Props> = ({ route, navigation }) => {
 
   // Handle explore workouts button press
   const handleExploreWorkouts = () => {
-    navigation.navigate('WorkoutLibrary');
+    // Use push instead of navigate to ensure the back button appears
+    navigation.push('WorkoutLibrary', { fromWelcome: true });
   };
   
   // Sample workout segments for visualization
@@ -301,6 +302,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     marginBottom: SPACING.medium,
     paddingHorizontal: SPACING.small,
+    marginTop: SPACING.small,
   },
   annotationItem: {
     alignItems: 'center',
@@ -326,7 +328,7 @@ const styles = StyleSheet.create({
   },
   heightArrow: {
     position: 'absolute',
-    top: -5,
+    top: 0,
     width: 0,
     height: 0,
     borderLeftWidth: 5,
@@ -335,7 +337,7 @@ const styles = StyleSheet.create({
     borderLeftColor: 'transparent',
     borderRightColor: 'transparent',
     borderBottomColor: COLORS.white,
-    transform: [{ rotate: '180deg' }],
+    // transform: [{ rotate: '180deg' }],
   },
   spaceAnnotation: {
     width: 20,

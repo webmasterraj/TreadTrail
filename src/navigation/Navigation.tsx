@@ -39,7 +39,7 @@ const Navigation: React.FC = () => {
         <Stack.Screen 
           name="Landing" 
           component={LandingScreen} 
-          options={{ headerShown: false }}
+          options={{ headerShown: false, title: 'Home' }}
         />
         <Stack.Screen 
           name="Welcome" 

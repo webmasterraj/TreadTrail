@@ -30,12 +30,12 @@ const LandingScreen: React.FC<Props> = ({ navigation }) => {
   useEffect(() => {
     const checkAuthStatus = async () => {
       try {
-        // If user is authenticated, navigate to the appropriate screen
+        // If user is authenticated, navigate to the Welcome screen
         if (authState.isAuthenticated) {
-          navigation.replace('WorkoutLibrary');
+          navigation.replace('Welcome', { name: authState.user?.name || 'Runner' });
         } else if (userSettings?.profile.name) {
           // For backward compatibility - if user has a profile but isn't authenticated
-          navigation.replace('WorkoutLibrary');
+          navigation.replace('Welcome', { name: userSettings.profile.name });
         }
         setIsLoading(false);
       } catch (error) {
@@ -78,7 +78,8 @@ const LandingScreen: React.FC<Props> = ({ navigation }) => {
   
   // Handle browse workouts button press
   const handleBrowseWorkouts = () => {
-    navigation.navigate('WorkoutLibrary');
+    // Navigate to Welcome screen first
+    navigation.navigate('Welcome', { name: 'Runner' });
   };
   
   if (isLoading) {

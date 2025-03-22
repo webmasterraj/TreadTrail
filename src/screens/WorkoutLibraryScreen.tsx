@@ -1,4 +1,4 @@
-import React, { useContext, useState, useEffect, useCallback } from 'react';
+import React, { useContext, useState, useEffect, useCallback, useRef } from 'react';
 import { 
   View, 
   Text, 
@@ -30,11 +30,27 @@ import {
 
 type Props = NativeStackScreenProps<RootStackParamList, 'WorkoutLibrary'>;
 
-const WorkoutLibraryScreen: React.FC<Props> = ({ navigation }) => {
+const WorkoutLibraryScreen: React.FC<Props> = ({ navigation, route }) => {
   const dispatch = useAppDispatch();
   const workoutPrograms = useAppSelector(selectWorkoutPrograms);
   const isLoading = useAppSelector(selectIsLoading);
-  const { userSettings } = useContext(UserContext);
+  const { userSettings, authState } = useContext(UserContext);
+  const cameFromWelcome = useRef(false);
+  
+  // Check if we came from the Welcome screen
+  useEffect(() => {
+    if (route.params?.fromWelcome) {
+      cameFromWelcome.current = true;
+    }
+    
+    // If user didn't come from welcome screen, redirect them
+    if (!cameFromWelcome.current) {
+      // For signed-out users, always show welcome screen
+      if (!authState.isAuthenticated) {
+        navigation.replace('Welcome', { name: 'Runner' });
+      }
+    }
+  }, [navigation, route.params, authState.isAuthenticated]);
   
   const [filteredWorkouts, setFilteredWorkouts] = useState<WorkoutProgram[]>([]);
   // Create a state to force updates of pace settings - with a key to force re-render
@@ -60,7 +76,19 @@ const WorkoutLibraryScreen: React.FC<Props> = ({ navigation }) => {
     dispatch(fetchWorkoutPrograms());
     dispatch(fetchWorkoutHistory());
     dispatch(fetchStats());
-  }, [dispatch]);
+    
+    // Set navigation options dynamically based on auth state
+    if (!authState.isAuthenticated) {
+      navigation.setOptions({
+        headerShown: true,
+        headerBackTitle: 'Back'
+      });
+    } else {
+      navigation.setOptions({
+        headerShown: false
+      });
+    }
+  }, [dispatch, navigation, authState.isAuthenticated]);
   
   
   // Convert mph to km/h for display
@@ -155,9 +183,6 @@ const WorkoutLibraryScreen: React.FC<Props> = ({ navigation }) => {
   const handleWorkoutPress = (workoutId: string) => {
     navigation.navigate('WorkoutDetails', { workoutId });
   };
-  
-  // Get auth state at component level
-  const { authState } = useContext(UserContext);
   
   // Toggle favorite status using Redux
   const handleFavoriteToggle = (workoutId: string) => {
@@ -371,8 +396,8 @@ const WorkoutLibraryScreen: React.FC<Props> = ({ navigation }) => {
           </View>
         </View>
         
-        {/* Use the shared BottomTabBar component */}
-        <BottomTabBar activeTab="Workouts" />
+        {/* Use the shared BottomTabBar component only for authenticated users */}
+        {authState.isAuthenticated && <BottomTabBar activeTab="Workouts" />}
       </SafeAreaView>
     </View>
   );
@@ -495,7 +520,7 @@ const styles = StyleSheet.create({
     // overflow: 'hidden', // Hide any content that overflows
   },
   categoryPill: {
-    backgroundColor: 'rgba(40, 40, 40, 0.8)',
+    backgroundColor: COLORS.darkGray,
     borderRadius: 16,
     paddingHorizontal: 12, // Reduced from 15 to 12
     paddingVertical: 6, // Reduced from 8 to 6
@@ -510,7 +535,7 @@ const styles = StyleSheet.create({
     borderColor: COLORS.accent,
   },
   categoryPillText: {
-    color: COLORS.lightGray,
+    color: COLORS.white,
     fontSize: 13, // Reduced from 14 to 13
   },
   categoryPillTextSelected: {
