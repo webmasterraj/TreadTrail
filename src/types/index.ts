@@ -94,12 +94,15 @@ export interface WorkoutSession {
   completed: boolean;
   pauses: WorkoutPause[];
   segments: CompletedSegment[];
+  paceSettings?: PaceSettings; // Pace settings used during this workout
+  distance?: number; // Distance in miles
 }
 
 // Workout stats
 export interface WorkoutStats {
   totalWorkouts: number;
   totalDuration: number; // In seconds
+  totalDistance: number; // In miles (always stored in miles internally)
   totalSegmentsCompleted: number;
   workoutsByCategory: {
     'Easy \ud83d\udc23': number;

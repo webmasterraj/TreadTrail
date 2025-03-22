@@ -913,8 +913,9 @@ const styles = StyleSheet.create({
   },
   nextLabel: {
     fontSize: FONT_SIZES.small,
-    color: COLORS.lightGray,
+    color: COLORS.white,
     marginRight: 10,
+    fontWeight: 'bold',
   },
   nextInfo: {
     flex: 1,

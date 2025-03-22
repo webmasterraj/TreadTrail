@@ -159,6 +159,7 @@ export const kphToMph = (kph: number): number => {
  * @returns Distance in kilometers
  */
 export const milesToKm = (miles: number): number => {
+  // 1 mile = 1.60934 kilometers
   return miles * 1.60934;
 };
 
@@ -194,4 +195,46 @@ export const formatSpeed = (speed: number, unit: 'imperial' | 'metric'): string 
  */
 export const formatIncline = (incline: number): string => {
   return `${incline}%`;
+};
+
+/**
+ * Calculates distance traveled based on speed and duration
+ * @param speed Speed in mph
+ * @param duration Duration in seconds
+ * @returns Distance in miles
+ */
+export const calculateDistance = (speed: number, duration: number): number => {
+  // Convert duration from seconds to hours
+  const hours = duration / 3600;
+  
+  // Calculate distance (distance = speed * time)
+  return speed * hours;
+};
+
+/**
+ * Calculates total distance for a workout session based on segments and pace settings
+ * @param segments Completed workout segments
+ * @param paceSettings User's pace settings with speeds for each pace type
+ * @returns Total distance in miles
+ */
+export const calculateTotalDistance = (
+  segments: Array<{ type: string; duration: number; skipped: boolean }>,
+  paceSettings: { [key: string]: { speed: number } }
+): number => {
+  return segments.reduce((totalDistance, segment) => {
+    // Skip segments that were skipped during the workout
+    if (segment.skipped) {
+      return totalDistance;
+    }
+    
+    // Get the pace setting for this segment type
+    const paceSetting = paceSettings[segment.type];
+    if (!paceSetting) {
+      return totalDistance;
+    }
+    
+    // Calculate distance for this segment and add to total
+    const segmentDistance = calculateDistance(paceSetting.speed, segment.duration);
+    return totalDistance + segmentDistance;
+  }, 0);
 };

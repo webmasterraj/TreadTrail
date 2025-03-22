@@ -463,7 +463,7 @@ const styles = StyleSheet.create({
     marginBottom: SPACING.medium,
   },
   emptyStateText: {
-    color: COLORS.lightGray,
+    color: COLORS.white,
     fontSize: FONT_SIZES.small,
     textAlign: 'center',
     marginBottom: SPACING.medium,

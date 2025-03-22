@@ -2,6 +2,7 @@ import { createSlice, createAsyncThunk, PayloadAction } from '@reduxjs/toolkit';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { WorkoutProgram, WorkoutSession, Stats } from '../../types';
 import { DEFAULT_WORKOUT_PROGRAMS } from '../../constants/workoutData';
+import { calculateTotalDistance } from '../../utils/helpers';
 
 // Storage keys
 const WORKOUT_PROGRAMS_KEY = '@treadtrail:workout_programs';
@@ -16,6 +17,7 @@ const INITIAL_STATS: Stats = {
     totalWorkouts: 0,
     totalDuration: 0,
     totalSegmentsCompleted: 0,
+    totalDistance: 0,
     workoutsByCategory: {
       'Easy \ud83d\udc23': 0,
       'Trad HIIT \ud83c\udfc3\ud83c\udffc': 0,
@@ -144,8 +146,28 @@ const addWorkoutSession = createAsyncThunk(
       const state = getState() as { workoutPrograms: WorkoutProgramsState };
       const { workoutHistory, workoutPrograms } = state.workoutPrograms;
       
+      // Get user's pace settings to calculate distance
+      const userSettings = await AsyncStorage.getItem('@treadtrail:user_settings');
+      let paceSettings = null;
+      
+      if (userSettings) {
+        const settings = JSON.parse(userSettings);
+        paceSettings = settings.paceSettings;
+      }
+      
+      // Calculate distance if pace settings are available
+      let sessionWithDistance = { ...session };
+      if (paceSettings && session.segments) {
+        const distance = calculateTotalDistance(session.segments, paceSettings);
+        sessionWithDistance = {
+          ...session,
+          distance,
+          paceSettings
+        };
+      }
+      
       // Add session to history
-      const updatedHistory = [session, ...workoutHistory];
+      const updatedHistory = [sessionWithDistance, ...workoutHistory];
       
       // Persist updated history
       await AsyncStorage.setItem(WORKOUT_HISTORY_KEY, JSON.stringify(updatedHistory));
@@ -166,7 +188,7 @@ const addWorkoutSession = createAsyncThunk(
       await AsyncStorage.setItem(STATS_KEY, JSON.stringify(updatedStats));
       
       return {
-        session,
+        session: sessionWithDistance,
         updatedPrograms,
       };
     } catch (error) {
@@ -205,6 +227,7 @@ const updateStats = createAsyncThunk(
           }
           return sum + session.segments.filter(segment => segment && !segment.skipped).length;
         }, 0),
+        totalDistance: 0,
         workoutsByCategory: {
           'Easy \ud83d\udc23': 0,
           'Trad HIIT \ud83c\udfc3\ud83c\udffc': 0,
@@ -257,6 +280,23 @@ const updateStats = createAsyncThunk(
         duration: longestDuration,
         date: longestDate,
       };
+      
+      // Calculate total distance across all workout sessions
+      let totalDistance = 0;
+      
+      workoutHistory.forEach(session => {
+        // Add session distance to total distance if available
+        if (session.distance) {
+          totalDistance += session.distance;
+        }
+        // If distance is not pre-calculated but we have segments and paceSettings, calculate it
+        else if (session.segments && session.paceSettings) {
+          const sessionDistance = calculateTotalDistance(session.segments, session.paceSettings);
+          totalDistance += sessionDistance;
+        }
+      });
+      
+      calculatedStats.totalDistance = totalDistance;
       
       // Save updated stats
       updatedStats.stats = calculatedStats;
@@ -437,6 +477,7 @@ function calculateStats(workoutHistory: WorkoutSession[], workoutPrograms: Worko
   const statsData = {
     totalWorkouts: workoutHistory.length,
     totalDuration: workoutHistory.reduce((sum, session) => sum + (session.duration || 0), 0),
+    totalDistance: 0,
     totalSegmentsCompleted: workoutHistory.reduce((sum, session) => {
       // Add safety check for sessions that might have undefined segments
       if (!session.segments) {
@@ -467,6 +508,9 @@ function calculateStats(workoutHistory: WorkoutSession[], workoutPrograms: Worko
   let longestDuration = 0;
   let longestDate = '';
 
+  // Calculate total distance across all workout sessions
+  let totalDistance = 0;
+
   workoutHistory.forEach(session => {
     if (session.duration && session.duration > longestDuration) {
       longestDuration = session.duration;
@@ -490,12 +534,25 @@ function calculateStats(workoutHistory: WorkoutSession[], workoutPrograms: Worko
         statsData.workoutsByFocus[workout.focus]++;
       }
     }
+
+    // Add session distance to total distance if available
+    if (session.distance) {
+      totalDistance += session.distance;
+    }
+    // If distance is not pre-calculated but we have segments and paceSettings, calculate it
+    else if (session.segments && session.paceSettings) {
+      const sessionDistance = calculateTotalDistance(session.segments, session.paceSettings);
+      totalDistance += sessionDistance;
+    }
   });
 
   statsData.longestWorkout = {
     duration: longestDuration,
     date: longestDate,
   };
+
+  // Set the total distance
+  statsData.totalDistance = totalDistance;
 
   // Create the full Stats object
   return {

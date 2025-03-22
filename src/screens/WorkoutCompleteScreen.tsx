@@ -13,7 +13,7 @@ import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList, WorkoutSession } from '../types';
 import { COLORS, FONT_SIZES, SPACING, BORDER_RADIUS } from '../styles/theme';
 import { DataContext, UserContext } from '../context';
-import { formatTime, formatDuration, formatDate, mphToKph } from '../utils/helpers';
+import { formatTime, formatDuration, formatDate, mphToKph, calculateTotalDistance, milesToKm } from '../utils/helpers';
 import Button from '../components/common/Button';
 import WorkoutTimeline from '../components/workout/WorkoutTimeline';
 import WorkoutCalendar from '../components/common/WorkoutCalendar';
@@ -25,7 +25,6 @@ type Props = NativeStackScreenProps<RootStackParamList, 'WorkoutComplete'>;
 const WorkoutCompleteScreen: React.FC<Props> = ({ route, navigation }) => {
   const { sessionId } = route.params;
   const { getWorkoutById } = useContext(DataContext);
-  // Move UserContext access to the top of the component
   const { authState, userSettings } = useContext(UserContext);
   const [isLoading, setIsLoading] = useState(true);
   const [session, setSession] = useState<WorkoutSession | null>(null);
@@ -89,7 +88,9 @@ const WorkoutCompleteScreen: React.FC<Props> = ({ route, navigation }) => {
     date, 
     duration, 
     completed, 
-    segments 
+    segments,
+    paceSettings,
+    distance: sessionDistance
   } = session;
   
   // Get original workout to compare
@@ -101,12 +102,24 @@ const WorkoutCompleteScreen: React.FC<Props> = ({ route, navigation }) => {
     ? Math.round((segments.length - skippedSegments) / originalWorkout.segments.length * 100) 
     : 100;
     
-  // Calculate distance based on session data (simplified estimation)
-  // In a real app, this would be tracked during workout
-  const estimatedMiles = 1.8;
+  // Calculate distance based on session data and pace settings
+  let distanceMiles = sessionDistance || 0;
+  
+  // If distance is not already calculated, calculate it now
+  if (!distanceMiles && segments && paceSettings) {
+    // Cast paceSettings to the expected type for calculateTotalDistance
+    const paceSettingsMap = paceSettings as unknown as { [key: string]: { speed: number } };
+    distanceMiles = calculateTotalDistance(segments, paceSettingsMap);
+  } else if (!distanceMiles && segments && userSettings?.paceSettings) {
+    // Try using current user pace settings if session doesn't have them
+    const paceSettingsMap = userSettings.paceSettings as unknown as { [key: string]: { speed: number } };
+    distanceMiles = calculateTotalDistance(segments, paceSettingsMap);
+  }
+  
+  // Format distance based on user preference
   const distance = unitPreference === 'imperial' 
-    ? estimatedMiles.toFixed(1) 
-    : (mphToKph(estimatedMiles) * 0.62).toFixed(1); // Approximate conversion for distance
+    ? distanceMiles.toFixed(1) 
+    : milesToKm(distanceMiles).toFixed(1); // Convert miles to kilometers
   
   // Handle share result
   const handleShare = async () => {

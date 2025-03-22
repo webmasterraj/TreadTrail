@@ -18,6 +18,7 @@ import { COLORS, FONT_SIZES, SPACING, BORDER_RADIUS, DIFFICULTY_INDICATORS, FOCU
 import WorkoutVisualization from '../components/workout/WorkoutVisualization';
 import { UserContext } from '../context';
 import { formatDuration, formatTime } from '../utils/helpers';
+import BottomTabBar from '../components/common/BottomTabBar';
 import Button from '../components/common/Button';
 import { useAppDispatch, useAppSelector } from '../redux/store';
 import { 
@@ -282,6 +283,7 @@ const WorkoutDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
             </TouchableOpacity>
           )}
         </ScrollView>
+        {authState.isAuthenticated && <BottomTabBar activeTab="Workouts" />}
       </SafeAreaView>
     </View>
   );
@@ -370,7 +372,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: COLORS.mediumGray,
     marginBottom: 1,
-    height: 32, // To match the mockup height
   },
   recoveryRow: {
     borderLeftWidth: 4,

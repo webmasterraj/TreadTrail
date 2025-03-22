@@ -99,7 +99,8 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 8,
+    paddingVertical: 0,
+    marginTop: 25,
   },
   tabIcon: {
     marginBottom: 5,
