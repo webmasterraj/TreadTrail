@@ -627,7 +627,7 @@ const WorkoutInProgressScreen: React.FC<Props> = ({ route, navigation }) => {
     <View style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor="transparent" translucent />
       <SafeAreaView style={styles.safeArea}>
-        <View style={styles.content}>
+        <View style={[styles.content, { paddingBottom: 150 }]}>
           {/* Current Segment Panel - Now shows countdown timer for current segment */}
           <View 
             style={[
@@ -644,7 +644,7 @@ const WorkoutInProgressScreen: React.FC<Props> = ({ route, navigation }) => {
             onLayout={(e: LayoutChangeEvent) => setTimerSectionHeight(e.nativeEvent.layout.height)}
           >
             {/* Segment countdown timer (counts down) */}
-            <Text style={styles.cardLabel}>Current</Text>
+            <Text style={styles.cardLabel}>Current Segment</Text>
             {currentSegment && (
               <View style={[styles.paceBadge, { backgroundColor: PACE_COLORS[currentSegment.type as PaceType] }]}>
                 <Text style={styles.paceBadgeText}>{currentSegment.type.charAt(0).toUpperCase() + currentSegment.type.slice(1)} Pace</Text>
@@ -699,7 +699,7 @@ const WorkoutInProgressScreen: React.FC<Props> = ({ route, navigation }) => {
           </View>
           
           {/* Timeline */}
-          <View style={styles.timelineContainerNoGap}>
+          <View style={[styles.timelineContainerNoGap, { maxHeight: '45%' }]}>
             <Text style={styles.timelineTitle}>Workout Timeline</Text>
             
             <View style={styles.timelineLegend}>
@@ -725,7 +725,7 @@ const WorkoutInProgressScreen: React.FC<Props> = ({ route, navigation }) => {
             <View 
               style={[
                 styles.visualizationWrapper,
-                { height: visualizationHeight }
+                { height: visualizationHeight, maxHeight: '100%' }
               ]}
             >
               <WorkoutVisualization 
@@ -734,9 +734,11 @@ const WorkoutInProgressScreen: React.FC<Props> = ({ route, navigation }) => {
                 progressIndicatorPosition={Math.min((elapsedTime / totalDuration) * 100, 99.9)}
                 minutePerBar={false}
                 maxBars={40}
-                containerHeight={visualizationHeight - 50} // Account for increased padding and ticks
-                connectingLineOffset={10} // Add connecting line offset
-                showOverlay={true} // Enable the dark overlay for completed portions
+                containerHeight={visualizationHeight - 100} 
+                connectingLineOffset={10} 
+                showOverlay={true} 
+                showTimeLabels={true} 
+                showTicks={true}
               />
             </View>
           </View>
@@ -852,6 +854,7 @@ const styles = StyleSheet.create({
     display: 'flex',
     flexDirection: 'column',
     justifyContent: 'flex-start',
+    paddingBottom: 150,
   },
   currentSegment: {
     borderRadius: 15,
@@ -967,6 +970,7 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'flex-start',
     marginBottom: 20,
+    maxHeight: '45%',
   },
   timelineTitle: {
     fontSize: 16,
@@ -1000,9 +1004,11 @@ const styles = StyleSheet.create({
     width: '100%',
     marginVertical: 10,
     minHeight: 120,
+    maxHeight: '100%',
     backgroundColor: COLORS.darkGray,
     borderRadius: 12,
     padding: 16,
+    paddingBottom: 40,
   },
   controlButtonsContainer: {
     position: 'absolute',
