@@ -188,6 +188,15 @@ const WorkoutDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
             onLayout={(e: LayoutChangeEvent) => setHeaderHeight(e.nativeEvent.layout.height)}
           >
             <Text style={styles.title}>{name}</Text>
+            <TouchableOpacity 
+              style={styles.favoriteButton}
+              onPress={handleFavoriteToggle}
+              hitSlop={{ top: 10, right: 10, bottom: 10, left: 10 }}
+            >
+              <Text style={[styles.favoriteIcon, workout.favorite && styles.favoriteIconActive]}>
+                {workout.favorite ? '♥' : '♡'}
+              </Text>
+            </TouchableOpacity>
           </View>
           
           <Text style={styles.description}>{description}</Text>
@@ -303,6 +312,7 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
     marginBottom: 15, // Exact value from mockup
   },
   title: {
@@ -453,6 +463,19 @@ const styles = StyleSheet.create({
     fontSize: FONT_SIZES.large,
     textAlign: 'center',
     marginTop: 100,
+  },
+  favoriteButton: {
+    position: 'absolute',
+    right: 0,
+    top: 0,
+    paddingRight: 24,
+  },
+  favoriteIcon: {
+    fontSize: 24,
+    color: COLORS.white,
+  },
+  favoriteIconActive: {
+    color: COLORS.accent,
   },
 });
 
