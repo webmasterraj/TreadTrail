@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useContext, useEffect } from 'react';
 import { 
   View, 
   Text, 
@@ -12,11 +12,13 @@ import { RootStackParamList, WorkoutSegment } from '../types';
 import { COLORS, FONT_SIZES, SPACING, BORDER_RADIUS, PACE_COLORS } from '../styles/theme';
 import Button from '../components/common/Button';
 import WorkoutVisualization from '../components/workout/WorkoutVisualization';
+import { UserContext } from '../context';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Welcome'>;
 
 const WelcomeScreen: React.FC<Props> = ({ route, navigation }) => {
   const { name } = route.params;
+  const { authState } = useContext(UserContext);
   
   // Handle continue button press
   const handleContinue = () => {
@@ -28,6 +30,17 @@ const WelcomeScreen: React.FC<Props> = ({ route, navigation }) => {
     // Use push instead of navigate to ensure the back button appears
     navigation.push('WorkoutLibrary', { fromWelcome: true });
   };
+  
+  // Set navigation options for signed-out users
+  useEffect(() => {
+    if (!authState.isAuthenticated) {
+      navigation.setOptions({
+        headerLeft: () => null,
+        headerBackTitle: 'Home',
+        headerBackVisible: true,
+      });
+    }
+  }, [navigation, authState.isAuthenticated]);
   
   // Sample workout segments for visualization
   const sampleWorkoutSegments: WorkoutSegment[] = [

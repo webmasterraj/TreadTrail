@@ -124,6 +124,7 @@ const Button: React.FC<ButtonProps> = ({
             disabled && styles.disabledText,
             textStyle,
           ]}
+          allowFontScaling={false}
         >
           {title}
         </Text>
@@ -177,6 +178,8 @@ const styles = StyleSheet.create({
   },
   text: {
     fontWeight: 'bold',
+    includeFontPadding: false,
+    textAlignVertical: 'center',
   },
   primaryText: {
     color: COLORS.black,
@@ -194,13 +197,13 @@ const styles = StyleSheet.create({
     color: COLORS.white,
   },
   smallText: {
-    fontSize: FONT_SIZES.small,
+    fontSize: 14,
   },
   mediumText: {
-    fontSize: FONT_SIZES.medium,
+    fontSize: 16,
   },
   largeText: {
-    fontSize: FONT_SIZES.large,
+    fontSize: 18,
   },
   disabledText: {
     opacity: 0.7,

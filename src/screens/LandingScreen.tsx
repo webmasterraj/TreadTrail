@@ -93,7 +93,8 @@ const LandingScreen: React.FC<Props> = ({ navigation }) => {
   return (
     <View style={AppStyles.container}>
       <ImageBackground
-        source={{ uri: 'https://images.unsplash.com/photo-1571008887538-b36bb32f4571?ixlib=rb-4.0.3&ixid=MnwxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8&auto=format&fit=crop&w=1000&q=80' }}
+        // source={{ uri: 'https://images.unsplash.com/photo-1571008887538-b36bb32f4571?ixlib=rb-4.0.3&ixid=MnwxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8&auto=format&fit=crop&w=1000&q=80' }}
+        source={require('../assets/images/treadmill-background.jpg')}
         style={styles.background}
         resizeMode="cover"
       >
@@ -224,20 +225,26 @@ const styles = StyleSheet.create({
   },
   buttonContainer: {
     width: '100%',
-    marginBottom: 8, // Reduced from 16
+    marginBottom: 4,
   },
   appleButton: {
     width: '100%',
     height: 50,
-    marginBottom: 8, // Reduced from 16
+    marginBottom: 16,
   },
   browseButton: {
+    width: '100%',
+    height: 50,
     borderWidth: 1,
     borderColor: COLORS.lightGray,
-    // backgroundColor: 'transparent',
+    backgroundColor: 'rgba(255, 255, 255, 0.15)',
   },
   browseButtonText: {
     color: COLORS.white,
+    fontWeight: '600',
+    fontFamily: Platform.OS === 'ios' ? 'System' : 'Roboto',
+    includeFontPadding: false,
+    textAlignVertical: 'center',
   },
   terms: {
     color: COLORS.white,
