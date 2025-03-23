@@ -40,6 +40,7 @@ export const useWorkoutAudio = (options: UseWorkoutAudioOptions) => {
   const lastSegmentAudioTriggeredRef = useRef<number>(-1); // Track which segment audio was last triggered
   const lastSegmentTimeRef = useRef<number>(0); // Track the last time we checked for segment audio
   const countdownTriggeredRef = useRef<boolean>(false); // Track if countdown has been triggered for the current segment
+  const audioSequenceInProgressRef = useRef<boolean>(false); // Track when a complete audio sequence is in progress
   
   // Handle segment transitions and audio cues
   useEffect(() => {
@@ -88,6 +89,24 @@ export const useWorkoutAudio = (options: UseWorkoutAudioOptions) => {
           try {
             // Check if the next segment has audio
             if (nextSegment.audio?.file) {
+              // Set audio sequence flag at the start of the sequence
+              audioSequenceInProgressRef.current = true;
+              
+              // Set audio mode to duck others at the start of the sequence
+              try {
+                await Audio.setAudioModeAsync({
+                  playsInSilentModeIOS: true,
+                  staysActiveInBackground: true,
+                  interruptionModeIOS: InterruptionModeIOS.DuckOthers,
+                  shouldDuckAndroid: true,
+                  interruptionModeAndroid: InterruptionModeAndroid.DuckOthers,
+                  playThroughEarpieceAndroid: false,
+                  allowsRecordingIOS: false, // Prevent microphone permission prompt
+                });
+              } catch (audioModeError) {
+                console.log('Error setting audio mode:', audioModeError);
+              }
+              
               // Clean up previous segment audio if any
               if (segmentAudioRef.current) {
                 await segmentAudioRef.current.unloadAsync();
@@ -131,6 +150,12 @@ export const useWorkoutAudio = (options: UseWorkoutAudioOptions) => {
               } else {
                 // Reset flag if we couldn't load the sound
                 segmentAudioPlayingRef.current = false;
+                
+                // If we can't play segment audio, reset the audio sequence flag
+                if (!countdownPlayingRef.current) {
+                  audioSequenceInProgressRef.current = false;
+                  resetAudioMode().catch(() => {});
+                }
               }
             } else {
               // No audio for this segment
@@ -139,6 +164,12 @@ export const useWorkoutAudio = (options: UseWorkoutAudioOptions) => {
           } catch (error) {
             // Reset flag on error
             segmentAudioPlayingRef.current = false;
+            
+            // If error occurs and no countdown is playing, reset audio sequence
+            if (!countdownPlayingRef.current) {
+              audioSequenceInProgressRef.current = false;
+              resetAudioMode().catch(() => {});
+            }
           }
         };
         
@@ -200,8 +231,31 @@ export const useWorkoutAudio = (options: UseWorkoutAudioOptions) => {
         segmentAudioRef.current.unloadAsync().catch(() => {});
         segmentAudioRef.current = null;
       }
+      
+      // Reset audio sequence flag and mode if needed
+      if (audioSequenceInProgressRef.current) {
+        audioSequenceInProgressRef.current = false;
+        resetAudioMode().catch(() => {});
+      }
     }, 2000); // Wait 2 seconds before cleaning up to ensure sounds finish playing
   }, [currentSegmentIndex]);
+  
+  // Helper function to reset audio mode
+  const resetAudioMode = async () => {
+    try {
+      await Audio.setAudioModeAsync({
+        playsInSilentModeIOS: true,
+        staysActiveInBackground: true,
+        interruptionModeIOS: InterruptionModeIOS.DoNotMix,
+        shouldDuckAndroid: false,
+        interruptionModeAndroid: InterruptionModeAndroid.DoNotMix,
+        playThroughEarpieceAndroid: false,
+        allowsRecordingIOS: false,
+      });
+    } catch (error) {
+      console.log('Error resetting audio mode:', error);
+    }
+  };
   
   // Function to play countdown sound
   const playCountdown = async () => {
@@ -209,6 +263,26 @@ export const useWorkoutAudio = (options: UseWorkoutAudioOptions) => {
       // Don't play if already playing
       if (countdownPlayingRef.current) {
         return;
+      }
+      
+      // If this is a standalone countdown (not part of a sequence)
+      if (!audioSequenceInProgressRef.current) {
+        audioSequenceInProgressRef.current = true;
+        
+        // Set audio mode to duck others
+        try {
+          await Audio.setAudioModeAsync({
+            playsInSilentModeIOS: true,
+            staysActiveInBackground: true,
+            interruptionModeIOS: InterruptionModeIOS.DuckOthers,
+            shouldDuckAndroid: true,
+            interruptionModeAndroid: InterruptionModeAndroid.DuckOthers,
+            playThroughEarpieceAndroid: false,
+            allowsRecordingIOS: false,
+          });
+        } catch (audioModeError) {
+          console.log('Error setting audio mode for countdown:', audioModeError);
+        }
       }
       
       // Set flag before attempting to play
@@ -238,6 +312,14 @@ export const useWorkoutAudio = (options: UseWorkoutAudioOptions) => {
             // Add a small delay before resetting the flag to ensure the sound completes
             setTimeout(() => {
               countdownPlayingRef.current = false;
+              
+              // Only reset audio mode if this is the end of a complete sequence
+              if (audioSequenceInProgressRef.current) {
+                audioSequenceInProgressRef.current = false;
+                
+                // Reset audio mode to not duck other apps
+                resetAudioMode().catch(() => {});
+              }
             }, 500);
           }
         });
@@ -255,13 +337,45 @@ export const useWorkoutAudio = (options: UseWorkoutAudioOptions) => {
             { shouldPlay: true, volume: 1.0 }
           );
           
+          // Set up status monitoring for the alternate sound
+          altSound.setOnPlaybackStatusUpdate((status: AVPlaybackStatus) => {
+            if (!status.isLoaded) return;
+            
+            if (status.didJustFinish) {
+              // Add a small delay before resetting the flag to ensure the sound completes
+              setTimeout(() => {
+                countdownPlayingRef.current = false;
+                
+                // Only reset audio mode if this is the end of a complete sequence
+                if (audioSequenceInProgressRef.current) {
+                  audioSequenceInProgressRef.current = false;
+                  
+                  // Reset audio mode to not duck other apps
+                  resetAudioMode().catch(() => {});
+                }
+              }, 500);
+            }
+          });
+          
           countdownSoundRef.current = altSound;
         } catch (altError) {
           countdownPlayingRef.current = false;
+          
+          // Reset audio sequence flag on error
+          if (audioSequenceInProgressRef.current) {
+            audioSequenceInProgressRef.current = false;
+            resetAudioMode().catch(() => {});
+          }
         }
       }
     } catch (innerError) {
       countdownPlayingRef.current = false;
+      
+      // Reset audio sequence flag on error
+      if (audioSequenceInProgressRef.current) {
+        audioSequenceInProgressRef.current = false;
+        resetAudioMode().catch(() => {});
+      }
     }
   };
   
@@ -291,6 +405,12 @@ export const useWorkoutAudio = (options: UseWorkoutAudioOptions) => {
     countdownPlayingRef.current = false;
     segmentAudioPlayingRef.current = false;
     countdownTriggeredRef.current = false;
+    
+    // Reset audio mode if a sequence was in progress
+    if (audioSequenceInProgressRef.current) {
+      audioSequenceInProgressRef.current = false;
+      await resetAudioMode();
+    }
   };
   
   // Clean up audio resources when component unmounts
@@ -304,6 +424,12 @@ export const useWorkoutAudio = (options: UseWorkoutAudioOptions) => {
       if (segmentAudioRef.current) {
         segmentAudioRef.current.unloadAsync();
         segmentAudioRef.current = null;
+      }
+      
+      // Reset audio mode if a sequence was in progress
+      if (audioSequenceInProgressRef.current) {
+        audioSequenceInProgressRef.current = false;
+        resetAudioMode().catch(() => {});
       }
     };
   }, []);
@@ -373,6 +499,9 @@ export const useWorkoutAudio = (options: UseWorkoutAudioOptions) => {
   // Function to play a test countdown sound
   const playTestCountdown = async () => {
     try {
+      // Set audio sequence flag
+      audioSequenceInProgressRef.current = true;
+      
       // Ensure audio mode is set correctly for maximum compatibility
       await Audio.setAudioModeAsync({
         playsInSilentModeIOS: true,
@@ -410,6 +539,12 @@ export const useWorkoutAudio = (options: UseWorkoutAudioOptions) => {
               remoteSound.unloadAsync().catch(e => {
                 // Handle error silently
               });
+              
+              // Reset audio mode after test sound finishes
+              if (audioSequenceInProgressRef.current) {
+                audioSequenceInProgressRef.current = false;
+                resetAudioMode().catch(() => {});
+              }
             }
           });
           
@@ -427,6 +562,12 @@ export const useWorkoutAudio = (options: UseWorkoutAudioOptions) => {
           );
         } catch (remoteError) {
           Alert.alert("Audio Error", "Failed to play any sound. Please check your device settings and ensure audio is enabled.");
+          
+          // Reset audio mode on error
+          if (audioSequenceInProgressRef.current) {
+            audioSequenceInProgressRef.current = false;
+            resetAudioMode().catch(() => {});
+          }
         }
       };
       
@@ -449,6 +590,12 @@ export const useWorkoutAudio = (options: UseWorkoutAudioOptions) => {
             beepSound.unloadAsync().catch(e => {
               // Handle error silently
             });
+            
+            // Reset audio mode after test sound finishes
+            if (audioSequenceInProgressRef.current) {
+              audioSequenceInProgressRef.current = false;
+              resetAudioMode().catch(() => {});
+            }
           }
         });
         
@@ -474,6 +621,12 @@ export const useWorkoutAudio = (options: UseWorkoutAudioOptions) => {
       
     } catch (e) {
       Alert.alert("Audio Error", "Failed to set up audio: " + (e instanceof Error ? e.message : String(e)));
+      
+      // Reset audio mode on error
+      if (audioSequenceInProgressRef.current) {
+        audioSequenceInProgressRef.current = false;
+        resetAudioMode().catch(() => {});
+      }
     }
   };
   
