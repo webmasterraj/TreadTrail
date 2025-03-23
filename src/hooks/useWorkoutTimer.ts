@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { useAppDispatch, useAppSelector } from '../redux/store';
 import { timerTick, selectIsRunning } from '../redux/slices/workoutSlice';
+import BackgroundTimer from 'react-native-background-timer';
 
 /**
  * Custom hook to manage workout timer
@@ -10,12 +11,12 @@ import { timerTick, selectIsRunning } from '../redux/slices/workoutSlice';
 const useWorkoutTimer = () => {
   const dispatch = useAppDispatch();
   const isRunning = useAppSelector(selectIsRunning);
-  const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const timerRef = useRef<number | null>(null);
 
   useEffect(() => {
     // Clear any existing timer
     if (timerRef.current) {
-      clearInterval(timerRef.current);
+      BackgroundTimer.clearInterval(timerRef.current);
       timerRef.current = null;
     }
 
@@ -30,14 +31,14 @@ const useWorkoutTimer = () => {
         }
       };
       
-      // Start the interval with the handler function
-      timerRef.current = setInterval(handleTick, 1000);
+      // Start the interval with the handler function using BackgroundTimer
+      timerRef.current = BackgroundTimer.setInterval(handleTick, 1000);
     }
 
     // Cleanup on unmount or when isRunning changes
     return () => {
       if (timerRef.current) {
-        clearInterval(timerRef.current);
+        BackgroundTimer.clearInterval(timerRef.current);
         timerRef.current = null;
       }
     };
