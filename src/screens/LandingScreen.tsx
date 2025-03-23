@@ -94,7 +94,7 @@ const LandingScreen: React.FC<Props> = ({ navigation }) => {
     <View style={AppStyles.container}>
       <ImageBackground
         // source={{ uri: 'https://images.unsplash.com/photo-1571008887538-b36bb32f4571?ixlib=rb-4.0.3&ixid=MnwxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8&auto=format&fit=crop&w=1000&q=80' }}
-        source={require('../assets/images/treadmill-background.jpg')}
+        source={require('../assets/images/treadmill-background.png')}
         style={styles.background}
         resizeMode="cover"
       >
