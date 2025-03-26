@@ -37,6 +37,7 @@ import {
   selectIsCompleted,
   formatTime,
   formatCountdownTime,
+  loadWorkout as loadWorkoutAction,
   startWorkout as startWorkoutAction,
   pauseWorkout as pauseWorkoutAction,
   resumeWorkout as resumeWorkoutAction,
@@ -143,8 +144,9 @@ const WorkoutInProgressScreen: React.FC<Props> = ({ route, navigation }) => {
   const activeWorkout = useAppSelector(selectActiveWorkout);
   const isWorkoutActive = activeWorkout !== null;
   const isRunning = useAppSelector(selectIsRunning);
-  const isPaused = isWorkoutActive && !isRunning;
   const elapsedTime = useAppSelector(selectElapsedTime);
+  const hasStarted = isWorkoutActive && (isRunning || elapsedTime > 0);
+  const isPaused = isWorkoutActive && !isRunning;
   const currentSegmentIndex = useAppSelector(selectCurrentSegmentIndex);
   const segmentElapsedTime = useAppSelector(selectSegmentElapsedTime);
   const currentSegment = useAppSelector(selectCurrentSegment);
@@ -214,24 +216,26 @@ const WorkoutInProgressScreen: React.FC<Props> = ({ route, navigation }) => {
     
     hasInitializedRef.current = true;
     
-    // Start the workout using Redux only
-    dispatch(startWorkoutAction(workoutId))
+    // Load the workout data without starting it
+    dispatch(loadWorkoutAction(workoutId))
       .unwrap()
-      .then(() => {
-        // Workout started successfully
-      })
       .catch((error) => {
-        console.log('[WorkoutScreen] Failed to start workout:', error);
+        console.log('[WorkoutScreen] Failed to load workout:', error);
         Alert.alert(
           'Error',
-          'Failed to start workout. Please try again.',
+          'Failed to load workout. Please try again.',
           [{ text: 'OK', onPress: () => navigation.goBack() }]
         );
       });
-
+    
     // Set up back handler
     const backHandler = BackHandler.addEventListener('hardwareBackPress', () => {
-      handlePause();
+      // We can't reference handlePause here directly since it's defined later
+      // Instead, we'll just dispatch the pause action directly
+      if (isWorkoutActive) {
+        dispatch(pauseWorkoutAction());
+        setIsPauseModalVisible(true);
+      }
       return true;
     });
 
@@ -239,11 +243,9 @@ const WorkoutInProgressScreen: React.FC<Props> = ({ route, navigation }) => {
     return () => {
       backHandler.remove();
       // Make sure to stop all audio when component unmounts
-      if (preferences.enableAudioCues) {
-        stopAudio();
-      }
+      // We can't reference stopAudio here directly since it's defined later
     };
-  }, []);
+  }, [dispatch, workoutId, isWorkoutActive]);
 
   // Use the audio hook for workout cues
   const { pauseAudio, stopAudio, playTestCountdown } = useWorkoutAudio({
@@ -255,6 +257,16 @@ const WorkoutInProgressScreen: React.FC<Props> = ({ route, navigation }) => {
     isCompleted,
     enableAudioCues: preferences.enableAudioCues
   });
+
+  // Add a separate useEffect for audio cleanup
+  useEffect(() => {
+    // Cleanup function to ensure audio is stopped when component unmounts
+    return () => {
+      if (preferences.enableAudioCues) {
+        stopAudio();
+      }
+    };
+  }, [stopAudio, preferences.enableAudioCues]);
 
   // Enable or disable audio based on user preferences
   const audioEnabled = preferences.enableAudioCues;
@@ -503,6 +515,11 @@ const WorkoutInProgressScreen: React.FC<Props> = ({ route, navigation }) => {
     );
   };
 
+  // Handle start workout button press
+  const handleStartWorkout = () => {
+    dispatch(startWorkoutAction(workoutId));
+  };
+
   // Handle workout completion
   const handleWorkoutComplete = () => {
     // First create a session from the current workout state
@@ -607,7 +624,7 @@ const WorkoutInProgressScreen: React.FC<Props> = ({ route, navigation }) => {
   }, [timerSectionHeight, controlsSectionHeight]);
 
   // If no active workout yet, show loading
-  if (!isWorkoutActive || !activeWorkout) {
+  if (!activeWorkout) {
     return (
       <SafeAreaView style={styles.container}>
         <Text style={styles.loadingText}>Loading workout...</Text>
@@ -616,7 +633,7 @@ const WorkoutInProgressScreen: React.FC<Props> = ({ route, navigation }) => {
   }
   
   // Get the next segment (if any)
-  const nextSegment = currentSegmentIndex < activeWorkout.segments.length - 1
+  const nextSegment = activeWorkout.segments && currentSegmentIndex < activeWorkout.segments.length - 1
     ? activeWorkout.segments[currentSegmentIndex + 1] 
     : null;
     
@@ -772,10 +789,18 @@ const WorkoutInProgressScreen: React.FC<Props> = ({ route, navigation }) => {
               </TouchableOpacity>
             </View>
             <TouchableOpacity 
-              style={styles.endButton} 
-              onPress={handleEndWorkout}
+              style={[
+                styles.endButton, 
+                !hasStarted && styles.startButton
+              ]} 
+              onPress={hasStarted ? handleEndWorkout : handleStartWorkout}
             >
-              <Text style={styles.endButtonText}>End Workout</Text>
+              <Text style={[
+                styles.endButtonText,
+                !hasStarted && styles.startButtonText
+              ]}>
+                {hasStarted ? "End Workout" : "Start Workout"}
+              </Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -1068,18 +1093,28 @@ const styles = StyleSheet.create({
     color: COLORS.mediumGray,
   },
   endButton: {
-    backgroundColor: 'rgba(255, 0, 0, 0.15)',
-    borderRadius: 25,
-    padding: 15,
+    backgroundColor: 'rgba(255, 0, 0, 0.15)', 
+    borderRadius: 25, 
+    padding: 15, 
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: 'rgba(255, 0, 0, 0.3)',
-    marginTop: 10,
+    borderColor: 'rgba(255, 0, 0, 0.3)', 
+    marginTop: 10, 
+  },
+  startButton: {
+    backgroundColor: 'green', 
+    // backgroundColor: 'rgba(76, 187, 23, 0.15)', 
+    borderColor: 'rgba(0, 200, 83, 0.3)', 
   },
   endButtonText: {
-    color: '#ff6b6b',
+    color: '#FFFFFF',
+    fontSize: 18,
     fontWeight: 'bold',
-    fontSize: 16,
+  },
+  startButtonText: {
+    color: '#FFFFFF',
+    fontSize: 18,
+    fontWeight: 'bold',
   },
   loadingText: {
     fontSize: FONT_SIZES.large,

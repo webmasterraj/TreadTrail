@@ -58,6 +58,32 @@ const initialState: WorkoutState = {
 };
 
 // Async thunks
+export const loadWorkout = createAsyncThunk(
+  'workout/load',
+  async (workoutId: string, { rejectWithValue }) => {
+    try {
+      console.log('[workoutSlice] Loading workout with ID:', workoutId);
+      const workout = getWorkoutById(workoutId);
+      
+      if (!workout) {
+        console.error('[workoutSlice] Workout not found for ID:', workoutId);
+        return rejectWithValue('Workout not found');
+      }
+      
+      if (!workout.segments || workout.segments.length === 0) {
+        console.error('[workoutSlice] Workout has no segments:', workoutId);
+        return rejectWithValue('Workout has no segments');
+      }
+      
+      console.log('[workoutSlice] Successfully loaded workout:', workout.name);
+      return workout;
+    } catch (error) {
+      console.error('[workoutSlice] Error loading workout:', error);
+      return rejectWithValue(error instanceof Error ? error.message : 'Failed to load workout');
+    }
+  }
+);
+
 export const startWorkout = createAsyncThunk(
   'workout/start',
   async (workoutId: string, { rejectWithValue }) => {
@@ -252,6 +278,26 @@ const workoutSlice = createSlice({
     },
   },
   extraReducers: (builder) => {
+    // Handle loadWorkout
+    builder.addCase(loadWorkout.fulfilled, (state, action) => {
+      state.activeWorkout = action.payload;
+      state.isRunning = false;
+      state.startTime = null;
+      state.lastTickTime = null;
+      state.elapsedTime = 0;
+      state.pausedTime = 0;
+      state.currentSegmentIndex = 0;
+      state.segmentStartTime = null;
+      state.segmentElapsedTime = 0;
+      state.isSkipping = false;
+      state.isTransitioning = false;
+      state.debugInfo = {
+        lastAction: 'load',
+        actionTimestamp: Date.now(),
+        timerSyncDelta: 0,
+      };
+    });
+    
     // Handle startWorkout
     builder.addCase(startWorkout.fulfilled, (state, action) => {
       const now = Date.now();

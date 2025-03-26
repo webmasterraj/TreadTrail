@@ -279,7 +279,7 @@ const WorkoutDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
               style={styles.startButton}
               onPress={handleStartWorkout}
             >
-              <Text style={styles.startButtonText}>Start Workout</Text>
+              <Text style={styles.startButtonText}>Load Workout</Text>
             </TouchableOpacity>
           )}
           {/* Show sign-in prompt for logged-out users */}
