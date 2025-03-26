@@ -34,7 +34,8 @@ const WorkoutCard: React.FC<WorkoutCardProps> = ({
     intensity, 
     focus, 
     favorite,
-    segments
+    segments,
+    premium
   } = workout;
 
   // Add state for card dimensions and visualization height
@@ -75,11 +76,18 @@ const WorkoutCard: React.FC<WorkoutCardProps> = ({
 
   return (
     <TouchableOpacity 
-      style={styles.container} 
+      style={[styles.container, premium && styles.premiumContainer]} 
       onPress={onPress}
       onLayout={(e: LayoutChangeEvent) => setCardWidth(e.nativeEvent.layout.width)}
       activeOpacity={0.7}
     >
+      {/* Premium Badge */}
+      {premium && (
+        <View style={styles.premiumBadge}>
+          <Text style={styles.premiumText}>PREMIUM</Text>
+        </View>
+      )}
+      
       {/* Favorite Heart Icon - Only shown if showFavoriteButton is true */}
       {showFavoriteButton && (
         <TouchableOpacity 
@@ -130,6 +138,26 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: COLORS.darkGray,
     position: 'relative',
+  },
+  premiumContainer: {
+    borderColor: COLORS.accent,
+    borderWidth: 1,
+  },
+  premiumBadge: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    backgroundColor: COLORS.accent,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderTopLeftRadius: 11,
+    borderBottomRightRadius: 11,
+    zIndex: 1,
+  },
+  premiumText: {
+    color: COLORS.black,
+    fontSize: 10,
+    fontWeight: 'bold',
   },
   title: {
     color: COLORS.accent,

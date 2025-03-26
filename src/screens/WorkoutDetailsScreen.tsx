@@ -17,6 +17,7 @@ import { RootStackParamList, WorkoutSegment, PaceType } from '../types';
 import { COLORS, FONT_SIZES, SPACING, BORDER_RADIUS, DIFFICULTY_INDICATORS, FOCUS_INDICATORS, PACE_COLORS } from '../styles/theme';
 import WorkoutVisualization from '../components/workout/WorkoutVisualization';
 import { UserContext } from '../context';
+import { useSubscription } from '../context/SubscriptionContext';
 import { formatDuration, formatTime } from '../utils/helpers';
 import BottomTabBar from '../components/common/BottomTabBar';
 import Button from '../components/common/Button';
@@ -34,6 +35,7 @@ const WorkoutDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
   const dispatch = useAppDispatch();
   // Get user context once at component level
   const { userSettings, authState } = useContext(UserContext);
+  const { isPremiumWorkout } = useSubscription();
   
   // Initialize workout data if not loaded
   useEffect(() => {
@@ -99,6 +101,13 @@ const WorkoutDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
           },
         ]
       );
+      return;
+    }
+    
+    // Check if this is a premium workout and user doesn't have premium access
+    if (workout.premium && !isPremiumWorkout(workout.premium)) {
+      // Navigate to subscription screen
+      navigation.navigate('Subscription');
       return;
     }
     

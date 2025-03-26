@@ -16,6 +16,8 @@ import {
   ProfileScreen,
   SettingsScreen
 } from '../screens';
+import PremiumWorkoutPreviewScreen from '../screens/PremiumWorkoutPreviewScreen';
+import SubscriptionScreen from '../screens/SubscriptionScreen';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
@@ -60,6 +62,16 @@ const Navigation: React.FC = () => {
           name="WorkoutDetails" 
           component={WorkoutDetailsScreen}
           options={{ title: 'Workout Details' }} 
+        />
+        <Stack.Screen 
+          name="PremiumWorkoutPreview" 
+          component={PremiumWorkoutPreviewScreen}
+          options={{ title: 'Premium Workout' }} 
+        />
+        <Stack.Screen 
+          name="Subscription" 
+          component={SubscriptionScreen}
+          options={{ title: 'Premium Subscription' }} 
         />
         <Stack.Screen 
           name="WorkoutInProgress" 

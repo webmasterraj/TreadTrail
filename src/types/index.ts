@@ -34,6 +34,7 @@ export interface UserSettings {
   profile: UserProfile;
   paceSettings: PaceSettings;
   preferences: UserPreferences;
+  subscription?: SubscriptionInfo; // Optional subscription information
 }
 
 // Workout types
@@ -157,6 +158,16 @@ export interface AuthState {
   token: string | null;
 }
 
+// Subscription types
+export interface SubscriptionInfo {
+  isActive: boolean;
+  expirationDate: string | null; // ISO date string
+  productId: string | null;
+  transactionId: string | null;
+  purchaseDate: string | null; // ISO date string
+  receiptData: string | null; // Encrypted receipt data for validation
+}
+
 // Navigation types
 export type RootStackParamList = {
   Landing: undefined;
@@ -168,4 +179,6 @@ export type RootStackParamList = {
   WorkoutComplete: { sessionId: string };
   Profile: undefined;
   Settings: undefined;
+  PremiumWorkoutPreview: { workoutId: string };
+  Subscription: undefined;
 };

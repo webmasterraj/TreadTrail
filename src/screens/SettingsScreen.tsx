@@ -11,6 +11,7 @@ import {
   Switch,
   ActivityIndicator,
   Button,
+  Platform,
 } from 'react-native';
 import {NativeStackScreenProps} from '@react-navigation/native-stack';
 import {RootStackParamList} from '../types';
@@ -18,13 +19,13 @@ import {COLORS, FONT_SIZES, SPACING, BORDER_RADIUS} from '../styles/theme';
 import {UserContext} from '../context';
 import BottomTabBar from '../components/common/BottomTabBar';
 
+// Debug flag - set to false to disable debug logs
+const DEBUG_SETTINGS = false;
+
 type Props = NativeStackScreenProps<RootStackParamList, 'Settings'>;
 
 const APP_VERSION = '1.0.0';
 const BUILD_NUMBER = '42';
-
-// Debug flag - set to false to disable debug logs
-const DEBUG_SETTINGS = false;
 
 const SettingsScreen: React.FC<Props> = ({navigation}) => {
   const {authState, signOut, preferences, updatePreference, isLoading, userSettings} = useContext(UserContext);
@@ -88,6 +89,11 @@ const SettingsScreen: React.FC<Props> = ({navigation}) => {
   // Handle navigation to profile screen
   const handleProfilePress = () => {
     navigation.navigate('Profile');
+  };
+
+  // Handle navigation to subscription screen
+  const handleSubscriptionPress = () => {
+    navigation.navigate('Subscription');
   };
 
   // Toggle audio cues
@@ -163,11 +169,20 @@ const SettingsScreen: React.FC<Props> = ({navigation}) => {
           <Text style={styles.sectionTitle}>Account</Text>
           <View style={styles.card}>
             {authState.isAuthenticated ? (
-              <TouchableOpacity
-                style={styles.settingsItem}
-                onPress={handleSignOut}>
-                <Text style={styles.signOutText}>Sign Out</Text>
-              </TouchableOpacity>
+              <>
+                <TouchableOpacity
+                  style={styles.settingsItem}
+                  onPress={handleSubscriptionPress}>
+                  <Text style={styles.itemLabel}>Manage Subscription</Text>
+                  <Text style={styles.chevron}>→</Text>
+                </TouchableOpacity>
+                
+                <TouchableOpacity
+                  style={styles.settingsItem}
+                  onPress={handleSignOut}>
+                  <Text style={styles.signOutText}>Sign Out</Text>
+                </TouchableOpacity>
+              </>
             ) : (
               <TouchableOpacity
                 style={styles.settingsItem}

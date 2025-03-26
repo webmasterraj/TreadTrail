@@ -20,6 +20,7 @@ interface WorkoutVisualizationProps {
   showTicks?: boolean; // Control ticks visibility
   connectingLineOffset?: number; // Add this prop
   showConnectingLine?: boolean; // New prop to control connecting line visibility
+  opacity?: number; // Add opacity prop for premium preview
 }
 
 /**
@@ -47,6 +48,7 @@ const WorkoutVisualization: React.FC<WorkoutVisualizationProps> = ({
   showTicks = true, // Default to showing ticks
   connectingLineOffset = 0, // Default to 0 (bottom)
   showConnectingLine = true, // Default to showing connecting line
+  opacity = 1, // Default to full opacity
 }) => {
   // Add state to track measured height
   const [measuredHeight, setMeasuredHeight] = useState(0);
@@ -244,7 +246,8 @@ const WorkoutVisualization: React.FC<WorkoutVisualizationProps> = ({
     <View 
       style={[
         styles.container, 
-        { height: containerHeight || 100 }
+        containerHeight ? { height: containerHeight } : null,
+        { opacity: opacity } // Apply opacity to the entire visualization
       ]}
       onLayout={(event: LayoutChangeEvent) => {
         const {height, width} = event.nativeEvent.layout;
@@ -509,6 +512,7 @@ export default React.memo(WorkoutVisualization, (prevProps, nextProps) => {
     prevProps.showTicks === nextProps.showTicks &&
     prevProps.connectingLineOffset === nextProps.connectingLineOffset &&
     prevProps.showConnectingLine === nextProps.showConnectingLine &&
+    prevProps.opacity === nextProps.opacity &&
     segmentsEqual
   );
 });
