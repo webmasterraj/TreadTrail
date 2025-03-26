@@ -14,6 +14,7 @@ interface WorkoutCardProps {
   showTicks?: boolean;
   showTimeLabels?: boolean;
   showConnectingLine?: boolean;
+  isSubscribed?: boolean;
 }
 
 const WorkoutCard: React.FC<WorkoutCardProps> = ({ 
@@ -24,7 +25,8 @@ const WorkoutCard: React.FC<WorkoutCardProps> = ({
   showFavoriteButton = true,
   showTicks = true,
   showTimeLabels = true,
-  showConnectingLine = true
+  showConnectingLine = true,
+  isSubscribed = false
 }) => {
   const { 
     id, 
@@ -76,13 +78,16 @@ const WorkoutCard: React.FC<WorkoutCardProps> = ({
 
   return (
     <TouchableOpacity 
-      style={[styles.container, premium && styles.premiumContainer]} 
+      style={[
+        styles.container, 
+        premium && !isSubscribed && styles.premiumContainer
+      ]} 
       onPress={onPress}
       onLayout={(e: LayoutChangeEvent) => setCardWidth(e.nativeEvent.layout.width)}
       activeOpacity={0.7}
     >
-      {/* Premium Badge */}
-      {premium && (
+      {/* Premium Badge - Only show if premium and user is not subscribed */}
+      {premium && !isSubscribed && (
         <View style={styles.premiumBadge}>
           <Text style={styles.premiumText}>PREMIUM</Text>
         </View>
@@ -101,8 +106,8 @@ const WorkoutCard: React.FC<WorkoutCardProps> = ({
         </TouchableOpacity>
       )}
       
-      {/* Workout Name */}
-      <Text style={styles.title}>{name}</Text>
+      {/* Workout Name - Only add extra margin if premium badge is showing */}
+      <Text style={[styles.title, premium && !isSubscribed && styles.premiumTitle]}>{name}</Text>
       
       {/* Workout Meta Information */}
       <View style={styles.metaContainer}>
@@ -166,6 +171,9 @@ const styles = StyleSheet.create({
     marginBottom: 3, 
     letterSpacing: -0.5, 
     fontFamily: 'System', 
+  },
+  premiumTitle: {
+    marginTop: 16, // Add space above the title when premium badge is present
   },
   metaContainer: {
     flexDirection: 'row',
