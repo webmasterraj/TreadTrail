@@ -1,10 +1,11 @@
-import React, { createContext, useState, useEffect, ReactNode } from 'react';
+import React, { createContext, useState, useEffect, useContext, ReactNode } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { UserSettings, PaceSetting, UserPreferences, AuthState, User } from '../types';
 import 'react-native-get-random-values'; 
 import { v4 as uuidv4 } from 'uuid';
 import { Platform } from 'react-native';
 import * as AppleAuthentication from 'expo-apple-authentication';
+import { SubscriptionContext } from './SubscriptionContext';
 
 // Debug flag - set to false to disable debug logs
 const DEBUG_USER_CONTEXT = false;
@@ -82,11 +83,14 @@ interface UserProviderProps {
   children: ReactNode;
 }
 
-export const UserProvider: React.FC<UserProviderProps> = ({ children }) => {
+export const UserProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [userSettings, setUserSettings] = useState<UserSettings | null>(null);
   const [authState, setAuthState] = useState<AuthState>(DEFAULT_AUTH_STATE);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+
+  // Get subscription context for trial functionality
+  const { startFreeTrial } = useContext(SubscriptionContext);
 
   // Initialize settings and auth state when component mounts
   useEffect(() => {
@@ -353,10 +357,17 @@ export const UserProvider: React.FC<UserProviderProps> = ({ children }) => {
         setUserSettings(updatedSettings);
         await saveSettings(updatedSettings);
       }
+      
+      // Start free trial for new users
+      await startFreeTrial();
+      
+      if (DEBUG_USER_CONTEXT) {
+        console.log(`[DEBUG-USER-CONTEXT] New user signed up: ${name} (${email})`);
+        console.log(`[DEBUG-USER-CONTEXT] Started free trial for new user`);
+      }
     } catch (err) {
-      setError('Failed to sign up');
       console.error('Error signing up:', err);
-      throw err;
+      setError('Failed to sign up. Please try again.');
     }
   };
 
@@ -429,6 +440,16 @@ export const UserProvider: React.FC<UserProviderProps> = ({ children }) => {
         // Save settings to both global and user-specific storage
         setUserSettings(updatedSettings);
         await saveSettings(updatedSettings);
+      }
+      
+      // Check if user should get a free trial (only if they haven't used it before)
+      try {
+        await startFreeTrial();
+        if (DEBUG_USER_CONTEXT) {
+          console.log(`[DEBUG-USER-CONTEXT] Checked free trial eligibility for returning user`);
+        }
+      } catch (err) {
+        console.error('Error checking trial eligibility:', err);
       }
       
       return true;
@@ -521,7 +542,6 @@ export const UserProvider: React.FC<UserProviderProps> = ({ children }) => {
         // Use user's previously saved settings
         const parsedUserSettings = JSON.parse(userSpecificSettings);
         setUserSettings(parsedUserSettings);
-        return true;
       }
       
       // Update user settings
@@ -542,6 +562,16 @@ export const UserProvider: React.FC<UserProviderProps> = ({ children }) => {
         
         setUserSettings(updatedSettings);
         await saveSettings(updatedSettings);
+      }
+      
+      // Check if user should get a free trial (only if they haven't used it before)
+      try {
+        await startFreeTrial();
+        if (DEBUG_USER_CONTEXT) {
+          console.log(`[DEBUG-USER-CONTEXT] Checked free trial eligibility for Apple sign-in user`);
+        }
+      } catch (err) {
+        console.error('Error checking trial eligibility:', err);
       }
       
       return true;

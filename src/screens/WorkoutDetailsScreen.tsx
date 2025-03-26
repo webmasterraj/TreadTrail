@@ -35,7 +35,7 @@ const WorkoutDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
   const dispatch = useAppDispatch();
   // Get user context once at component level
   const { userSettings, authState } = useContext(UserContext);
-  const { isPremiumWorkout } = useSubscription();
+  const { isPremiumWorkout, subscriptionInfo } = useSubscription();
   
   // Initialize workout data if not loaded
   useEffect(() => {
@@ -253,6 +253,25 @@ const WorkoutDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
             </View>
           </View>
           
+          {/* Premium Subscription Card for Trial Users */}
+          {workout.premium && subscriptionInfo.trialActive && (
+            <View style={styles.premiumCard}>
+              <View style={styles.premiumCardContent}>
+                <Text style={styles.premiumCardTitle}>Premium Workout</Text>
+                <Text style={styles.premiumCardDescription}>
+                  You have access to this workout during your free trial. 
+                  Subscribe to keep access when your trial ends.
+                </Text>
+                <TouchableOpacity 
+                  style={styles.subscribeButton}
+                  onPress={() => navigation.navigate('Subscription')}
+                >
+                  <Text style={styles.subscribeButtonText}>Subscribe to Unlock</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          )}
+          
           <View 
             style={styles.structureSection}
             onLayout={(e: LayoutChangeEvent) => setStructureHeight(e.nativeEvent.layout.height)}
@@ -362,8 +381,47 @@ const styles = StyleSheet.create({
     paddingHorizontal: 0, // Let the visualization component fill the width
   },
   previewContainer: {
-    minHeight: 100, // Minimum height as a fallback
-    marginBottom: 10,
+    width: '100%',
+    marginBottom: 15,
+  },
+  premiumCard: {
+    backgroundColor: COLORS.darkGray,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: COLORS.premium,
+    marginBottom: 20,
+    overflow: 'hidden',
+  },
+  premiumCardContent: {
+    padding: 16,
+    alignItems: 'center',
+  },
+  premiumCardTitle: {
+    color: COLORS.premium,
+    fontSize: 18,
+    fontWeight: 'bold',
+    marginBottom: 8,
+  },
+  premiumCardDescription: {
+    color: 'rgba(255, 255, 255, 0.8)',
+    fontSize: 14,
+    textAlign: 'center',
+    marginBottom: 16,
+    lineHeight: 20,
+  },
+  subscribeButton: {
+    backgroundColor: COLORS.premium,
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    borderRadius: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: '100%',
+  },
+  subscribeButtonText: {
+    color: COLORS.black,
+    fontSize: 16,
+    fontWeight: 'bold',
   },
   sectionTitle: {
     color: COLORS.white,

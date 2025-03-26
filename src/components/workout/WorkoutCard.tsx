@@ -4,6 +4,7 @@ import { COLORS } from '../../styles/theme';
 import { WorkoutProgram } from '../../types';
 import WorkoutVisualization from './WorkoutVisualization';
 import { formatDuration } from '../../utils/helpers';
+import TrialBanner from '../subscription/TrialBanner';
 
 interface WorkoutCardProps {
   workout: WorkoutProgram;
@@ -15,6 +16,7 @@ interface WorkoutCardProps {
   showTimeLabels?: boolean;
   showConnectingLine?: boolean;
   isSubscribed?: boolean;
+  isTrialActive?: boolean;
 }
 
 const WorkoutCard: React.FC<WorkoutCardProps> = ({ 
@@ -26,7 +28,8 @@ const WorkoutCard: React.FC<WorkoutCardProps> = ({
   showTicks = true,
   showTimeLabels = true,
   showConnectingLine = true,
-  isSubscribed = false
+  isSubscribed = false,
+  isTrialActive = false
 }) => {
   const { 
     id, 
@@ -86,7 +89,7 @@ const WorkoutCard: React.FC<WorkoutCardProps> = ({
       onLayout={(e: LayoutChangeEvent) => setCardWidth(e.nativeEvent.layout.width)}
       activeOpacity={0.7}
     >
-      {/* Premium Badge - Only show if premium and user is not subscribed */}
+      {/* Premium Badge - Show for premium workouts when not subscribed */}
       {premium && !isSubscribed && (
         <View style={styles.premiumBadge}>
           <Text style={styles.premiumText}>PREMIUM</Text>
@@ -106,30 +109,37 @@ const WorkoutCard: React.FC<WorkoutCardProps> = ({
         </TouchableOpacity>
       )}
       
-      {/* Workout Name - Only add extra margin if premium badge is showing */}
-      <Text style={[styles.title, premium && !isSubscribed && styles.premiumTitle]}>{name}</Text>
-      
-      {/* Workout Meta Information */}
-      <View style={styles.metaContainer}>
-        <Text style={styles.metaItem}>{formatDuration(duration, 'decimal')}</Text>
-        <Text style={styles.metaItem}>{getIntensityStars()} intensity</Text>
-        <Text style={styles.metaItem}>{countIntervals()} intervals</Text>
-      </View>
-      
-      {/* Visualization using the shared component */}
-      {showVisualization && segments && segments.length > 0 && (
-        <View style={[styles.visualizationContainer, { height: visualizationHeight }]}>
-          <WorkoutVisualization 
-            segments={segments} 
-            minutePerBar={true}
-            containerHeight={visualizationHeight - 12} // Account for margins
-            showTimeLabels={showTimeLabels} 
-            showTicks={showTicks} 
-            showConnectingLine={showConnectingLine}
-            connectingLineOffset={20} // Match the offset used in other screens
-          />
+      <View style={styles.contentContainer}>
+        {/* Workout Name */}
+        <Text style={styles.title}>{name}</Text>
+        
+        {/* Workout Meta Information */}
+        <View style={styles.metaContainer}>
+          <Text style={styles.metaItem}>{formatDuration(duration, 'decimal')}</Text>
+          <Text style={styles.metaItem}>★ {intensity}</Text>
+          <Text style={styles.metaItem}>{segments.length} intervals</Text>
         </View>
-      )}
+        
+        {/* Trial Banner - Show compact version for premium workouts during trial */}
+        {premium && isTrialActive && (
+          <TrialBanner compact={true} />
+        )}
+        
+        {/* Visualization using the shared component */}
+        {showVisualization && segments && segments.length > 0 && (
+          <View style={[styles.visualizationContainer, { height: visualizationHeight }]}>
+            <WorkoutVisualization 
+              segments={segments} 
+              minutePerBar={true}
+              containerHeight={visualizationHeight - 12} // Account for margins
+              showTimeLabels={showTimeLabels} 
+              showTicks={showTicks} 
+              showConnectingLine={showConnectingLine}
+              connectingLineOffset={20} // Match the offset used in other screens
+            />
+          </View>
+        )}
+      </View>
     </TouchableOpacity>
   );
 };
@@ -138,11 +148,12 @@ const styles = StyleSheet.create({
   container: {
     backgroundColor: COLORS.darkGray,
     borderRadius: 12, 
-    padding: 14, 
-    marginBottom: 15, 
+    padding: 12, 
+    marginBottom: 12, 
     borderWidth: 1,
     borderColor: COLORS.darkGray,
     position: 'relative',
+    minHeight: 120, 
   },
   premiumContainer: {
     borderColor: COLORS.accent,
@@ -166,23 +177,24 @@ const styles = StyleSheet.create({
   },
   title: {
     color: COLORS.accent,
-    fontSize: 20, 
+    fontSize: 18, 
     fontWeight: '700', 
-    marginBottom: 3, 
+    marginBottom: 2, 
     letterSpacing: -0.5, 
     fontFamily: 'System', 
   },
-  premiumTitle: {
-    marginTop: 16, // Add space above the title when premium badge is present
+  contentContainer: {
+    flex: 1,
+    marginTop: 10, // Fixed margin for all cards
   },
   metaContainer: {
     flexDirection: 'row',
-    gap: 15, 
-    marginBottom: 8, 
+    gap: 12, 
+    marginBottom: 6, 
   },
   metaItem: {
     color: 'rgba(255, 255, 255, 0.6)', 
-    fontSize: 12, 
+    fontSize: 11, 
   },
   favoriteHeart: {
     position: 'absolute',
@@ -200,10 +212,10 @@ const styles = StyleSheet.create({
     color: COLORS.accent,
   },
   visualizationContainer: {
-    minHeight: 60, // Minimum height as a fallback
+    height: 50, 
     width: '100%',
-    marginTop: 8, 
-    marginBottom: 4,
+    marginTop: 6, 
+    marginBottom: 0, 
   }
 });
 

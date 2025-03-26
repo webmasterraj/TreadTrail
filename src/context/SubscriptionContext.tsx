@@ -21,6 +21,10 @@ const DEFAULT_SUBSCRIPTION_INFO: SubscriptionInfo = {
   transactionId: null,
   purchaseDate: null,
   receiptData: null,
+  trialActive: false,
+  trialStartDate: null,
+  trialEndDate: null,
+  trialUsed: false,
 };
 
 // Context type definition
@@ -29,12 +33,14 @@ interface SubscriptionContextType {
   isLoading: boolean;
   error: string | null;
   products: IAP.Product[];
-  initializeIAP: () => Promise<void>;
+  initializeIAP: () => Promise<boolean>;
   purchaseSubscription: () => Promise<boolean>;
   restorePurchases: () => Promise<boolean>;
   validateSubscription: () => Promise<boolean>;
   isPremiumWorkout: (premium: boolean) => boolean;
   setSubscriptionInfo: React.Dispatch<React.SetStateAction<SubscriptionInfo>>;
+  startFreeTrial: () => Promise<boolean>;
+  checkTrialStatus: () => Promise<boolean>;
 }
 
 // Create the context
@@ -43,12 +49,14 @@ export const SubscriptionContext = createContext<SubscriptionContextType>({
   isLoading: true,
   error: null,
   products: [],
-  initializeIAP: async () => {},
+  initializeIAP: async () => false,
   purchaseSubscription: async () => false,
   restorePurchases: async () => false,
   validateSubscription: async () => false,
   isPremiumWorkout: () => false,
   setSubscriptionInfo: () => {},
+  startFreeTrial: async () => false,
+  checkTrialStatus: async () => false,
 });
 
 // Provider component
@@ -63,6 +71,9 @@ export const SubscriptionProvider: React.FC<SubscriptionProviderProps> = ({ chil
   const [products, setProducts] = useState<IAP.Product[]>([]);
   const [purchaseUpdateSubscription, setPurchaseUpdateSubscription] = useState<IAP.Subscription | null>(null);
   const [purchaseErrorSubscription, setPurchaseErrorSubscription] = useState<IAP.Subscription | null>(null);
+
+  // Constants for trial period
+  const TRIAL_DURATION_DAYS = 14; // 14-day free trial
 
   // Initialize subscription data when component mounts
   useEffect(() => {
@@ -321,11 +332,123 @@ export const SubscriptionProvider: React.FC<SubscriptionProviderProps> = ({ chil
     }
   };
 
+  // Start a free trial
+  const startFreeTrial = async (): Promise<boolean> => {
+    try {
+      if (DEBUG_SUBSCRIPTION_CONTEXT) {
+        console.log('[DEBUG-SUBSCRIPTION-CONTEXT] Starting free trial');
+      }
+      
+      // Check if user has already used their trial
+      if (subscriptionInfo.trialUsed) {
+        if (DEBUG_SUBSCRIPTION_CONTEXT) {
+          console.log('[DEBUG-SUBSCRIPTION-CONTEXT] User has already used their trial');
+        }
+        return false;
+      }
+      
+      // Check if user already has an active subscription
+      if (subscriptionInfo.isActive && !subscriptionInfo.trialActive) {
+        if (DEBUG_SUBSCRIPTION_CONTEXT) {
+          console.log('[DEBUG-SUBSCRIPTION-CONTEXT] User already has an active paid subscription');
+        }
+        return true; // They're already subscribed, so no need for a trial
+      }
+      
+      // Set up trial dates
+      const now = new Date();
+      const trialEndDate = new Date(now);
+      trialEndDate.setDate(now.getDate() + TRIAL_DURATION_DAYS);
+      
+      // Update subscription info
+      const updatedSubscription: SubscriptionInfo = {
+        ...subscriptionInfo,
+        isActive: true, // User gets premium access during trial
+        trialActive: true,
+        trialStartDate: now.toISOString(),
+        trialEndDate: trialEndDate.toISOString(),
+        trialUsed: true, // Mark that they've used their trial
+      };
+      
+      // Save updated subscription info
+      await saveSubscriptionInfo(updatedSubscription);
+      
+      if (DEBUG_SUBSCRIPTION_CONTEXT) {
+        console.log('[DEBUG-SUBSCRIPTION-CONTEXT] Free trial started successfully', updatedSubscription);
+      }
+      
+      return true;
+    } catch (err) {
+      setError('Failed to start free trial');
+      console.error('[DEBUG-SUBSCRIPTION-CONTEXT] Error starting free trial:', err);
+      return false;
+    }
+  };
+
+  // Check trial status and update if needed
+  const checkTrialStatus = async (): Promise<boolean> => {
+    try {
+      if (DEBUG_SUBSCRIPTION_CONTEXT) {
+        console.log('[DEBUG-SUBSCRIPTION-CONTEXT] Checking trial status');
+      }
+      
+      // If not in a trial, no need to check
+      if (!subscriptionInfo.trialActive) {
+        return false;
+      }
+      
+      // Check if trial has expired
+      if (subscriptionInfo.trialEndDate) {
+        const now = new Date();
+        const trialEnd = new Date(subscriptionInfo.trialEndDate);
+        
+        if (now > trialEnd) {
+          // Trial has expired
+          if (DEBUG_SUBSCRIPTION_CONTEXT) {
+            console.log('[DEBUG-SUBSCRIPTION-CONTEXT] Trial has expired');
+          }
+          
+          // Update subscription info to reflect expired trial
+          const updatedSubscription: SubscriptionInfo = {
+            ...subscriptionInfo,
+            isActive: false, // No longer has premium access
+            trialActive: false,
+          };
+          
+          // Save updated subscription info
+          await saveSubscriptionInfo(updatedSubscription);
+          
+          return false;
+        }
+        
+        // Trial is still active
+        return true;
+      }
+      
+      return false;
+    } catch (err) {
+      setError('Failed to check trial status');
+      console.error('[DEBUG-SUBSCRIPTION-CONTEXT] Error checking trial status:', err);
+      return false;
+    }
+  };
+
   // Validate subscription
   const validateSubscription = async (): Promise<boolean> => {
     try {
       if (DEBUG_SUBSCRIPTION_CONTEXT) {
         console.log('[DEBUG-SUBSCRIPTION-CONTEXT] Validating subscription');
+      }
+      
+      // First check trial status
+      await checkTrialStatus();
+      
+      // If trial is active, user has access
+      if (subscriptionInfo.trialActive) {
+        if (DEBUG_SUBSCRIPTION_CONTEXT) {
+          console.log('[DEBUG-SUBSCRIPTION-CONTEXT] Trial is active');
+        }
+        return true;
       }
       
       // Check if subscription is active
@@ -377,8 +500,8 @@ export const SubscriptionProvider: React.FC<SubscriptionProviderProps> = ({ chil
     // If the workout is not premium, it's always accessible
     if (!premium) return true;
     
-    // If the workout is premium, check if the user has an active subscription
-    return subscriptionInfo.isActive;
+    // If user has an active subscription or is in trial period, they can access premium workouts
+    return subscriptionInfo.isActive || subscriptionInfo.trialActive;
   };
 
   // Context value
@@ -393,6 +516,8 @@ export const SubscriptionProvider: React.FC<SubscriptionProviderProps> = ({ chil
     validateSubscription,
     isPremiumWorkout,
     setSubscriptionInfo,
+    startFreeTrial,
+    checkTrialStatus,
   };
 
   return (

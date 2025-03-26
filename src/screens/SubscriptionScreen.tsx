@@ -31,6 +31,7 @@ const SubscriptionScreen: React.FC<Props> = ({ navigation }) => {
     restorePurchases,
     validateSubscription,
     setSubscriptionInfo,
+    startFreeTrial,
   } = useSubscription();
 
   const [isInitializing, setIsInitializing] = useState(true);
@@ -307,6 +308,10 @@ const SubscriptionScreen: React.FC<Props> = ({ navigation }) => {
                       transactionId: 'dev-transaction-id',
                       purchaseDate: new Date().toISOString(),
                       receiptData: 'dev-receipt-data',
+                      trialActive: false,
+                      trialStartDate: null,
+                      trialEndDate: null,
+                      trialUsed: true,
                     });
                     Alert.alert('Dev Mode', 'Subscription activated for development');
                   }}>
@@ -323,10 +328,64 @@ const SubscriptionScreen: React.FC<Props> = ({ navigation }) => {
                       transactionId: null,
                       purchaseDate: null,
                       receiptData: null,
+                      trialActive: false,
+                      trialStartDate: null,
+                      trialEndDate: null,
+                      trialUsed: false,
                     });
                     Alert.alert('Dev Mode', 'Subscription deactivated for development');
                   }}>
                   <Text style={styles.devButtonText}>Set as Unsubscribed</Text>
+                </TouchableOpacity>
+                
+                <TouchableOpacity
+                  style={styles.devButton}
+                  onPress={() => {
+                    // Calculate trial dates
+                    const now = new Date();
+                    const trialEndDate = new Date(now);
+                    trialEndDate.setDate(now.getDate() + 14); // 14-day trial
+                    
+                    setSubscriptionInfo({
+                      isActive: true, // Active during trial
+                      expirationDate: null,
+                      productId: null,
+                      transactionId: null,
+                      purchaseDate: null,
+                      receiptData: null,
+                      trialActive: true,
+                      trialStartDate: now.toISOString(),
+                      trialEndDate: trialEndDate.toISOString(),
+                      trialUsed: true,
+                    });
+                    Alert.alert('Dev Mode', 'Trial activated for development (14 days)');
+                  }}>
+                  <Text style={styles.devButtonText}>Set as Trial User</Text>
+                </TouchableOpacity>
+                
+                <TouchableOpacity
+                  style={styles.devButton}
+                  onPress={() => {
+                    // Calculate trial dates with only 1 day remaining
+                    const now = new Date();
+                    const trialEndDate = new Date(now);
+                    trialEndDate.setDate(now.getDate() + 1); // 1-day remaining
+                    
+                    setSubscriptionInfo({
+                      isActive: true, // Active during trial
+                      expirationDate: null,
+                      productId: null,
+                      transactionId: null,
+                      purchaseDate: null,
+                      receiptData: null,
+                      trialActive: true,
+                      trialStartDate: new Date(now.getTime() - 13 * 24 * 60 * 60 * 1000).toISOString(), // Started 13 days ago
+                      trialEndDate: trialEndDate.toISOString(),
+                      trialUsed: true,
+                    });
+                    Alert.alert('Dev Mode', 'Trial activated with 1 day remaining');
+                  }}>
+                  <Text style={styles.devButtonText}>Set as Trial (1 Day Left)</Text>
                 </TouchableOpacity>
               </View>
             )}

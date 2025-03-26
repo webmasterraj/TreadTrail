@@ -470,7 +470,8 @@ const WorkoutLibraryScreen: React.FC<Props> = ({ navigation, route }) => {
                     onFavoriteToggle={() => dispatch(toggleWorkoutFavorite(reduxWorkout.id))}
                     showVisualization={true}
                     showFavoriteButton={authState.isAuthenticated}
-                    isSubscribed={subscriptionInfo.isActive} // Pass subscription status
+                    isSubscribed={subscriptionInfo.isActive && !subscriptionInfo.trialActive}
+                    isTrialActive={subscriptionInfo.trialActive}
                   />
                 );
               }}

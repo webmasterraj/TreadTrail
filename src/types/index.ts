@@ -166,6 +166,12 @@ export interface SubscriptionInfo {
   transactionId: string | null;
   purchaseDate: string | null; // ISO date string
   receiptData: string | null; // Encrypted receipt data for validation
+  
+  // Trial-related fields
+  trialActive: boolean; // Whether user is currently in trial period
+  trialStartDate: string | null; // When trial started (ISO date string)
+  trialEndDate: string | null; // When trial ends (ISO date string)
+  trialUsed: boolean; // Whether user has already used their trial
 }
 
 // Navigation types
