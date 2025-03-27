@@ -380,26 +380,18 @@ const EditPaceScreen: React.FC<Props> = ({ navigation }) => {
       // Get the units preference from our ref
       const unitPref = unitPreferenceRef.current;
       
-      // Alternative approach to prevent flashing of old values:
-      // Navigate back immediately after validation but before the actual saving
-      // This way the user doesn't see the old values briefly
-      // We'll continue saving in the background
-      const navigateBackAfterSave = () => {
-        navigation.goBack();
-      };
+      // Navigate back immediately after validation
+      navigation.goBack();
       
+      // Continue saving in the background
       try {
         // Save the preference first
         await updatePreference('units', unitPref);
-        
-        // Reduced delay from 100ms to 50ms
-        await new Promise(resolve => setTimeout(resolve, 50));
       } catch (prefError) {
         console.error('Error saving units preference:', prefError);
-        Alert.alert('Error', 'Failed to save units preference. Please try again.');
       }
       
-      // Process weight input - this needs to happen BEFORE saving pace settings
+      // Process weight input
       if (weightInput.trim()) {
         const weightValue = parseInt(weightInput, 10);
         if (!isNaN(weightValue) && weightValue > 0) {
@@ -409,20 +401,11 @@ const EditPaceScreen: React.FC<Props> = ({ navigation }) => {
           try {
             // Save weight directly
             await updateWeight(weightInKg);
-            
-            // Reduced delay from 500ms to 100ms
-            await new Promise(resolve => setTimeout(resolve, 100));
           } catch (weightError) {
             console.error('Error saving weight:', weightError);
-            Alert.alert('Error', 'Failed to save weight. Please try again.');
-            setIsSubmitting(false);
-            return;
           }
         }
       }
-      
-      // Navigate back before saving settings to prevent flashing
-      navigateBackAfterSave();
       
       // Save the updated settings to AsyncStorage
       try {
@@ -431,19 +414,17 @@ const EditPaceScreen: React.FC<Props> = ({ navigation }) => {
           const saved = await saveSettings(updatedSettings);
           if (!saved) {
             console.error('Save operation returned false');
-            // We've already navigated away, so don't show an alert
           }
         }
       } catch (saveError) {
         console.error('Error saving settings:', saveError);
-        // We've already navigated away, so don't show an alert
       }
       
-      // We've already navigated back, so just clean up
-      setIsSubmitting(false);
     } catch (error) {
       console.error('Error in handleSaveSettings:', error);
-      Alert.alert('Error', 'An unexpected error occurred. Please try again.');
+      if (navigation.isFocused()) {
+        Alert.alert('Error', 'An unexpected error occurred. Please try again.');
+      }
     } finally {
       setIsSubmitting(false);
     }
