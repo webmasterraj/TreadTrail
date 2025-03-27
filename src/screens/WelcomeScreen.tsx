@@ -196,14 +196,6 @@ const WelcomeScreen: React.FC<Props> = ({ route, navigation }) => {
       </ScrollView>
       
       <View style={styles.buttonContainer}>
-        <Button 
-          title="Explore Workouts" 
-          onPress={handleExploreWorkouts}
-          type="secondary"
-          size="large"
-          fullWidth
-          style={styles.exploreButton}
-        />
         {/* Only show Customize Paces button for authenticated users */}
         {authState.isAuthenticated && (
           <Button 
@@ -214,6 +206,14 @@ const WelcomeScreen: React.FC<Props> = ({ route, navigation }) => {
             fullWidth
           />
         )}
+        <Button 
+          title="Explore Workouts" 
+          onPress={handleExploreWorkouts}
+          type="secondary"
+          size="large"
+          fullWidth
+          style={styles.exploreButton}
+        />
       </View>
     </SafeAreaView>
   );
@@ -421,7 +421,7 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.black,
   },
   exploreButton: {
-    marginBottom: SPACING.medium,
+    marginTop: SPACING.medium,
   },
   customizeButton: {
     marginBottom: SPACING.small,

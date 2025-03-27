@@ -3,7 +3,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { UserSettings, PaceSetting, UserPreferences, AuthState, User } from '../types';
 import 'react-native-get-random-values'; 
 import { v4 as uuidv4 } from 'uuid';
-import { Platform } from 'react-native';
+import { Platform, NativeModules } from 'react-native';
 import * as AppleAuthentication from 'expo-apple-authentication';
 import { SubscriptionContext } from './SubscriptionContext';
 
@@ -18,9 +18,29 @@ const DEFAULT_PACE_SETTINGS = {
   sprint: { speed: 9.0, incline: 1.0 },
 };
 
+// Function to determine if the user's locale uses imperial units
+const getDefaultUnitSystem = (): 'imperial' | 'metric' => {
+  // Countries that use imperial system (US, UK, Liberia, Myanmar)
+  const imperialCountries = ['US', 'GB', 'LR', 'MM'];
+  
+  // Get device locale
+  let countryCode;
+  if (Platform.OS === 'ios') {
+    countryCode = NativeModules.SettingsManager.settings.AppleLocale?.split('_')[1] || 
+                  NativeModules.SettingsManager.settings.AppleLanguages[0]?.split('_')[1];
+  } else if (Platform.OS === 'android') {
+    countryCode = NativeModules.I18nManager.localeIdentifier?.split('_')[1];
+  }
+  
+  console.log('Detected country code:', countryCode);
+  
+  // Default to metric unless explicitly in an imperial country
+  return imperialCountries.includes(countryCode) ? 'imperial' : 'metric';
+};
+
 // Default user preferences
 const DEFAULT_PREFERENCES: UserPreferences = {
-  units: 'imperial',
+  units: getDefaultUnitSystem(),
   darkMode: true,
   enableAudioCues: true, // Enable audio cues by default
 };
@@ -608,23 +628,27 @@ export const UserProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       // Keep the current pace settings and preferences
       const currentPaceSettings = userSettings?.paceSettings || DEFAULT_PACE_SETTINGS;
       const currentPreferences = userSettings?.preferences || DEFAULT_PREFERENCES;
+      // Also keep the profile data which includes weight
+      const currentProfile = userSettings?.profile;
       
       if (DEBUG_USER_CONTEXT) {
         console.log('[DEBUG-SIGNOUT] Preserving user preferences:', currentPreferences);
         console.log('[DEBUG-SIGNOUT] Preserving pace settings:', currentPaceSettings);
+        console.log('[DEBUG-SIGNOUT] Preserving user profile:', currentProfile);
       }
       
       // Reset auth state
       setAuthState(DEFAULT_AUTH_STATE);
       await saveAuthState(DEFAULT_AUTH_STATE);
       
-      // Create new settings object but preserve pace settings and preferences
+      // Create new settings object but preserve pace settings, preferences, and profile
       if (userSettings) {
         const defaultSettings = getDefaultSettings();
         const updatedSettings = {
           ...defaultSettings,
           paceSettings: currentPaceSettings, // Keep the current pace settings
           preferences: currentPreferences, // Keep the current preferences
+          profile: currentProfile, // Keep the current profile with weight
         };
         
         if (DEBUG_USER_CONTEXT) {
@@ -632,6 +656,7 @@ export const UserProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           console.log('[DEBUG-SIGNOUT] Updated settings:', {
             hasPaceSettings: !!updatedSettings.paceSettings,
             hasPreferences: !!updatedSettings.preferences,
+            hasProfile: !!updatedSettings.profile,
           });
         }
         
