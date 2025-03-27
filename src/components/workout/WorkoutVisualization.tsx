@@ -419,7 +419,7 @@ const styles = StyleSheet.create({
   barsContainer: {
     flexDirection: 'row',
     alignItems: 'flex-end',
-    height: '100%',
+    height: '90%',
     width: '100%',
     paddingBottom: 12,
   },
@@ -451,7 +451,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     position: 'absolute',
-    bottom: 10,
+    bottom: 0,
     left: 0,
     right: 0,
     paddingHorizontal: 4,
