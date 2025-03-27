@@ -41,6 +41,16 @@ const PaceTypeInfo = {
   },
 };
 
+// Convert mph to km/h
+const mphToKmh = (mph: number): number => {
+  return mph * 1.60934;
+};
+
+// Convert km/h to mph
+const kmhToMph = (kmh: number): number => {
+  return kmh / 1.60934;
+};
+
 const EditPaceScreen: React.FC<Props> = ({ navigation }) => {
   // Get all the context functions we need
   const { 
@@ -67,10 +77,10 @@ const EditPaceScreen: React.FC<Props> = ({ navigation }) => {
   
   // Initialize pace settings from user context or use defaults
   const [paceSettings, setPaceSettings] = useState<PaceSettings>({
-    recovery: { speed: 4.5, incline: 1.0 },
-    base: { speed: 5.5, incline: 1.5 },
-    run: { speed: 7.0, incline: 2.0 },
-    sprint: { speed: 9.0, incline: 2.5 },
+    recovery: { speed: 7.2, incline: 1.0 }, 
+    base: { speed: 8.8, incline: 1.5 },     
+    run: { speed: 11.3, incline: 2.0 },     
+    sprint: { speed: 14.5, incline: 2.5 },  
   });
   
   const [inputValues, setInputValues] = useState<Record<PaceType, string>>({
@@ -82,11 +92,10 @@ const EditPaceScreen: React.FC<Props> = ({ navigation }) => {
   
   // Weight state
   const [weightInput, setWeightInput] = useState('');
-  const [useMetricWeight, setUseMetricWeight] = useState(false);
   
   const [isSubmitting, setIsSubmitting] = useState(false);
   // Toggle between mph and km/h
-  const [useMetric, setUseMetric] = useState(false);
+  const [useMetric, setUseMetric] = useState(true);
   
   // Initialize from user settings when component mounts
   useEffect(() => {
@@ -96,7 +105,6 @@ const EditPaceScreen: React.FC<Props> = ({ navigation }) => {
       // Check if the user has a preference for units
       const isMetric = userSettings.preferences?.units === 'metric';
       setUseMetric(isMetric);
-      setUseMetricWeight(isMetric);
       unitPreferenceRef.current = isMetric ? 'metric' : 'imperial';
       
       // Initialize input values based on pace settings and unit preference
@@ -111,11 +119,11 @@ const EditPaceScreen: React.FC<Props> = ({ navigation }) => {
         const currentSpeed = userSettings.paceSettings[paceType].speed;
         
         if (isMetric) {
-          // Display in km/h
-          updatedValues[paceType] = convertToMetric(currentSpeed);
-        } else {
-          // Display in mph
+          // Display in km/h (stored value is already in km/h)
           updatedValues[paceType] = currentSpeed.toFixed(1);
+        } else {
+          // Display in mph (convert from km/h to mph)
+          updatedValues[paceType] = kmhToMph(currentSpeed).toFixed(1);
         }
       });
       
@@ -177,16 +185,6 @@ const EditPaceScreen: React.FC<Props> = ({ navigation }) => {
     }
   }, [focusedInput, keyboardVisible]);
   
-  // Convert mph to km/h for display
-  const convertToMetric = (speed: number) => {
-    return (speed * 1.60934).toFixed(1);
-  };
-  
-  // Convert km/h back to mph for storage
-  const convertFromMetric = (speed: number) => {
-    return speed / 1.60934;
-  };
-  
   // Handle input change without losing focus
   const handleInputChange = (paceType: PaceType, value: string) => {
     // Allow only valid numeric input with at most one decimal point
@@ -208,8 +206,9 @@ const EditPaceScreen: React.FC<Props> = ({ navigation }) => {
     if (inputValues[paceType] !== '') {
       numValue = parseFloat(inputValues[paceType]);
       
-      // Ensure the value is within a reasonable range (0.1 to 15)
-      numValue = Math.max(0.1, Math.min(numValue, 15));
+      // Ensure the value is within a reasonable range (0.1 to 25 km/h or 0.1 to 15 mph)
+      const maxValue = useMetric ? 25 : 15;
+      numValue = Math.max(0.1, Math.min(numValue, maxValue));
       
       // Update the input value to show the constrained value
       setInputValues(prev => ({
@@ -218,14 +217,14 @@ const EditPaceScreen: React.FC<Props> = ({ navigation }) => {
       }));
     }
     
-    // Convert from display units to storage units (always in mph)
-    const speedInMph = useMetric ? convertFromMetric(numValue) : numValue;
+    // Convert from display units to storage units (always in km/h)
+    const speedInKmh = useMetric ? numValue : mphToKmh(numValue);
     
     setPaceSettings(prev => ({
       ...prev,
       [paceType]: {
         ...prev[paceType],
-        speed: speedInMph,
+        speed: speedInKmh,
       },
     }));
     
@@ -247,29 +246,24 @@ const EditPaceScreen: React.FC<Props> = ({ navigation }) => {
       const currentSpeed = paceSettings[paceType].speed;
       
       if (useMetricUnits) {
-        // Converting from mph to km/h
-        updatedValues[paceType] = convertToMetric(currentSpeed);
-      } else {
-        // Converting from km/h to mph
+        // Display in km/h (stored value is already in km/h)
         updatedValues[paceType] = currentSpeed.toFixed(1);
+      } else {
+        // Display in mph (convert from km/h to mph)
+        updatedValues[paceType] = kmhToMph(currentSpeed).toFixed(1);
       }
     });
     
     setInputValues(updatedValues);
-  };
-  
-  // Toggle weight units
-  const toggleWeightUnits = (useMetricUnits: boolean) => {
-    setUseMetricWeight(useMetricUnits);
     
-    // Convert the weight value if needed
+    // Also update weight input based on the new unit system
     if (weightInput) {
       const numValue = parseFloat(weightInput);
       if (!isNaN(numValue)) {
-        if (useMetricUnits && !useMetricWeight) {
+        if (useMetricUnits) {
           // Convert from lbs to kg
           setWeightInput(Math.round(lbsToKg(numValue)).toString());
-        } else if (!useMetricUnits && useMetricWeight) {
+        } else {
           // Convert from kg to lbs
           setWeightInput(Math.round(kgToLbs(numValue)).toString());
         }
@@ -339,6 +333,14 @@ const EditPaceScreen: React.FC<Props> = ({ navigation }) => {
         }
       };
       
+      // Convert to km/h if in imperial mode
+      if (!useMetric) {
+        freshInputPaceSettings.recovery.speed = mphToKmh(freshInputPaceSettings.recovery.speed);
+        freshInputPaceSettings.base.speed = mphToKmh(freshInputPaceSettings.base.speed);
+        freshInputPaceSettings.run.speed = mphToKmh(freshInputPaceSettings.run.speed);
+        freshInputPaceSettings.sprint.speed = mphToKmh(freshInputPaceSettings.sprint.speed);
+      }
+      
       // Update pace settings state with fresh values
       setPaceSettings(freshInputPaceSettings);
       
@@ -371,7 +373,7 @@ const EditPaceScreen: React.FC<Props> = ({ navigation }) => {
         if (weightInput.trim()) {
           const weightValue = parseInt(weightInput, 10);
           if (!isNaN(weightValue) && weightValue > 0) {
-            const weightInKg = useMetricWeight ? weightValue : lbsToKg(weightValue);
+            const weightInKg = useMetric ? weightValue : lbsToKg(weightValue);
             updatedSettings.profile.weight = weightInKg;
           }
         }
@@ -389,6 +391,7 @@ const EditPaceScreen: React.FC<Props> = ({ navigation }) => {
         await updatePreference('units', unitPref);
       } catch (prefError) {
         console.error('Error saving units preference:', prefError);
+        // Don't show alert since we've already navigated away
       }
       
       // Process weight input
@@ -396,13 +399,14 @@ const EditPaceScreen: React.FC<Props> = ({ navigation }) => {
         const weightValue = parseInt(weightInput, 10);
         if (!isNaN(weightValue) && weightValue > 0) {
           // Convert to kg if in imperial
-          const weightInKg = useMetricWeight ? weightValue : lbsToKg(weightValue);
+          const weightInKg = useMetric ? weightValue : lbsToKg(weightValue);
           
           try {
             // Save weight directly
             await updateWeight(weightInKg);
           } catch (weightError) {
             console.error('Error saving weight:', weightError);
+            // Don't show alert since we've already navigated away
           }
         }
       }
@@ -512,21 +516,12 @@ const EditPaceScreen: React.FC<Props> = ({ navigation }) => {
                 value={weightInput}
                 onChangeText={handleWeightInputChange}
                 keyboardType="numeric"
-                placeholder={useMetricWeight ? "Weight in kg" : "Weight in lbs"}
+                placeholder={useMetric ? "Weight in kg" : "Weight in lbs"}
                 placeholderTextColor="rgba(255, 255, 255, 0.5)"
               />
               <Text style={styles.weightUnitLabel}>
-                {useMetricWeight ? 'kg' : 'lbs'}
+                {useMetric ? 'kg' : 'lbs'}
               </Text>
-            </View>
-            
-            <View style={styles.weightUnitsToggle}>
-              <TouchableOpacity onPress={() => toggleWeightUnits(false)}>
-                <Text style={useMetricWeight ? styles.toggleOptionInactive : styles.toggleOptionActive}>lbs</Text>
-              </TouchableOpacity>
-              <TouchableOpacity onPress={() => toggleWeightUnits(true)}>
-                <Text style={useMetricWeight ? styles.toggleOptionActive : styles.toggleOptionInactive}>kg</Text>
-              </TouchableOpacity>
             </View>
           </View>
         </View>
@@ -553,7 +548,7 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     padding: SPACING.medium,
-    paddingBottom: 20, // Extra padding at the bottom to ensure space for keyboard
+    paddingBottom: 20, 
   },
   navRow: {
     flexDirection: 'row',
@@ -640,7 +635,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderRadius: BORDER_RADIUS.medium,
     color: COLORS.white,
-    paddingRight: 50, // Space for the unit label
+    paddingRight: 50, 
   },
   recoveryInput: {
     borderColor: COLORS.recovery,
@@ -696,7 +691,7 @@ const styles = StyleSheet.create({
   weightInputContainer: {
     position: 'relative',
     flex: 1,
-    marginRight: SPACING.medium,
+    // marginRight: SPACING.medium,
   },
   weightInput: {
     width: '100%',
@@ -707,7 +702,7 @@ const styles = StyleSheet.create({
     borderRadius: BORDER_RADIUS.medium,
     color: COLORS.white,
     backgroundColor: 'rgba(255, 255, 255, 0.1)',
-    paddingRight: 50, // Space for the unit label
+    paddingRight: 50, 
   },
   weightUnitLabel: {
     position: 'absolute',
@@ -715,11 +710,6 @@ const styles = StyleSheet.create({
     top: 12,
     color: 'rgba(255, 255, 255, 0.7)',
     fontSize: FONT_SIZES.medium,
-  },
-  weightUnitsToggle: {
-    flexDirection: 'row',
-    gap: 10,
-    alignItems: 'center',
   },
 });
 

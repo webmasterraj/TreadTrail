@@ -106,14 +106,14 @@ const WorkoutLibraryScreen: React.FC<Props> = ({ navigation, route }) => {
   }, [dispatch, navigation, authState.isAuthenticated]);
   
   
-  // Convert mph to km/h for display
-  const convertToMetric = (speed: number) => {
-    return (speed * 1.60934).toFixed(1);
+  // Convert km/h to mph for display
+  const convertToImperial = (speed: number) => {
+    return (speed / 1.60934).toFixed(1);
   };
   
   // Function to get the displayed speed value based on current unit setting
   const getDisplaySpeed = (speed: number) => {
-    return isMetric ? convertToMetric(speed) : speed.toFixed(1);
+    return isMetric ? speed.toFixed(1) : convertToImperial(speed);
   };
 
 
@@ -335,7 +335,7 @@ const WorkoutLibraryScreen: React.FC<Props> = ({ navigation, route }) => {
                   <View style={styles.paceCircle}>
                     <View style={[styles.circle, { backgroundColor: COLORS.recovery }]}>
                       <Text style={styles.circleText}>
-                        {getDisplaySpeed(paceSettings?.recovery?.speed || 4.5)}
+                        {getDisplaySpeed(paceSettings?.recovery?.speed || 7.2)}
                       </Text>
                     </View>
                     <Text style={styles.circleLabel}>Recovery</Text>
@@ -345,7 +345,7 @@ const WorkoutLibraryScreen: React.FC<Props> = ({ navigation, route }) => {
                   <View style={styles.paceCircle}>
                     <View style={[styles.circle, { backgroundColor: COLORS.base }]}>
                       <Text style={styles.circleText}>
-                        {getDisplaySpeed(paceSettings?.base?.speed || 5.5)}
+                        {getDisplaySpeed(paceSettings?.base?.speed || 8.8)}
                       </Text>
                     </View>
                     <Text style={styles.circleLabel}>Base</Text>
@@ -355,7 +355,7 @@ const WorkoutLibraryScreen: React.FC<Props> = ({ navigation, route }) => {
                   <View style={styles.paceCircle}>
                     <View style={[styles.circle, { backgroundColor: COLORS.run }]}>
                       <Text style={styles.circleText}>
-                        {getDisplaySpeed(paceSettings?.run?.speed || 7.0)}
+                        {getDisplaySpeed(paceSettings?.run?.speed || 11.3)}
                       </Text>
                     </View>
                     <Text style={styles.circleLabel}>Run</Text>
@@ -365,7 +365,7 @@ const WorkoutLibraryScreen: React.FC<Props> = ({ navigation, route }) => {
                   <View style={styles.paceCircle}>
                     <View style={[styles.circle, { backgroundColor: COLORS.sprint }]}>
                       <Text style={styles.circleText}>
-                        {getDisplaySpeed(paceSettings?.sprint?.speed || 9.0)}
+                        {getDisplaySpeed(paceSettings?.sprint?.speed || 14.5)}
                       </Text>
                     </View>
                     <Text style={styles.circleLabel}>Sprint</Text>
@@ -641,5 +641,4 @@ const styles = StyleSheet.create({
     borderColor: COLORS.gold,
   },
 });
-
 export default WorkoutLibraryScreen;
