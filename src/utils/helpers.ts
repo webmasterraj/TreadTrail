@@ -235,29 +235,31 @@ export const calculateTotalDistance = (
 };
 
 /**
- * Formats a number with k (thousands) or m (millions) suffix
+ * Formats a number with k/m suffixes for thousands/millions
+ * Only shows 'k' for values above 9999
+ * Always shows at least 1 decimal place for k/m values
  * @param value Number to format
- * @param maxDecimals Maximum number of decimal places to show (default: 1)
- * @returns Formatted number string (e.g. "1.2k", "3.4m")
+ * @param maxDecimals Maximum number of decimal places to show
+ * @returns Formatted number string (e.g. "10.0k", "3.4m")
  */
 export const formatNumber = (value: number, maxDecimals: number = 1): string => {
   // Handle zero or invalid values
   if (!value || isNaN(value) || value === 0) return '0';
   
-  // For values less than 1000, return as is with no decimal places
-  if (value < 1000) return Math.round(value).toString();
+  // For values less than 10000, return as is with no decimal places
+  if (value < 10000) return Math.round(value).toString();
   
-  // For values 1,000 to 999,999, format as k
+  // For values 10,000 to 999,999, format as k with at least 1 decimal
   if (value < 1000000) {
-    const formatted = (value / 1000).toFixed(maxDecimals);
-    // Remove trailing zeros and decimal point if not needed
-    return formatted.replace(/\.0+$/, '') + 'k';
+    const formatted = (value / 1000).toFixed(Math.max(1, maxDecimals));
+    // Remove trailing zeros but keep at least one decimal place
+    return formatted.replace(/\.(\d*[1-9])0+$/, '.$1') + 'k';
   }
   
-  // For values 1,000,000 and above, format as m
-  const formatted = (value / 1000000).toFixed(maxDecimals);
-  // Remove trailing zeros and decimal point if not needed
-  return formatted.replace(/\.0+$/, '') + 'm';
+  // For values 1,000,000 and above, format as m with at least 1 decimal
+  const formatted = (value / 1000000).toFixed(Math.max(1, maxDecimals));
+  // Remove trailing zeros but keep at least one decimal place
+  return formatted.replace(/\.(\d*[1-9])0+$/, '.$1') + 'm';
 };
 
 /**
