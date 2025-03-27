@@ -135,15 +135,6 @@ const EditPaceScreen: React.FC<Props> = ({ navigation }) => {
       } else {
         setWeightInput('');
       }
-      
-      console.log('[DEBUG] Initialized pace settings from user settings:', {
-        recovery: userSettings.paceSettings.recovery.speed,
-        base: userSettings.paceSettings.base.speed,
-        run: userSettings.paceSettings.run.speed,
-        sprint: userSettings.paceSettings.sprint.speed
-      });
-      
-      console.log('[DEBUG] Initialized input values:', updatedValues);
     }
   }, [userSettings]);
 
@@ -209,8 +200,6 @@ const EditPaceScreen: React.FC<Props> = ({ navigation }) => {
         ...prev,
         [paceType]: value
       }));
-      
-      console.log(`[DEBUG-INPUT] Changed ${paceType} input to: ${value}`);
     }
   };
 
@@ -234,8 +223,6 @@ const EditPaceScreen: React.FC<Props> = ({ navigation }) => {
     
     // Convert from display units to storage units (always in mph)
     const speedInMph = useMetric ? convertFromMetric(numValue) : numValue;
-    
-    console.log(`[DEBUG] Setting ${paceType} pace: ${numValue} ${useMetric ? 'km/h' : 'mph'} (stored as ${speedInMph} mph)`);
     
     setPaceSettings(prev => ({
       ...prev,
@@ -272,15 +259,6 @@ const EditPaceScreen: React.FC<Props> = ({ navigation }) => {
     });
     
     setInputValues(updatedValues);
-    
-    console.log(`[DEBUG] Toggled units to ${unitPref}. Pace settings remain in mph:`, {
-      recovery: paceSettings.recovery.speed,
-      base: paceSettings.base.speed,
-      run: paceSettings.run.speed,
-      sprint: paceSettings.sprint.speed
-    });
-    
-    // Units preference is saved when user clicks Save
   };
   
   // Toggle weight units
@@ -310,27 +288,6 @@ const EditPaceScreen: React.FC<Props> = ({ navigation }) => {
     }
   };
   
-  // Remove weight
-  const handleRemoveWeight = () => {
-    Alert.alert(
-      'Remove Weight',
-      'Are you sure you want to remove your weight? This will affect calorie calculations.',
-      [
-        {
-          text: 'Cancel',
-          style: 'cancel',
-        },
-        {
-          text: 'Remove',
-          onPress: () => {
-            setWeightInput('');
-          },
-          style: 'destructive',
-        },
-      ]
-    );
-  };
-  
   // Save pace settings
   const handleSaveSettings = async () => {
     setIsSubmitting(true);
@@ -341,6 +298,28 @@ const EditPaceScreen: React.FC<Props> = ({ navigation }) => {
         handleInputBlur(focusedInput);
         // Small delay to ensure state updates before proceeding
         await new Promise(resolve => setTimeout(resolve, 100));
+      }
+      
+      // Validate weight input - required field
+      if (!weightInput.trim()) {
+        Alert.alert(
+          'Weight Required',
+          'Please enter your weight to continue. This is needed for calorie calculations.',
+          [{ text: 'OK' }]
+        );
+        setIsSubmitting(false);
+        return;
+      }
+      
+      const weightValue = parseInt(weightInput, 10);
+      if (isNaN(weightValue) || weightValue <= 0) {
+        Alert.alert(
+          'Invalid Weight',
+          'Please enter a valid weight value greater than 0.',
+          [{ text: 'OK' }]
+        );
+        setIsSubmitting(false);
+        return;
       }
       
       // Create a fresh pace settings object directly from input values
@@ -374,67 +353,7 @@ const EditPaceScreen: React.FC<Props> = ({ navigation }) => {
       // Update pace settings state with fresh values
       setPaceSettings(freshInputPaceSettings);
       
-      console.log('[DEBUG-SAVE] Fresh input-based pace settings:', {
-        recovery: freshInputPaceSettings.recovery.speed,
-        base: freshInputPaceSettings.base.speed,
-        run: freshInputPaceSettings.run.speed,
-        sprint: freshInputPaceSettings.sprint.speed
-      });
-      
-      // Small delay to ensure state updates before proceeding
-      await new Promise(resolve => setTimeout(resolve, 100));
-      
-      // Log current pace settings before validation
-      console.log('[DEBUG-SAVE] Current pace settings before save:', {
-        recovery: freshInputPaceSettings.recovery.speed,
-        base: freshInputPaceSettings.base.speed,
-        run: freshInputPaceSettings.run.speed,
-        sprint: freshInputPaceSettings.sprint.speed
-      });
-      
-      // Validate that settings follow the expected pattern (recovery < base < run < sprint)
-      if (
-        freshInputPaceSettings.recovery.speed >= freshInputPaceSettings.base.speed ||
-        freshInputPaceSettings.base.speed >= freshInputPaceSettings.run.speed ||
-        freshInputPaceSettings.run.speed >= freshInputPaceSettings.sprint.speed
-      ) {
-        Alert.alert(
-          'Invalid Pace Settings',
-          'Speed settings should follow the pattern: Recovery < Base < Run < Sprint',
-          [{ text: 'OK' }]
-        );
-        setIsSubmitting(false);
-        return;
-      }
-
-      // Get the units preference from our ref
-      const unitPref = unitPreferenceRef.current;
-      
-      try {
-        // Save the preference first
-        await updatePreference('units', unitPref);
-        
-        // Force a short delay to ensure state updates propagate
-        await new Promise(resolve => setTimeout(resolve, 100));
-      } catch (prefError) {
-        console.error('Error saving units preference:', prefError);
-        Alert.alert('Error', 'Failed to save units preference. Please try again.');
-      }
-      
-      // Process weight input
-      if (weightInput.trim()) {
-        const weightValue = parseInt(weightInput, 10);
-        if (!isNaN(weightValue) && weightValue > 0) {
-          // Convert to kg if in imperial
-          const weightInKg = useMetricWeight ? weightValue : lbsToKg(weightValue);
-          await updateWeight(weightInKg);
-        }
-      } else if (weightInput === '' && userSettings?.profile?.weight) {
-        // User removed their weight
-        await updateWeight(0);
-      }
-      
-      // Get the current user settings after unit preference update
+      // Get the current user settings after unit preference and weight update
       const currentSettings = userSettings;
       if (!currentSettings) {
         Alert.alert('Error', 'Could not access user settings');
@@ -449,61 +368,81 @@ const EditPaceScreen: React.FC<Props> = ({ navigation }) => {
         // Explicitly set the preferences to ensure they don't get overwritten
         preferences: {
           ...currentSettings.preferences,
-          units: unitPref, // Use the value we saved earlier
-        }
+          units: unitPreferenceRef.current,
+        },
       };
       
-      // Save the complete updated settings
+      // Ensure profile and weight are preserved
+      if (currentSettings.profile) {
+        updatedSettings.profile = {
+          ...currentSettings.profile,
+        };
+        
+        // If we have a weight input, make sure it's included in the updated settings
+        if (weightInput.trim()) {
+          const weightValue = parseInt(weightInput, 10);
+          if (!isNaN(weightValue) && weightValue > 0) {
+            const weightInKg = useMetricWeight ? weightValue : lbsToKg(weightValue);
+            updatedSettings.profile.weight = weightInKg;
+          }
+        }
+      }
+      
+      // Get the units preference from our ref
+      const unitPref = unitPreferenceRef.current;
+      
       try {
-        // Debug log before saving
-        console.log('[DEBUG-SAVE] About to save settings with paces:', {
-          recovery: updatedSettings.paceSettings.recovery.speed,
-          base: updatedSettings.paceSettings.base.speed,
-          run: updatedSettings.paceSettings.run.speed,
-          sprint: updatedSettings.paceSettings.sprint.speed
-        });
+        // Save the preference first
+        await updatePreference('units', unitPref);
         
-        const success = await saveSettings(updatedSettings);
-        
-        // Debug log after saving
-        console.log('[DEBUG-SAVE] Settings saved successfully:', success);
-        console.log('[DEBUG-SAVE] Navigate to WorkoutLibrary screen');
-      } catch (error) {
-        console.error('Error saving settings:', error);
-        Alert.alert('Error', 'Failed to save pace settings');
+        // Force a short delay to ensure state updates propagate
+        await new Promise(resolve => setTimeout(resolve, 100));
+      } catch (prefError) {
+        console.error('Error saving units preference:', prefError);
+        Alert.alert('Error', 'Failed to save units preference. Please try again.');
+      }
+      
+      // Process weight input - this needs to happen BEFORE saving pace settings
+      if (weightInput.trim()) {
+        const weightValue = parseInt(weightInput, 10);
+        if (!isNaN(weightValue) && weightValue > 0) {
+          // Convert to kg if in imperial
+          const weightInKg = useMetricWeight ? weightValue : lbsToKg(weightValue);
+          
+          try {
+            // Save weight directly
+            await updateWeight(weightInKg);
+            
+            // Force a short delay to ensure weight update propagates
+            await new Promise(resolve => setTimeout(resolve, 500));
+          } catch (weightError) {
+            console.error('Error saving weight:', weightError);
+            Alert.alert('Error', 'Failed to save weight. Please try again.');
+            setIsSubmitting(false);
+            return;
+          }
+        }
+      }
+      
+      // Save the updated settings
+      try {
+        // Use the saveSettings function from context
+        const saved = await saveSettings(updatedSettings);
+        if (!saved) {
+          throw new Error('Save operation returned false');
+        }
+      } catch (saveError) {
+        console.error('Error saving settings:', saveError);
+        Alert.alert('Error', 'Failed to save settings. Please try again.');
         setIsSubmitting(false);
         return;
       }
       
-      // If not authenticated, prompt to create account
-      if (!authState.isAuthenticated) {
-        Alert.alert(
-          'Settings Saved Temporarily',
-          'Create an account to save your preferences permanently.',
-          [
-            {
-              text: 'Create Account',
-              onPress: () => navigation.navigate('Landing'),
-            },
-            {
-              text: 'OK',
-              onPress: () => navigation.navigate('WorkoutLibrary'),
-            },
-          ]
-        );
-        setIsSubmitting(false);
-        return;
-      }
-      
-      // Navigate to WorkoutLibrary screen
-      navigation.navigate('WorkoutLibrary');
+      // Navigate back
+      navigation.goBack();
     } catch (error) {
-      console.error('Error saving pace settings:', error);
-      Alert.alert(
-        'Error',
-        'Failed to save pace settings. Please try again.',
-        [{ text: 'OK' }]
-      );
+      console.error('Error in handleSaveSettings:', error);
+      Alert.alert('Error', 'An unexpected error occurred. Please try again.');
     } finally {
       setIsSubmitting(false);
     }
@@ -600,15 +539,6 @@ const EditPaceScreen: React.FC<Props> = ({ navigation }) => {
               </TouchableOpacity>
             </View>
           </View>
-          
-          {weightInput !== '' && (
-            <TouchableOpacity 
-              style={styles.removeWeightButton}
-              onPress={handleRemoveWeight}
-            >
-              <Text style={styles.removeWeightText}>Remove Weight</Text>
-            </TouchableOpacity>
-          )}
         </View>
         
         {/* Save button */}
@@ -750,7 +680,7 @@ const styles = StyleSheet.create({
   },
   // Weight section styles
   weightSection: {
-    marginTop: SPACING.xl,
+    marginTop: SPACING.large,
     marginBottom: SPACING.large,
     paddingHorizontal: SPACING.small,
     backgroundColor: COLORS.darkGray,
@@ -800,15 +730,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 10,
     alignItems: 'center',
-  },
-  removeWeightButton: {
-    marginTop: SPACING.medium,
-    alignSelf: 'center',
-  },
-  removeWeightText: {
-    color: '#FF453A', // iOS red color for destructive actions
-    fontSize: FONT_SIZES.small,
-    textDecorationLine: 'underline',
   },
 });
 

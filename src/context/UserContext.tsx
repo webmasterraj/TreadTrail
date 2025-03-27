@@ -7,8 +7,8 @@ import { Platform } from 'react-native';
 import * as AppleAuthentication from 'expo-apple-authentication';
 import { SubscriptionContext } from './SubscriptionContext';
 
-// Debug flag - set to false to disable debug logs
-const DEBUG_USER_CONTEXT = false;
+// Debug flag - set to true to enable debug logs
+const DEBUG_USER_CONTEXT = true;
 
 // Default pace settings
 const DEFAULT_PACE_SETTINGS = {
@@ -764,9 +764,23 @@ export const UserProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   // Update user weight
   const updateWeight = async (weight: number) => {
-    if (!userSettings) return;
+    if (DEBUG_USER_CONTEXT) {
+      console.log('[DEBUG-USER-CONTEXT] updateWeight called with weight:', weight);
+      console.log('[DEBUG-USER-CONTEXT] Current userSettings:', userSettings ? 'exists' : 'null');
+    }
+    
+    if (!userSettings) {
+      if (DEBUG_USER_CONTEXT) {
+        console.log('[DEBUG-USER-CONTEXT] Cannot update weight: userSettings is null');
+      }
+      return;
+    }
 
     try {
+      if (DEBUG_USER_CONTEXT) {
+        console.log('[DEBUG-USER-CONTEXT] Current profile:', userSettings.profile);
+      }
+      
       const updatedSettings = {
         ...userSettings,
         profile: {
@@ -775,8 +789,23 @@ export const UserProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         },
       };
       
-      setUserSettings(updatedSettings);
+      if (DEBUG_USER_CONTEXT) {
+        console.log('[DEBUG-USER-CONTEXT] Updated settings with new weight:', updatedSettings.profile.weight);
+      }
+      
+      // Save to AsyncStorage first to ensure it persists
       await saveSettings(updatedSettings);
+      
+      if (DEBUG_USER_CONTEXT) {
+        console.log('[DEBUG-USER-CONTEXT] Saved updated settings to AsyncStorage');
+      }
+      
+      // Then update the state
+      setUserSettings(updatedSettings);
+      
+      if (DEBUG_USER_CONTEXT) {
+        console.log('[DEBUG-USER-CONTEXT] Updated userSettings state with new weight');
+      }
     } catch (err) {
       setError('Failed to update weight');
       console.error('Error updating weight:', err);
