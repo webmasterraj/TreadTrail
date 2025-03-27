@@ -9,7 +9,8 @@ import {
   StatusBar, 
   Alert,
   TextInput,
-  Keyboard
+  Keyboard,
+  ActivityIndicator
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -48,11 +49,7 @@ const EditPaceScreen: React.FC<Props> = ({ navigation }) => {
     updatePreference, 
     authState,
     updateWeight,
-    // Get the saveSettings function directly from context
-    saveSettings = async (settings) => {
-      console.error('saveSettings not available');
-      return false;
-    } 
+    saveSettings
   } = useContext(UserContext);
   
   // Reference to the ScrollView
@@ -325,28 +322,20 @@ const EditPaceScreen: React.FC<Props> = ({ navigation }) => {
       // Create a fresh pace settings object directly from input values
       const freshInputPaceSettings: PaceSettings = {
         recovery: { 
-          speed: inputValues.recovery ? 
-            (useMetric ? convertFromMetric(parseFloat(inputValues.recovery) || 0.1) : parseFloat(inputValues.recovery) || 0.1) : 
-            paceSettings.recovery.speed,
-          incline: paceSettings.recovery.incline 
+          speed: parseFloat(inputValues.recovery) || 0,
+          incline: paceSettings.recovery.incline
         },
         base: { 
-          speed: inputValues.base ? 
-            (useMetric ? convertFromMetric(parseFloat(inputValues.base) || 0.1) : parseFloat(inputValues.base) || 0.1) : 
-            paceSettings.base.speed,
-          incline: paceSettings.base.incline 
+          speed: parseFloat(inputValues.base) || 0,
+          incline: paceSettings.base.incline
         },
         run: { 
-          speed: inputValues.run ? 
-            (useMetric ? convertFromMetric(parseFloat(inputValues.run) || 0.1) : parseFloat(inputValues.run) || 0.1) : 
-            paceSettings.run.speed,
-          incline: paceSettings.run.incline 
+          speed: parseFloat(inputValues.run) || 0,
+          incline: paceSettings.run.incline
         },
         sprint: { 
-          speed: inputValues.sprint ? 
-            (useMetric ? convertFromMetric(parseFloat(inputValues.sprint) || 0.1) : parseFloat(inputValues.sprint) || 0.1) : 
-            paceSettings.sprint.speed,
-          incline: paceSettings.sprint.incline 
+          speed: parseFloat(inputValues.sprint) || 0,
+          incline: paceSettings.sprint.incline
         }
       };
       
@@ -391,12 +380,20 @@ const EditPaceScreen: React.FC<Props> = ({ navigation }) => {
       // Get the units preference from our ref
       const unitPref = unitPreferenceRef.current;
       
+      // Alternative approach to prevent flashing of old values:
+      // Navigate back immediately after validation but before the actual saving
+      // This way the user doesn't see the old values briefly
+      // We'll continue saving in the background
+      const navigateBackAfterSave = () => {
+        navigation.goBack();
+      };
+      
       try {
         // Save the preference first
         await updatePreference('units', unitPref);
         
-        // Force a short delay to ensure state updates propagate
-        await new Promise(resolve => setTimeout(resolve, 100));
+        // Reduced delay from 100ms to 50ms
+        await new Promise(resolve => setTimeout(resolve, 50));
       } catch (prefError) {
         console.error('Error saving units preference:', prefError);
         Alert.alert('Error', 'Failed to save units preference. Please try again.');
@@ -413,8 +410,8 @@ const EditPaceScreen: React.FC<Props> = ({ navigation }) => {
             // Save weight directly
             await updateWeight(weightInKg);
             
-            // Force a short delay to ensure weight update propagates
-            await new Promise(resolve => setTimeout(resolve, 500));
+            // Reduced delay from 500ms to 100ms
+            await new Promise(resolve => setTimeout(resolve, 100));
           } catch (weightError) {
             console.error('Error saving weight:', weightError);
             Alert.alert('Error', 'Failed to save weight. Please try again.');
@@ -424,22 +421,26 @@ const EditPaceScreen: React.FC<Props> = ({ navigation }) => {
         }
       }
       
-      // Save the updated settings
+      // Navigate back before saving settings to prevent flashing
+      navigateBackAfterSave();
+      
+      // Save the updated settings to AsyncStorage
       try {
-        // Use the saveSettings function from context
-        const saved = await saveSettings(updatedSettings);
-        if (!saved) {
-          throw new Error('Save operation returned false');
+        // Use the saveSettings function from context to persist to AsyncStorage
+        if (saveSettings) {
+          const saved = await saveSettings(updatedSettings);
+          if (!saved) {
+            console.error('Save operation returned false');
+            // We've already navigated away, so don't show an alert
+          }
         }
       } catch (saveError) {
         console.error('Error saving settings:', saveError);
-        Alert.alert('Error', 'Failed to save settings. Please try again.');
-        setIsSubmitting(false);
-        return;
+        // We've already navigated away, so don't show an alert
       }
       
-      // Navigate back
-      navigation.goBack();
+      // We've already navigated back, so just clean up
+      setIsSubmitting(false);
     } catch (error) {
       console.error('Error in handleSaveSettings:', error);
       Alert.alert('Error', 'An unexpected error occurred. Please try again.');
@@ -461,8 +462,16 @@ const EditPaceScreen: React.FC<Props> = ({ navigation }) => {
       >
         {/* Header with back arrow and title */}
         <View style={styles.navRow}>
-          <TouchableOpacity onPress={() => handleSaveSettings()} style={styles.backButton}>
-            <Text style={styles.backButtonText}>←</Text>
+          <TouchableOpacity 
+            onPress={() => handleSaveSettings()} 
+            style={styles.backButton}
+            disabled={isSubmitting}
+          >
+            {isSubmitting ? (
+              <ActivityIndicator size="small" color={COLORS.white} />
+            ) : (
+              <Text style={styles.backButtonText}>←</Text>
+            )}
           </TouchableOpacity>
           <Text style={styles.screenTitle}>Set Your Levels</Text>
           <View style={styles.emptySpace} />
@@ -511,7 +520,7 @@ const EditPaceScreen: React.FC<Props> = ({ navigation }) => {
         {/* Weight section */}
         <View style={styles.weightSection}>
           <Text style={styles.sectionTitle}>Your Weight</Text>
-          <Text style={styles.weightDescription}>
+          <Text style={styles.description}>
             Your weight is used to calculate calories burned during workouts.
           </Text>
           
