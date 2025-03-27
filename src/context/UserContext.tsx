@@ -58,6 +58,8 @@ interface UserContextType {
   saveSettings: (settings: UserSettings) => Promise<boolean>;
   // Add preferences directly to the context
   preferences: UserPreferences;
+  // Add updateWeight function
+  updateWeight: (weight: number) => Promise<void>;
 }
 
 // Create the context
@@ -76,6 +78,7 @@ export const UserContext = createContext<UserContextType>({
   resetToDefault: async () => {},
   saveSettings: async () => false,
   preferences: DEFAULT_PREFERENCES,
+  updateWeight: async () => {},
 });
 
 // Provider component
@@ -759,6 +762,27 @@ export const UserProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
   };
 
+  // Update user weight
+  const updateWeight = async (weight: number) => {
+    if (!userSettings) return;
+
+    try {
+      const updatedSettings = {
+        ...userSettings,
+        profile: {
+          ...userSettings.profile,
+          weight,
+        },
+      };
+      
+      setUserSettings(updatedSettings);
+      await saveSettings(updatedSettings);
+    } catch (err) {
+      setError('Failed to update weight');
+      console.error('Error updating weight:', err);
+    }
+  };
+
   // Reset to default settings
   const resetToDefault = async () => {
     try {
@@ -798,6 +822,7 @@ export const UserProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     saveSettings, // Export the saveSettings function
     // Add preferences directly to the context value to ensure it's always defined
     preferences: userSettings?.preferences || DEFAULT_PREFERENCES,
+    updateWeight,
   };
 
   return <UserContext.Provider value={value}>{children}</UserContext.Provider>;

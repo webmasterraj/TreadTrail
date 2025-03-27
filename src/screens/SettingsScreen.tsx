@@ -17,6 +17,7 @@ import {NativeStackScreenProps} from '@react-navigation/native-stack';
 import {RootStackParamList} from '../types';
 import {COLORS, FONT_SIZES, SPACING, BORDER_RADIUS} from '../styles/theme';
 import {UserContext} from '../context';
+import {SubscriptionContext} from '../context/SubscriptionContext';
 import BottomTabBar from '../components/common/BottomTabBar';
 
 // Debug flag - set to false to disable debug logs
@@ -29,6 +30,7 @@ const BUILD_NUMBER = '42';
 
 const SettingsScreen: React.FC<Props> = ({navigation}) => {
   const {authState, signOut, preferences, updatePreference, isLoading, userSettings} = useContext(UserContext);
+  const {subscriptionInfo} = useContext(SubscriptionContext);
   const [isError, setIsError] = useState(false);
 
   // Add debug logging on component mount
@@ -200,14 +202,19 @@ const SettingsScreen: React.FC<Props> = ({navigation}) => {
             <View style={styles.settingsItem}>
               <Text style={styles.itemLabel}>Audio Cues</Text>
               <Switch
-                trackColor={{ false: COLORS.darkGray, true: COLORS.accent }}
-                thumbColor={userSettings?.preferences?.enableAudioCues ? COLORS.white : COLORS.lightGray}
-                ios_backgroundColor={COLORS.darkGray}
+                value={preferences?.enableAudioCues || false}
                 onValueChange={toggleAudioCues}
-                value={userSettings?.preferences?.enableAudioCues}
-                testID="audio-cues-toggle"
+                trackColor={{false: COLORS.darkGray, true: COLORS.accent}}
+                thumbColor={COLORS.white}
               />
             </View>
+            
+            <TouchableOpacity
+              style={styles.settingsItem}
+              onPress={() => navigation.navigate('EditPace')}>
+              <Text style={styles.itemLabel}>Set Paces & Weight</Text>
+              <Text style={styles.chevron}>→</Text>
+            </TouchableOpacity>
           </View>
         </View>
 
@@ -251,8 +258,8 @@ const SettingsScreen: React.FC<Props> = ({navigation}) => {
           </TouchableOpacity>
         </View>
       </ScrollView>
-
-      {/* No bottom tab bar in settings */}
+      
+      <BottomTabBar currentScreen="Settings" navigation={navigation} />
     </SafeAreaView>
   );
 };

@@ -27,6 +27,7 @@ export interface UserProfile {
   name: string;
   dateCreated: string; // ISO date string
   lastActive: string; // ISO date string
+  weight?: number; // Weight in kg for calorie calculations (optional)
 }
 
 // User settings
@@ -97,6 +98,7 @@ export interface WorkoutSession {
   segments: CompletedSegment[];
   paceSettings?: PaceSettings; // Pace settings used during this workout
   distance?: number; // Distance in miles
+  caloriesBurned?: number; // Calories burned during workout (for premium users)
 }
 
 // Workout stats
@@ -105,6 +107,7 @@ export interface WorkoutStats {
   totalDuration: number; // In seconds
   totalDistance: number; // In miles (always stored in miles internally)
   totalSegmentsCompleted: number;
+  totalCaloriesBurned: number; // Total calories burned across all workouts
   workoutsByCategory: {
     'Easy \ud83d\udc23': number;
     'Trad HIIT \ud83c\udfc3\ud83c\udffc': number;

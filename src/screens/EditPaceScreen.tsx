@@ -17,6 +17,7 @@ import { RootStackParamList, PaceType, PaceSettings, PaceSetting } from '../type
 import { COLORS, FONT_SIZES, SPACING, BORDER_RADIUS, PACE_COLORS } from '../styles/theme';
 import { UserContext } from '../context';
 import Button from '../components/common/Button';
+import { kgToLbs, lbsToKg } from '../utils/calorieUtils';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'EditPace'>;
 
@@ -46,6 +47,7 @@ const EditPaceScreen: React.FC<Props> = ({ navigation }) => {
     updatePaceSetting, 
     updatePreference, 
     authState,
+    updateWeight,
     // Get the saveSettings function directly from context
     saveSettings = async (settings) => {
       console.error('saveSettings not available');
@@ -81,6 +83,10 @@ const EditPaceScreen: React.FC<Props> = ({ navigation }) => {
     sprint: paceSettings.sprint.speed.toFixed(1),
   });
   
+  // Weight state
+  const [weightInput, setWeightInput] = useState('');
+  const [useMetricWeight, setUseMetricWeight] = useState(false);
+  
   const [isSubmitting, setIsSubmitting] = useState(false);
   // Toggle between mph and km/h
   const [useMetric, setUseMetric] = useState(false);
@@ -93,6 +99,7 @@ const EditPaceScreen: React.FC<Props> = ({ navigation }) => {
       // Check if the user has a preference for units
       const isMetric = userSettings.preferences?.units === 'metric';
       setUseMetric(isMetric);
+      setUseMetricWeight(isMetric);
       unitPreferenceRef.current = isMetric ? 'metric' : 'imperial';
       
       // Initialize input values based on pace settings and unit preference
@@ -117,6 +124,18 @@ const EditPaceScreen: React.FC<Props> = ({ navigation }) => {
       
       setInputValues(updatedValues);
       
+      // Initialize weight input
+      if (userSettings.profile?.weight) {
+        const weight = userSettings.profile.weight;
+        if (isMetric) {
+          setWeightInput(Math.round(weight).toString());
+        } else {
+          setWeightInput(Math.round(kgToLbs(weight)).toString());
+        }
+      } else {
+        setWeightInput('');
+      }
+      
       console.log('[DEBUG] Initialized pace settings from user settings:', {
         recovery: userSettings.paceSettings.recovery.speed,
         base: userSettings.paceSettings.base.speed,
@@ -127,7 +146,7 @@ const EditPaceScreen: React.FC<Props> = ({ navigation }) => {
       console.log('[DEBUG] Initialized input values:', updatedValues);
     }
   }, [userSettings]);
-  
+
   // Add keyboard listeners
   useEffect(() => {
     const keyboardDidShowListener = Keyboard.addListener(
@@ -264,6 +283,54 @@ const EditPaceScreen: React.FC<Props> = ({ navigation }) => {
     // Units preference is saved when user clicks Save
   };
   
+  // Toggle weight units
+  const toggleWeightUnits = (useMetricUnits: boolean) => {
+    setUseMetricWeight(useMetricUnits);
+    
+    // Convert the weight value if needed
+    if (weightInput) {
+      const numValue = parseFloat(weightInput);
+      if (!isNaN(numValue)) {
+        if (useMetricUnits && !useMetricWeight) {
+          // Convert from lbs to kg
+          setWeightInput(Math.round(lbsToKg(numValue)).toString());
+        } else if (!useMetricUnits && useMetricWeight) {
+          // Convert from kg to lbs
+          setWeightInput(Math.round(kgToLbs(numValue)).toString());
+        }
+      }
+    }
+  };
+  
+  // Handle weight input change
+  const handleWeightInputChange = (value: string) => {
+    // Allow only valid numeric input
+    if (value === '' || /^\d+$/.test(value)) {
+      setWeightInput(value);
+    }
+  };
+  
+  // Remove weight
+  const handleRemoveWeight = () => {
+    Alert.alert(
+      'Remove Weight',
+      'Are you sure you want to remove your weight? This will affect calorie calculations.',
+      [
+        {
+          text: 'Cancel',
+          style: 'cancel',
+        },
+        {
+          text: 'Remove',
+          onPress: () => {
+            setWeightInput('');
+          },
+          style: 'destructive',
+        },
+      ]
+    );
+  };
+  
   // Save pace settings
   const handleSaveSettings = async () => {
     setIsSubmitting(true);
@@ -354,6 +421,19 @@ const EditPaceScreen: React.FC<Props> = ({ navigation }) => {
         Alert.alert('Error', 'Failed to save units preference. Please try again.');
       }
       
+      // Process weight input
+      if (weightInput.trim()) {
+        const weightValue = parseInt(weightInput, 10);
+        if (!isNaN(weightValue) && weightValue > 0) {
+          // Convert to kg if in imperial
+          const weightInKg = useMetricWeight ? weightValue : lbsToKg(weightValue);
+          await updateWeight(weightInKg);
+        }
+      } else if (weightInput === '' && userSettings?.profile?.weight) {
+        // User removed their weight
+        await updateWeight(0);
+      }
+      
       // Get the current user settings after unit preference update
       const currentSettings = userSettings;
       if (!currentSettings) {
@@ -387,7 +467,7 @@ const EditPaceScreen: React.FC<Props> = ({ navigation }) => {
         
         // Debug log after saving
         console.log('[DEBUG-SAVE] Settings saved successfully:', success);
-        console.log('[DEBUG-SAVE] Navigate back to Workouts screen');
+        console.log('[DEBUG-SAVE] Navigate to WorkoutLibrary screen');
       } catch (error) {
         console.error('Error saving settings:', error);
         Alert.alert('Error', 'Failed to save pace settings');
@@ -407,7 +487,7 @@ const EditPaceScreen: React.FC<Props> = ({ navigation }) => {
             },
             {
               text: 'OK',
-              onPress: () => navigation.goBack(),
+              onPress: () => navigation.navigate('WorkoutLibrary'),
             },
           ]
         );
@@ -415,8 +495,8 @@ const EditPaceScreen: React.FC<Props> = ({ navigation }) => {
         return;
       }
       
-      // Navigate back
-      navigation.goBack();
+      // Navigate to WorkoutLibrary screen
+      navigation.navigate('WorkoutLibrary');
     } catch (error) {
       console.error('Error saving pace settings:', error);
       Alert.alert(
@@ -442,16 +522,18 @@ const EditPaceScreen: React.FC<Props> = ({ navigation }) => {
       >
         {/* Header with back arrow and title */}
         <View style={styles.navRow}>
-          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
+          <TouchableOpacity onPress={() => handleSaveSettings()} style={styles.backButton}>
             <Text style={styles.backButtonText}>←</Text>
           </TouchableOpacity>
-          <Text style={styles.screenTitle}>Set Your Pace Levels</Text>
+          <Text style={styles.screenTitle}>Set Your Levels</Text>
           <View style={styles.emptySpace} />
         </View>
         
+        <Text style={styles.sectionTitle}>Pace Levels</Text>
+        
         {/* Description text */}
         <Text style={styles.description}>
-          Set your personal pace levels for your treadmill workouts
+          Set your personal pace levels for your treadmill workouts.
         </Text>
         
         {/* Units toggle */}
@@ -486,6 +568,48 @@ const EditPaceScreen: React.FC<Props> = ({ navigation }) => {
             </View>
           </View>
         ))}
+        
+        {/* Weight section */}
+        <View style={styles.weightSection}>
+          <Text style={styles.sectionTitle}>Your Weight</Text>
+          <Text style={styles.weightDescription}>
+            Your weight is used to calculate calories burned during workouts.
+          </Text>
+          
+          <View style={styles.weightInputRow}>
+            <View style={styles.weightInputContainer}>
+              <TextInput
+                style={styles.weightInput}
+                value={weightInput}
+                onChangeText={handleWeightInputChange}
+                keyboardType="numeric"
+                placeholder={useMetricWeight ? "Weight in kg" : "Weight in lbs"}
+                placeholderTextColor="rgba(255, 255, 255, 0.5)"
+              />
+              <Text style={styles.weightUnitLabel}>
+                {useMetricWeight ? 'kg' : 'lbs'}
+              </Text>
+            </View>
+            
+            <View style={styles.weightUnitsToggle}>
+              <TouchableOpacity onPress={() => toggleWeightUnits(false)}>
+                <Text style={useMetricWeight ? styles.toggleOptionInactive : styles.toggleOptionActive}>lbs</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={() => toggleWeightUnits(true)}>
+                <Text style={useMetricWeight ? styles.toggleOptionActive : styles.toggleOptionInactive}>kg</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+          
+          {weightInput !== '' && (
+            <TouchableOpacity 
+              style={styles.removeWeightButton}
+              onPress={handleRemoveWeight}
+            >
+              <Text style={styles.removeWeightText}>Remove Weight</Text>
+            </TouchableOpacity>
+          )}
+        </View>
         
         {/* Save button */}
         <Button 
@@ -600,29 +724,91 @@ const styles = StyleSheet.create({
   },
   recoveryInput: {
     borderColor: COLORS.recovery,
-    backgroundColor: COLORS.recoveryMuted,
+    backgroundColor: 'rgba(0, 200, 0, 0.1)',
   },
   baseInput: {
     borderColor: COLORS.base,
-    backgroundColor: COLORS.baseMuted,
+    backgroundColor: 'rgba(0, 150, 255, 0.1)',
   },
   runInput: {
     borderColor: COLORS.run,
-    backgroundColor: COLORS.runMuted,
+    backgroundColor: 'rgba(255, 150, 0, 0.1)',
   },
   sprintInput: {
     borderColor: COLORS.sprint,
-    backgroundColor: COLORS.sprintMuted,
+    backgroundColor: 'rgba(255, 50, 50, 0.1)',
   },
   unitLabel: {
     position: 'absolute',
-    right: 15,
-    top: '50%',
-    transform: [{ translateY: -10 }], // Manual adjustment to center text
-    color: 'rgba(255, 255, 255, 0.6)',
+    right: 12,
+    top: 12,
+    color: 'rgba(255, 255, 255, 0.7)',
+    fontSize: FONT_SIZES.medium,
   },
   saveButton: {
     marginTop: SPACING.large,
+  },
+  // Weight section styles
+  weightSection: {
+    marginTop: SPACING.xl,
+    marginBottom: SPACING.large,
+    paddingHorizontal: SPACING.small,
+    backgroundColor: COLORS.darkGray,
+    borderRadius: BORDER_RADIUS.medium,
+  },
+  sectionTitle: {
+    fontWeight: 'bold',
+    fontSize: FONT_SIZES.large,
+    color: COLORS.white,
+    marginVertical: SPACING.medium,
+  },
+  weightDescription: {
+    fontSize: FONT_SIZES.small,
+    color: 'rgba(255, 255, 255, 0.6)',
+    marginBottom: SPACING.medium,
+    lineHeight: 18,
+  },
+  weightInputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  weightInputContainer: {
+    position: 'relative',
+    flex: 1,
+    marginRight: SPACING.medium,
+  },
+  weightInput: {
+    width: '100%',
+    padding: 12,
+    fontSize: FONT_SIZES.large,
+    borderWidth: 1,
+    borderColor: COLORS.accent,
+    borderRadius: BORDER_RADIUS.medium,
+    color: COLORS.white,
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    paddingRight: 50, // Space for the unit label
+  },
+  weightUnitLabel: {
+    position: 'absolute',
+    right: 12,
+    top: 12,
+    color: 'rgba(255, 255, 255, 0.7)',
+    fontSize: FONT_SIZES.medium,
+  },
+  weightUnitsToggle: {
+    flexDirection: 'row',
+    gap: 10,
+    alignItems: 'center',
+  },
+  removeWeightButton: {
+    marginTop: SPACING.medium,
+    alignSelf: 'center',
+  },
+  removeWeightText: {
+    color: '#FF453A', // iOS red color for destructive actions
+    fontSize: FONT_SIZES.small,
+    textDecorationLine: 'underline',
   },
 });
 

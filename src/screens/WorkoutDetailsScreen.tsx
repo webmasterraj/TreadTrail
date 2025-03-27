@@ -269,7 +269,7 @@ const WorkoutDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
           </View>
           
           {/* Premium Subscription Card for Trial Users */}
-          {workout.premium && subscriptionInfo.trialActive && (
+          {workout.premium && subscriptionInfo.trialActive && authState && authState.isAuthenticated && (
             <PremiumCard
               description={`You have access to this workout during your free trial. Subscribe to keep access when your trial ends in ${getDaysRemaining()} days.`}
               showButton={false}
@@ -277,7 +277,8 @@ const WorkoutDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
             />
           )}
           
-          <View 
+          { authState && authState.isAuthenticated && (
+            <View 
             style={styles.structureSection}
             onLayout={(e: LayoutChangeEvent) => setStructureHeight(e.nativeEvent.layout.height)}
           >
@@ -305,6 +306,7 @@ const WorkoutDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
               ))}
             </View>
           </View>
+          )}
           
           {/* Only show the Start Workout button for logged-in users */}
           {authState && authState.isAuthenticated && (

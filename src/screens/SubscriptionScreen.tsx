@@ -9,19 +9,22 @@ import {
   ActivityIndicator,
   Alert,
   Platform,
+  Modal,
+  TextInput,
 } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../types';
-import { COLORS, FONT_SIZES, SPACING } from '../styles/theme';
+import { COLORS, FONT_SIZES, SPACING, BORDER_RADIUS } from '../styles/theme';
 import { UserContext } from '../context';
 import BottomTabBar from '../components/common/BottomTabBar';
 import { useSubscription, PREMIUM_SUBSCRIPTION_ID } from '../context/SubscriptionContext';
 import PremiumCard from '../components/subscription/PremiumCard';
+import { kgToLbs, lbsToKg } from '../utils/calorieUtils';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Subscription'>;
 
 const SubscriptionScreen: React.FC<Props> = ({ navigation }) => {
-  const { authState } = useContext(UserContext);
+  const { authState, preferences, updateWeight, userSettings } = useContext(UserContext);
   const {
     subscriptionInfo,
     isLoading: isSubscriptionLoading,
@@ -39,6 +42,11 @@ const SubscriptionScreen: React.FC<Props> = ({ navigation }) => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [productPrice, setProductPrice] = useState('$2.99/month');
   const [showDevOptions, setShowDevOptions] = useState(false);
+  const [weightModalVisible, setWeightModalVisible] = useState(false);
+  const [weightInput, setWeightInput] = useState('');
+
+  // Get user's unit preference
+  const unitPreference = preferences?.units || 'imperial';
 
   // Initialize IAP and validate subscription when component mounts
   useEffect(() => {
@@ -131,11 +139,16 @@ const SubscriptionScreen: React.FC<Props> = ({ navigation }) => {
       const success = await purchaseSubscription();
       
       if (success) {
-        Alert.alert(
-          'Subscription Successful',
-          'Thank you for subscribing to TreadTrail Premium! You now have access to all premium workouts.',
-          [{ text: 'OK' }]
-        );
+        // Show weight input modal if weight is not already set
+        if (!userSettings?.profile?.weight) {
+          setWeightModalVisible(true);
+        } else {
+          Alert.alert(
+            'Subscription Successful',
+            'Thank you for subscribing to TreadTrail Premium! You now have access to all premium workouts and calorie tracking.',
+            [{ text: 'OK' }]
+          );
+        }
       } else {
         // If purchase function returned false but didn't throw
         Alert.alert(
@@ -181,6 +194,71 @@ const SubscriptionScreen: React.FC<Props> = ({ navigation }) => {
     } finally {
       setIsProcessing(false);
     }
+  };
+
+  // Handle start trial
+  const handleStartTrial = async () => {
+    try {
+      setIsProcessing(true);
+      const success = await startFreeTrial();
+      
+      if (success) {
+        // Show weight input modal if weight is not already set
+        if (!userSettings?.profile?.weight) {
+          setWeightModalVisible(true);
+        } else {
+          Alert.alert(
+            'Trial Started',
+            'Your 14-day free trial has started! Enjoy all premium features including calorie tracking.',
+            [{ text: 'OK' }]
+          );
+        }
+      } else {
+        Alert.alert(
+          'Trial Activation Failed',
+          'Failed to activate your free trial. Please try again later.',
+          [{ text: 'OK' }]
+        );
+      }
+    } catch (error) {
+      console.error('[SubscriptionScreen] Error starting trial:', error);
+      Alert.alert('Error', 'Failed to start free trial. Please try again.');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+  
+  // Handle weight update
+  const handleWeightUpdate = () => {
+    if (weightInput.trim()) {
+      const weightValue = parseFloat(weightInput);
+      if (!isNaN(weightValue) && weightValue > 0) {
+        // Convert to kg if user is using imperial units
+        const weightInKg = unitPreference === 'imperial' ? lbsToKg(weightValue) : weightValue;
+        updateWeight(weightInKg);
+        
+        Alert.alert(
+          'Weight Saved',
+          'Your weight has been saved. You can now track calories burned during workouts!',
+          [{ text: 'OK' }]
+        );
+      } else {
+        Alert.alert('Invalid Weight', 'Please enter a valid weight value.');
+        return;
+      }
+    }
+    
+    setWeightModalVisible(false);
+  };
+  
+  // Skip weight input
+  const skipWeightInput = () => {
+    setWeightModalVisible(false);
+    Alert.alert(
+      'Subscription Successful',
+      'Thank you for subscribing to TreadTrail Premium! You now have access to all premium workouts.',
+      [{ text: 'OK' }]
+    );
   };
 
   // Render loading state
@@ -426,7 +504,55 @@ const SubscriptionScreen: React.FC<Props> = ({ navigation }) => {
           <Text style={styles.errorText}>{subscriptionError}</Text>
         )}
       </ScrollView>
-      {authState.isAuthenticated && <BottomTabBar activeTab="Settings" />}
+      
+      {/* Weight Input Modal */}
+      <Modal
+        animationType="slide"
+        transparent={true}
+        visible={weightModalVisible}
+        onRequestClose={skipWeightInput}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Set Your Weight for Calorie Tracking</Text>
+            
+            <Text style={styles.modalDescription}>
+              As a premium subscriber, you can now track calories burned during workouts!
+              Setting your weight helps us calculate this accurately.
+              This information is stored only on your device and is completely optional.
+            </Text>
+            
+            <View style={styles.weightInputContainer}>
+              <TextInput
+                style={styles.weightInput}
+                value={weightInput}
+                onChangeText={setWeightInput}
+                keyboardType="numeric"
+                placeholder={unitPreference === 'imperial' ? "Weight in lbs" : "Weight in kg"}
+                placeholderTextColor={COLORS.lightGray}
+              />
+              <Text style={styles.weightUnit}>
+                {unitPreference === 'imperial' ? 'lbs' : 'kg'}
+              </Text>
+            </View>
+            
+            <View style={styles.modalButtons}>
+              <TouchableOpacity
+                style={[styles.modalButton, styles.skipButton]}
+                onPress={skipWeightInput}>
+                <Text style={styles.skipButtonText}>Skip</Text>
+              </TouchableOpacity>
+              
+              <TouchableOpacity
+                style={[styles.modalButton, styles.saveButton]}
+                onPress={handleWeightUpdate}>
+                <Text style={styles.saveButtonText}>Save</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+      
+      {authState.isAuthenticated && <BottomTabBar activeTab="Profile" />}
     </SafeAreaView>
   );
 };
@@ -458,12 +584,11 @@ const styles = StyleSheet.create({
   },
   statusContainer: {
     backgroundColor: COLORS.darkGray,
-    borderRadius: 12,
+    borderRadius: BORDER_RADIUS.card,
     padding: SPACING.large,
     marginBottom: SPACING.large,
     borderWidth: 1,
-    borderColor: COLORS.accent,
-    alignItems: 'center',
+    borderColor: COLORS.whiteTransparentBorder,
   },
   statusTitle: {
     color: COLORS.accent,
@@ -489,7 +614,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: SPACING.large,
     backgroundColor: COLORS.darkGray,
-    borderRadius: 12,
+    borderRadius: BORDER_RADIUS.medium,
     padding: SPACING.medium,
   },
   featureIcon: {
@@ -548,7 +673,7 @@ const styles = StyleSheet.create({
   },
   managementContainer: {
     backgroundColor: COLORS.darkGray,
-    borderRadius: 12,
+    borderRadius: BORDER_RADIUS.medium,
     padding: SPACING.large,
     marginBottom: SPACING.large,
   },
@@ -583,10 +708,82 @@ const styles = StyleSheet.create({
   trialContainer: {
     marginBottom: SPACING.large,
   },
-  trialSubscribeContainer: {
-    marginTop: SPACING.medium,
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: SPACING.large,
   },
-  // Development styles
+  modalContent: {
+    backgroundColor: COLORS.darkGray,
+    borderRadius: BORDER_RADIUS.medium,
+    padding: SPACING.large,
+    width: '100%',
+    maxWidth: 400,
+  },
+  modalTitle: {
+    color: COLORS.white,
+    fontSize: FONT_SIZES.large,
+    fontWeight: 'bold',
+    marginBottom: SPACING.medium,
+    textAlign: 'center',
+  },
+  modalDescription: {
+    color: COLORS.lightGray,
+    fontSize: FONT_SIZES.small,
+    marginBottom: SPACING.large,
+    textAlign: 'center',
+  },
+  weightInputContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: SPACING.large,
+    borderWidth: 1,
+    borderColor: COLORS.accent,
+    borderRadius: BORDER_RADIUS.medium,
+    paddingHorizontal: SPACING.medium,
+  },
+  weightInput: {
+    flex: 1,
+    color: COLORS.white,
+    fontSize: FONT_SIZES.large,
+    padding: SPACING.medium,
+  },
+  weightUnit: {
+    color: COLORS.lightGray,
+    fontSize: FONT_SIZES.medium,
+    marginRight: SPACING.small,
+  },
+  modalButtons: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  modalButton: {
+    flex: 1,
+    padding: SPACING.medium,
+    borderRadius: BORDER_RADIUS.medium,
+    alignItems: 'center',
+    marginHorizontal: SPACING.small,
+  },
+  skipButton: {
+    backgroundColor: COLORS.darkGray,
+    borderWidth: 1,
+    borderColor: COLORS.lightGray,
+  },
+  saveButton: {
+    backgroundColor: COLORS.accent,
+  },
+  skipButtonText: {
+    color: COLORS.white,
+    fontSize: FONT_SIZES.medium,
+    fontWeight: 'bold',
+  },
+  saveButtonText: {
+    color: COLORS.black,
+    fontSize: FONT_SIZES.medium,
+    fontWeight: 'bold',
+  },
   devContainer: {
     marginTop: SPACING.medium,
     marginBottom: SPACING.medium,

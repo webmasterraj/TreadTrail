@@ -1,11 +1,14 @@
-import React, { useContext, useEffect } from 'react';
+import React, { useContext, useEffect, useState } from 'react';
 import { 
   View, 
   Text, 
   StyleSheet, 
   SafeAreaView, 
   ScrollView,
-  TouchableOpacity
+  TouchableOpacity,
+  TextInput,
+  Modal,
+  Alert
 } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList, WorkoutSegment } from '../types';
@@ -13,15 +16,22 @@ import { COLORS, FONT_SIZES, SPACING, BORDER_RADIUS, PACE_COLORS } from '../styl
 import Button from '../components/common/Button';
 import WorkoutVisualization from '../components/workout/WorkoutVisualization';
 import { UserContext } from '../context';
+import { SubscriptionContext } from '../context/SubscriptionContext';
+import { kgToLbs, lbsToKg } from '../utils/calorieUtils';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Welcome'>;
 
 const WelcomeScreen: React.FC<Props> = ({ route, navigation }) => {
   const { name } = route.params;
-  const { authState } = useContext(UserContext);
+  const { authState, preferences, updateWeight } = useContext(UserContext);
+  const { subscriptionInfo, startFreeTrial } = useContext(SubscriptionContext);
+  
+  // Get user's unit preference
+  const unitPreference = preferences?.units || 'imperial';
   
   // Handle continue button press
   const handleContinue = () => {
+    // Navigate directly to EditPace screen without showing weight modal
     navigation.navigate('EditPace');
   };
 
@@ -194,14 +204,16 @@ const WelcomeScreen: React.FC<Props> = ({ route, navigation }) => {
           fullWidth
           style={styles.exploreButton}
         />
-        <Button 
-          title="Customize Paces Now" 
-          onPress={handleContinue}
-          type="accent"
-          size="large"
-          fullWidth
-          style={styles.customizeButton}
-        />
+        {/* Only show Customize Paces button for authenticated users */}
+        {authState.isAuthenticated && (
+          <Button 
+            title="Set Your Paces" 
+            onPress={handleContinue}
+            type="accent"
+            size="large"
+            fullWidth
+          />
+        )}
       </View>
     </SafeAreaView>
   );
@@ -290,7 +302,7 @@ const styles = StyleSheet.create({
     opacity: 0.7,
   },
   noticeContainer: {
-    backgroundColor: COLORS.lightGray,
+    backgroundColor: COLORS.darkGray,
     borderRadius: BORDER_RADIUS.card,
     padding: SPACING.medium,
   },
