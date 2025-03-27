@@ -83,14 +83,14 @@ const WorkoutCard: React.FC<WorkoutCardProps> = ({
     <TouchableOpacity 
       style={[
         styles.container, 
-        premium && !isSubscribed && styles.premiumContainer
+        premium && (!isSubscribed || isTrialActive) && styles.premiumContainer
       ]} 
       onPress={onPress}
       onLayout={(e: LayoutChangeEvent) => setCardWidth(e.nativeEvent.layout.width)}
       activeOpacity={0.7}
     >
-      {/* Premium Badge - Show for premium workouts when not subscribed */}
-      {premium && !isSubscribed && (
+      {/* Premium Badge - Show for premium workouts when not subscribed or in trial */}
+      {premium && (!isSubscribed || isTrialActive) && (
         <View style={styles.premiumBadge}>
           <Text style={styles.premiumText}>PREMIUM</Text>
         </View>
@@ -121,7 +121,7 @@ const WorkoutCard: React.FC<WorkoutCardProps> = ({
         </View>
         
         {/* Trial Banner - Show compact version for premium workouts during trial */}
-        {premium && isTrialActive && (
+        {premium && isTrialActive && !isSubscribed && (
           <TrialBanner compact={true} />
         )}
         

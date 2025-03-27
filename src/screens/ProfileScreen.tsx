@@ -13,6 +13,7 @@ import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../types';
 import { COLORS, FONT_SIZES, SPACING, BORDER_RADIUS, PACE_COLORS } from '../styles/theme';
 import { UserContext } from '../context';
+import { useSubscription } from '../context/SubscriptionContext';
 import { formatDuration, milesToKm, kmToMiles } from '../utils/helpers';
 import BottomTabBar from '../components/common/BottomTabBar';
 import WorkoutCard from '../components/workout/WorkoutCard';
@@ -32,6 +33,7 @@ type Props = NativeStackScreenProps<RootStackParamList, 'Profile'>;
 
 const ProfileScreen: React.FC<Props> = ({ navigation, route }) => {
   const { authState, userSettings } = useContext(UserContext);
+  const { subscriptionInfo } = useSubscription();
   const dispatch = useAppDispatch();
   const workoutPrograms = useAppSelector(selectWorkoutPrograms);
   const workoutHistory = useAppSelector(selectWorkoutHistory);
@@ -267,6 +269,8 @@ const ProfileScreen: React.FC<Props> = ({ navigation, route }) => {
                   onFavoriteToggle={() => handleFavoriteToggle(workout.id)}
                   showVisualization={true}
                   showFavoriteButton={authState.isAuthenticated}
+                  isSubscribed={subscriptionInfo.isActive}
+                  isTrialActive={subscriptionInfo.trialActive}
                 />
               ))
             ) : (
