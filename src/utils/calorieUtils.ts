@@ -1,33 +1,37 @@
 /**
  * Utilities for calculating calories burned during workouts
  * Based on the ACSM metabolic equation for accurate energy expenditure estimation
+ * https://summitmd.com/pdf/pdf/090626_aps09_970.pdf
  */
 
 /**
- * Convert speed from miles per hour to meters per minute
- * @param speedMph - Speed in miles per hour
+ * Convert speed from kilometers per hour to meters per minute
+ * @param speedKmh - Speed in kilometers per hour
  * @returns Speed in meters per minute
  */
-export const mphToMetersPerMinute = (speedMph: number): number => {
-  const metersPerMile = 1609.34;
-  return (speedMph * metersPerMile) / 60;
+export const kphToMetersPerMinute = (speedKmh: number): number => {
+  // 1 km/h = 16.6667 meters per minute
+  return (speedKmh * 1000) / 60;
 };
 
 /**
  * Calculate VO₂ (oxygen consumption) using the ACSM equation
- * @param speedMph - Speed in miles per hour
+ * @param speedKmh - Speed in kilometers per hour
  * @param inclinePercent - Treadmill incline as percentage
  * @returns VO₂ in ml/kg/min
  */
-export const calculateVO2 = (speedMph: number, inclinePercent: number): number => {
+export const calculateVO2 = (speedKmh: number, inclinePercent: number): number => {
   // Convert speed to meters per minute for the formula
-  const speedMetersPerMin = mphToMetersPerMinute(speedMph);
+  const speedMetersPerMin = kphToMetersPerMinute(speedKmh);
   
-  // ACSM equation for walking (speed < 5 mph)
-  if (speedMph < 5) {
+  // ACSM equation for walking (speed < 6 km/h or 3.7 mph)
+  if (speedKmh < 6) {
     return 3.5 + (0.1 * speedMetersPerMin) + (1.8 * speedMetersPerMin * inclinePercent / 100);
   } 
-  // ACSM equation for running (speed >= 5 mph)
+  // ACSM equation for running (speed >= 6 km/h or 5 mph)
+  // Between 3.7-5 mph (6-8 km/h), there's a transition zone 
+  // where either equation might be used depending on whether the person 
+  // is walking or running. We will assume running over 6kph
   else {
     return 3.5 + (0.2 * speedMetersPerMin) + (0.9 * speedMetersPerMin * inclinePercent / 100);
   }
@@ -35,26 +39,26 @@ export const calculateVO2 = (speedMph: number, inclinePercent: number): number =
 
 /**
  * Calculate METs (Metabolic Equivalent of Task) based on VO₂
- * @param speedMph - Speed in miles per hour
+ * @param speedKmh - Speed in kilometers per hour
  * @param inclinePercent - Treadmill incline as percentage
  * @returns METs value
  */
-export const calculateMETs = (speedMph: number, inclinePercent: number): number => {
+export const calculateMETs = (speedKmh: number, inclinePercent: number): number => {
   // 1 MET = 3.5 ml/kg/min of oxygen consumption
-  const vo2 = calculateVO2(speedMph, inclinePercent);
+  const vo2 = calculateVO2(speedKmh, inclinePercent);
   return vo2 / 3.5;
 };
 
 /**
  * Calculate calories burned for a workout segment
- * @param speedMph - Speed in miles per hour
+ * @param speedKmh - Speed in kilometers per hour
  * @param weightKg - User weight in kilograms
  * @param durationMinutes - Duration of activity in minutes
  * @param inclinePercent - Treadmill incline as percentage (default 0)
  * @returns Calories burned during the segment
  */
 export const calculateSegmentCalories = (
-  speedMph: number, 
+  speedKmh: number, 
   weightKg: number, 
   durationMinutes: number,
   inclinePercent: number = 0
@@ -62,7 +66,7 @@ export const calculateSegmentCalories = (
   // Convert duration from minutes to hours
   const durationHours = durationMinutes / 60;
   // Calculate METs using ACSM equation
-  const mets = calculateMETs(speedMph, inclinePercent);
+  const mets = calculateMETs(speedKmh, inclinePercent);
   // Calculate calories: METs × weight (kg) × duration (hours)
   return mets * weightKg * durationHours;
 };

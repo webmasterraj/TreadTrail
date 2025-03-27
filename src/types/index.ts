@@ -4,7 +4,7 @@
 export type PaceType = 'recovery' | 'base' | 'run' | 'sprint';
 
 export interface PaceSetting {
-  speed: number;  // Speed in mph or kph based on user preference
+  speed: number;  // Speed always stored in km/h internally
   incline: number; // Incline in percentage
 }
 

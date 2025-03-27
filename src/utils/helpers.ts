@@ -191,23 +191,24 @@ export const formatIncline = (incline: number): string => {
 
 /**
  * Calculates distance traveled based on speed and duration
- * @param speed Speed in mph
+ * @param speed Speed in km/h
  * @param duration Duration in seconds
- * @returns Distance in miles
+ * @returns Distance in miles (for compatibility with existing code)
  */
 export const calculateDistance = (speed: number, duration: number): number => {
   // Convert duration from seconds to hours
   const hours = duration / 3600;
   
   // Calculate distance (distance = speed * time)
-  return speed * hours;
+  // Since speed is now in km/h, convert to miles for compatibility
+  return kmToMiles(speed * hours);
 };
 
 /**
  * Calculates total distance for a workout session based on segments and pace settings
  * @param segments Completed workout segments
- * @param paceSettings User's pace settings with speeds for each pace type
- * @returns Total distance in miles
+ * @param paceSettings User's pace settings with speeds for each pace type (in km/h)
+ * @returns Total distance in miles (for compatibility with existing code)
  */
 export const calculateTotalDistance = (
   segments: Array<{ type: string; duration: number; skipped: boolean }>,
@@ -224,6 +225,7 @@ export const calculateTotalDistance = (
       const paceSpeed = paceSettings[paceType]?.speed || 0;
       
       // Calculate distance for this segment (miles)
+      // Note: paceSpeed is now in km/h, so we need to convert the result to miles
       const segmentDistance = calculateDistance(paceSpeed, segment.duration);
       totalDistance += segmentDistance;
     }
