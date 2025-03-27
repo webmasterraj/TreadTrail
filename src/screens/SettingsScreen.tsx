@@ -310,7 +310,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     padding: SPACING.medium,
     borderBottomWidth: 1,
-    borderBottomColor: COLORS.lightGray,
+    borderBottomColor: COLORS.darkGray,
   },
   itemLabel: {
     color: COLORS.white,

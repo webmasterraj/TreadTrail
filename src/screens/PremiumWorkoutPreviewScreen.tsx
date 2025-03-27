@@ -14,7 +14,7 @@ import {
 } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList, PaceType } from '../types';
-import { COLORS, FONT_SIZES, SPACING, DIFFICULTY_INDICATORS, FOCUS_INDICATORS, PACE_COLORS } from '../styles/theme';
+import { COLORS, FONT_SIZES, SPACING, DIFFICULTY_INDICATORS, FOCUS_INDICATORS, PACE_COLORS, BORDER_RADIUS } from '../styles/theme';
 import WorkoutVisualization from '../components/workout/WorkoutVisualization';
 import { UserContext } from '../context';
 import { formatDuration, formatTime } from '../utils/helpers';
@@ -23,6 +23,7 @@ import { useAppSelector } from '../redux/store';
 import { selectWorkoutById } from '../redux/slices/workoutProgramsSlice';
 import { useSubscription } from '../context/SubscriptionContext';
 import { useFocusEffect } from '@react-navigation/native';
+import PremiumCard from '../components/subscription/PremiumCard';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'PremiumWorkoutPreview'>;
 
@@ -229,20 +230,13 @@ const PremiumWorkoutPreviewScreen: React.FC<Props> = ({ route, navigation }) => 
             </View>
           </View>
           
-          <View style={styles.premiumOverlay}>
-            <View style={styles.premiumContent}>
-              <Text style={styles.premiumTitle}>Premium Workout</Text>
-              <Text style={styles.premiumDescription}>
-                Subscribe to unlock this and all other premium workouts in the TreadTrail app.
-              </Text>
-              <TouchableOpacity 
-                style={styles.subscribeButton}
-                onPress={handleSubscribe}
-              >
-                <Text style={styles.subscribeButtonText}>Subscribe to Unlock</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
+          <PremiumCard
+            description="Subscribe to unlock this and all other premium workouts in the TreadTrail app."
+            buttonText="Subscribe to Unlock"
+            onButtonPress={handleSubscribe}
+            onCardPress={handleSubscribe}
+            showButton={true}
+          />
           
           <TouchableOpacity 
             style={styles.backButton}
