@@ -16,6 +16,7 @@ import { COLORS, FONT_SIZES, SPACING } from '../styles/theme';
 import { UserContext } from '../context';
 import BottomTabBar from '../components/common/BottomTabBar';
 import { useSubscription, PREMIUM_SUBSCRIPTION_ID } from '../context/SubscriptionContext';
+import PremiumCard from '../components/subscription/PremiumCard';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Subscription'>;
 
@@ -79,6 +80,20 @@ const SubscriptionScreen: React.FC<Props> = ({ navigation }) => {
       }
     }
   }, [products]);
+
+  // Calculate days remaining in trial
+  const getDaysRemaining = () => {
+    if (!subscriptionInfo.trialActive || !subscriptionInfo.trialEndDate) {
+      return 0;
+    }
+    
+    const now = new Date();
+    const trialEnd = new Date(subscriptionInfo.trialEndDate);
+    const diffTime = trialEnd.getTime() - now.getTime();
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    
+    return Math.max(0, diffDays); // Ensure we don't return negative days
+  };
 
   // Handle subscription purchase
   const handleSubscribe = async () => {
@@ -183,10 +198,8 @@ const SubscriptionScreen: React.FC<Props> = ({ navigation }) => {
   return (
     <SafeAreaView style={styles.container}>
       <ScrollView contentContainerStyle={styles.scrollContent}>
-        <Text style={styles.title}>TreadTrail Premium</Text>
-        
         {/* Subscription Status */}
-        {subscriptionInfo.isActive ? (
+        {subscriptionInfo.isActive && !subscriptionInfo.trialActive ? (
           <View style={styles.statusContainer}>
             <Text style={styles.statusTitle}>Subscription Active</Text>
             <Text style={styles.statusDescription}>
@@ -199,16 +212,31 @@ const SubscriptionScreen: React.FC<Props> = ({ navigation }) => {
             )}
           </View>
         ) : (
-          <View style={styles.subscriptionContainer}>
-            <View style={styles.premiumFeature}>
-              <Text style={styles.featureIcon}>🔓</Text>
-              <View style={styles.featureTextContainer}>
-                <Text style={styles.featureTitle}>Unlock Premium Workouts</Text>
-                <Text style={styles.featureDescription}>
-                  Get access to all premium workouts designed by professional trainers.
-                </Text>
+          <>
+            {/* Trial Banner for Trial Users */}
+            {subscriptionInfo.trialActive && (
+              <View style={styles.trialContainer}>
+                <PremiumCard
+                  title="Free Trial Active"
+                  description={`You have ${getDaysRemaining()} days remaining in your free trial. Subscribe now to keep access to premium workouts when your trial ends.`}
+                  showButton={false}
+                />
               </View>
-            </View>
+            )}
+            
+            <Text style={styles.title}>TreadTrail Premium</Text>
+        
+        {/* Subscription Features - Shown for both Free and Trial Users */}
+            <View style={styles.subscriptionContainer}>
+              <View style={styles.premiumFeature}>
+                <Text style={styles.featureIcon}>🔓</Text>
+                <View style={styles.featureTextContainer}>
+                  <Text style={styles.featureTitle}>Unlock Premium Workouts</Text>
+                  <Text style={styles.featureDescription}>
+                    Get access to all premium workouts designed by professional trainers.
+                  </Text>
+                </View>
+              </View>
             
             <View style={styles.premiumFeature}>
               <Text style={styles.featureIcon}>🏃</Text>
@@ -219,48 +247,49 @@ const SubscriptionScreen: React.FC<Props> = ({ navigation }) => {
                 </Text>
               </View>
             </View>
-            
-            <View style={styles.premiumFeature}>
-              <Text style={styles.featureIcon}>📊</Text>
-              <View style={styles.featureTextContainer}>
-                <Text style={styles.featureTitle}>Detailed Performance Stats</Text>
-                <Text style={styles.featureDescription}>
-                  Track your progress with detailed performance statistics.
+              
+              <View style={styles.premiumFeature}>
+                <Text style={styles.featureIcon}>📊</Text>
+                <View style={styles.featureTextContainer}>
+                  <Text style={styles.featureTitle}>Detailed Performance Stats</Text>
+                  <Text style={styles.featureDescription}>
+                    Track your progress with detailed performance statistics.
+                  </Text>
+                </View>
+              </View>
+              
+              <View style={styles.priceContainer}>
+                <Text style={styles.price}>{productPrice}</Text>
+                <Text style={styles.priceDescription}>
+                  Cancel anytime through {Platform.OS === 'ios' ? 'App Store' : 'Google Play'}
                 </Text>
               </View>
+              
+              <TouchableOpacity
+                style={[styles.subscribeButton, isProcessing && styles.disabledButton]}
+                onPress={handleSubscribe}
+                disabled={isProcessing}
+              >
+                {isProcessing ? (
+                  <ActivityIndicator size="small" color={COLORS.black} />
+                ) : (
+                  <Text style={styles.subscribeButtonText}>Subscribe Now</Text>
+                )}
+              </TouchableOpacity>
+              
+              <TouchableOpacity
+                style={styles.restoreButton}
+                onPress={handleRestore}
+                disabled={isProcessing}
+              >
+                <Text style={styles.restoreButtonText}>Restore Purchases</Text>
+              </TouchableOpacity>
             </View>
-            
-            <View style={styles.priceContainer}>
-              <Text style={styles.price}>{productPrice}</Text>
-              <Text style={styles.priceDescription}>
-                Cancel anytime through {Platform.OS === 'ios' ? 'App Store' : 'Google Play'}
-              </Text>
-            </View>
-            
-            <TouchableOpacity
-              style={[styles.subscribeButton, isProcessing && styles.disabledButton]}
-              onPress={handleSubscribe}
-              disabled={isProcessing}
-            >
-              {isProcessing ? (
-                <ActivityIndicator size="small" color={COLORS.black} />
-              ) : (
-                <Text style={styles.subscribeButtonText}>Subscribe Now</Text>
-              )}
-            </TouchableOpacity>
-            
-            <TouchableOpacity
-              style={styles.restoreButton}
-              onPress={handleRestore}
-              disabled={isProcessing}
-            >
-              <Text style={styles.restoreButtonText}>Restore Purchases</Text>
-            </TouchableOpacity>
-          </View>
+          </>
         )}
         
         {/* Subscription Management for Active Subscribers */}
-        {subscriptionInfo.isActive && (
+        {subscriptionInfo.isActive && !subscriptionInfo.trialActive && (
           <View style={styles.managementContainer}>
             <Text style={styles.managementTitle}>Manage Subscription</Text>
             <Text style={styles.managementDescription}>
@@ -391,14 +420,6 @@ const SubscriptionScreen: React.FC<Props> = ({ navigation }) => {
             )}
           </View>
         )}
-        
-        {/* Back Button */}
-        <TouchableOpacity
-          style={styles.backButton}
-          onPress={() => navigation.goBack()}
-        >
-          <Text style={styles.backButtonText}>Back</Text>
-        </TouchableOpacity>
         
         {/* Error Message */}
         {subscriptionError && (
@@ -553,22 +574,16 @@ const styles = StyleSheet.create({
     fontSize: FONT_SIZES.small,
     fontWeight: 'bold',
   },
-  backButton: {
-    backgroundColor: COLORS.darkGray,
-    borderRadius: 25,
-    padding: 16,
-    alignItems: 'center',
-    marginBottom: SPACING.xlarge,
-  },
-  backButtonText: {
-    color: COLORS.white,
-    fontSize: FONT_SIZES.medium,
-    fontWeight: 'bold',
-  },
   errorText: {
     color: '#ff6b6b',
     fontSize: FONT_SIZES.small,
     textAlign: 'center',
+    marginTop: SPACING.medium,
+  },
+  trialContainer: {
+    marginBottom: SPACING.large,
+  },
+  trialSubscribeContainer: {
     marginTop: SPACING.medium,
   },
   // Development styles
