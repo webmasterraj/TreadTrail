@@ -18,6 +18,7 @@ const WorkoutCalendar: React.FC<WorkoutCalendarProps> = ({ workoutHistory }) => 
   // Navigate to previous month
   const goToPreviousMonth = () => {
     const previousMonth = new Date(currentMonth);
+    previousMonth.setDate(1); // Set to first day of the month first
     previousMonth.setMonth(previousMonth.getMonth() - 1);
     setCurrentMonth(previousMonth);
   };
@@ -25,6 +26,7 @@ const WorkoutCalendar: React.FC<WorkoutCalendarProps> = ({ workoutHistory }) => 
   // Navigate to next month
   const goToNextMonth = () => {
     const nextMonth = new Date(currentMonth);
+    nextMonth.setDate(1); // Set to first day of the month first
     nextMonth.setMonth(nextMonth.getMonth() + 1);
     setCurrentMonth(nextMonth);
   };
