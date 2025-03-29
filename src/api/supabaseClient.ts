@@ -4,6 +4,10 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from '@env';
 
+// Log Supabase configuration for debugging
+console.log('[SUPABASE] Initializing with URL:', SUPABASE_URL ? 'URL exists' : 'URL missing');
+console.log('[SUPABASE] Anon key status:', SUPABASE_ANON_KEY ? 'Key exists' : 'Key missing');
+
 // Create a custom storage implementation using AsyncStorage
 const AsyncStorageAdapter = {
   getItem: (key: string) => AsyncStorage.getItem(key),
@@ -20,5 +24,32 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
     detectSessionInUrl: Platform.OS === 'web',
   },
 });
+
+// Test Supabase connection
+const testConnection = async () => {
+  try {
+    console.log('[SUPABASE] Testing connection...');
+    const { data, error } = await supabase.from('workout_history').select('count').limit(1);
+    
+    if (error) {
+      console.error('[SUPABASE] Connection test failed:', error);
+    } else {
+      console.log('[SUPABASE] Connection successful, response:', data);
+    }
+    
+    // Check auth status
+    const { data: authData, error: authError } = await supabase.auth.getSession();
+    if (authError) {
+      console.error('[SUPABASE] Auth session error:', authError);
+    } else {
+      console.log('[SUPABASE] Auth session:', authData.session ? 'Active' : 'None');
+    }
+  } catch (e) {
+    console.error('[SUPABASE] Connection test exception:', e);
+  }
+};
+
+// Run test on import
+testConnection();
 
 export default supabase;

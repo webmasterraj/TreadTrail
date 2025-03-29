@@ -75,17 +75,7 @@ export const loadWorkout = createAsyncThunk(
         console.error('[workoutSlice] Workout has no segments:', workoutId);
         return rejectWithValue('Workout has no segments');
       }
-      
-      console.log(`[workoutSlice] Workout ${workout.name} has ${workout.segments.length} segments`);
-      workout.segments.forEach((segment, index) => {
-        console.log(`[workoutSlice] Segment ${index}:`, JSON.stringify({
-          type: segment.type,
-          duration: segment.duration,
-          incline: segment.incline,
-          audio: segment.audio
-        }, null, 2));
-      });
-      
+            
       const workoutCopy = JSON.parse(JSON.stringify(workout));
       
       console.log('[workoutSlice] Successfully loaded workout:', workout.name);

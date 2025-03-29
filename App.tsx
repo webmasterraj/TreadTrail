@@ -12,7 +12,12 @@ import { SubscriptionProvider } from './src/context/SubscriptionContext';
 import { store, persistor } from './src/redux/store';
 import Navigation from './src/navigation/Navigation';
 import { COLORS } from './src/styles/theme';
-import { fetchWorkoutPrograms, selectWorkoutPrograms } from './src/redux/slices/workoutProgramsSlice';
+import { 
+  fetchWorkoutPrograms, 
+  selectWorkoutPrograms, 
+  initializePendingQueue,
+  processPendingQueue
+} from './src/redux/slices/workoutProgramsSlice';
 import NetInfo from '@react-native-community/netinfo';
 import { initializeAudioSystem, preFetchWorkoutAudio } from './src/utils/audioUtils';
 
@@ -23,6 +28,9 @@ const App: React.FC = () => {
     initializeAudioSystem().catch(error => {
       console.error('Failed to initialize audio system:', error);
     });
+    
+    // Initialize pending queue
+    store.dispatch(initializePendingQueue());
     
     // Dispatch fetch in background without awaiting
     store.dispatch(fetchWorkoutPrograms())
@@ -36,6 +44,9 @@ const App: React.FC = () => {
           console.log('[APP] Pre-fetching audio files for workouts');
           preFetchWorkoutAudio(workoutPrograms);
         }
+        
+        // Try to process any pending workouts
+        store.dispatch(processPendingQueue());
       })
       .catch(error => {
         console.error('Failed to fetch workout programs:', error);
@@ -46,7 +57,7 @@ const App: React.FC = () => {
       const isConnected = state.isConnected && state.isInternetReachable;
       if (isConnected) {
         // Sync data when connection is restored
-        // We'll implement syncOfflineData in workoutProgramsSlice
+        store.dispatch(processPendingQueue());
       }
     });
     

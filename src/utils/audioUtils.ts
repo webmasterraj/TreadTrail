@@ -54,10 +54,7 @@ export const getAudioFilenameFromUrl = (url: string): string => {
 export const loadSegmentAudio = async (
   segment: WorkoutSegment
 ): Promise<Audio.Sound | null> => {
-  try {
-    console.log(`[AUDIO] Loading audio for segment type: ${segment.type}, duration: ${segment.duration}`);
-    console.log(`[AUDIO] Segment audio object:`, JSON.stringify(segment.audio, null, 2));
-    
+  try {    
     // Check if segment has audio
     if (!segment.audio || !segment.audio.file) {
       console.log(`[AUDIO] No audio file URL provided for segment`);
@@ -65,39 +62,30 @@ export const loadSegmentAudio = async (
     }
     
     const audioUrl = segment.audio.file;
-    console.log(`[AUDIO] Audio URL: ${audioUrl}`);
     
     // Extract filename from URL
     const filename = getAudioFilenameFromUrl(audioUrl);
-    console.log(`[AUDIO] Extracted filename: ${filename}`);
     
     // Check if audio is cached
     const fileUri = getCachedFileUri(filename);
     const fileInfo = await FileSystem.getInfoAsync(fileUri);
-    console.log(`[AUDIO] File cached: ${fileInfo.exists}, Path: ${fileInfo.uri}`);
     
     // If file is cached, load from cache
     if (fileInfo.exists) {
-      console.log(`[AUDIO] Loading audio from cache: ${fileInfo.uri}`);
       const sound = new Audio.Sound();
       await sound.loadAsync({ uri: fileInfo.uri });
-      console.log(`[AUDIO] Successfully loaded audio from cache`);
       return sound;
     }
     
     // If not cached, download and cache
-    console.log(`[AUDIO] File not cached, downloading from URL: ${audioUrl}`);
     const downloadResult = await FileSystem.downloadAsync(
       audioUrl,
       fileUri
     );
     
-    console.log(`[AUDIO] Download result:`, JSON.stringify(downloadResult, null, 2));
-    
     // Load the downloaded file
     const sound = new Audio.Sound();
     await sound.loadAsync({ uri: downloadResult.uri });
-    console.log(`[AUDIO] Successfully loaded downloaded audio`);
     return sound;
   } catch (error) {
     console.error(`[AUDIO] Error loading segment audio:`, error);

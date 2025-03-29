@@ -8,15 +8,13 @@ import {
   Share,
   TouchableOpacity,
   ActivityIndicator,
-  Alert,
 } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList, WorkoutSession } from '../types';
 import { COLORS, FONT_SIZES, SPACING, BORDER_RADIUS } from '../styles/theme';
 import { DataContext, UserContext } from '../context';
-import { formatTime, formatDuration, formatDate, mphToKph, calculateTotalDistance, milesToKm } from '../utils/helpers';
+import { formatDuration, formatDate, calculateTotalDistance, milesToKm } from '../utils/helpers';
 import Button from '../components/common/Button';
-import WorkoutTimeline from '../components/workout/WorkoutTimeline';
 import WorkoutCalendar from '../components/common/WorkoutCalendar';
 import { getWorkoutSessionById } from '../utils/historyUtils';
 import { useSubscription } from '../context/SubscriptionContext';

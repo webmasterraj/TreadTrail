@@ -1,21 +1,17 @@
-import React, { useState, useEffect, useRef, useContext, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useContext, useMemo } from 'react';
 import { 
   View, 
   Text, 
   StyleSheet, 
   TouchableOpacity, 
   Alert, 
-  ScrollView, 
   Dimensions, 
   Platform, 
-  ActivityIndicator, 
   SafeAreaView, 
   StatusBar, 
-  Image, 
   Animated, 
   LayoutChangeEvent, 
   Modal, 
-  Easing, 
   BackHandler 
 } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -28,9 +24,7 @@ import {
   selectCurrentSegment, 
   selectCurrentSegmentIndex, 
   selectElapsedTime, 
-  selectHasStarted, 
   selectIsRunning, 
-  selectIsPaused, 
   selectIsSkipping,
   selectIsCompleted,
   formatCountdownTime,
@@ -40,7 +34,6 @@ import {
   resumeWorkout as resumeWorkoutAction,
   skipSegment as skipSegmentAction,
   endWorkout as endWorkoutAction,
-  completeWorkout as completeWorkoutAction,
   selectSegmentElapsedTime,
   selectSegmentRemaining,
   selectTotalDuration,
@@ -51,14 +44,16 @@ import { UserContext } from '../context';
 import { createWorkoutSession } from '../utils/historyUtils';
 import useWorkoutTimer from '../hooks/useWorkoutTimer';
 import useWorkoutAudio from '../hooks/useWorkoutAudio';
-import { addWorkoutSession } from '../redux/slices/workoutProgramsSlice';
+import { addWorkoutSessionToPendingQueue, processPendingQueue } from '../redux/slices/workoutProgramsSlice';
 import { Audio, InterruptionModeIOS, InterruptionModeAndroid, AVPlaybackStatus } from 'expo-av';
 import { useSubscription } from '../context/SubscriptionContext';
 import { calculateSegmentCalories } from '../utils/calorieUtils';
+import { calculateTotalDistance, calculateWorkoutInProgressDistance } from '../utils/distanceUtils';
 import { Ionicons } from '@expo/vector-icons';
 import Svg, { Circle } from 'react-native-svg';
-import { loadSegmentAudio, loadCountdownSound } from '../utils/audioUtils';
+import { loadSegmentAudio } from '../utils/audioUtils';
 import { AppDispatch } from '../redux/store';
+import { v4 as uuidv4 } from 'uuid';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'WorkoutInProgress'>;
 
@@ -598,8 +593,8 @@ const WorkoutInProgressScreen: React.FC<Props> = ({ route, navigation }) => {
     try {
       // First create a session from the current workout state
       if (activeWorkout) {
-        // Generate a unique ID for the session
-        const sessionId = `session_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+        // Generate a unique session ID using UUID v4
+        const sessionId = uuidv4();
 
         // Create completed segments array
         const completedSegments = activeWorkout.segments.map((segment: WorkoutSegment, index: number) => {
@@ -623,6 +618,36 @@ const WorkoutInProgressScreen: React.FC<Props> = ({ route, navigation }) => {
         // Get user's pace settings to include in the session
         const paceSettings = userSettings?.paceSettings;
         
+        // Calculate distance based on each segment's pace and duration
+        let distanceValue: number | undefined = undefined;
+        try {
+          // Ensure we have pace settings - either from user settings or default values
+          const effectivePaceSettings = paceSettings || {
+            recovery: { speed: 4, incline: 0 },
+            base: { speed: 6, incline: 0 },
+            run: { speed: 8, incline: 1 },
+            sprint: { speed: 10, incline: 2 }
+          };
+          
+          // For in-progress workout, calculate distance for completed segments plus current segment
+          if (activeWorkout && activeWorkout.segments) {
+            // Get completed segments (all segments before current one)
+            const completedSegments = activeWorkout.segments.slice(0, currentSegmentIndex);
+            
+            // Calculate distance using the utility function
+            distanceValue = calculateWorkoutInProgressDistance(
+              completedSegments,
+              currentSegment,
+              segmentElapsedTime,
+              effectivePaceSettings
+            );
+            
+            console.log(`[WORKOUT] Calculated total distance: ${distanceValue} km`);
+          }
+        } catch (error) {
+          console.error('[WORKOUT] Error calculating distance:', error);
+        }
+        
         const session = {
           id: sessionId,
           workoutId: activeWorkout.id,
@@ -635,11 +660,20 @@ const WorkoutInProgressScreen: React.FC<Props> = ({ route, navigation }) => {
           pauses: [], // Could track pauses in a real implementation
           segments: completedSegments,
           paceSettings: paceSettings, // Add pace settings to allow distance calculation
+          distance: distanceValue, // Add calculated distance
+          weight: userSettings?.weight, // Add user's weight from settings
           caloriesBurned: isPremium && hasWeight ? Math.round(caloriesBurned) : undefined,
         };
 
-        console.log('Creating workout session with pace settings:', paceSettings);
-
+        console.log('Creating workout session:', JSON.stringify({
+          id: session.id,
+          workoutName: session.workoutName,
+          duration: session.duration,
+          distance: session.distance,
+          weight: session.weight,
+          paceSettings: session.paceSettings ? 'present' : 'missing'
+        }));
+        
         // Stop any playing audio
         if (audioEnabled) {
           stopAudio();
@@ -651,7 +685,7 @@ const WorkoutInProgressScreen: React.FC<Props> = ({ route, navigation }) => {
           dispatch(endWorkoutAction());
 
           // Add the session to Redux
-          dispatch(addWorkoutSession(session))
+          dispatch(addWorkoutSessionToPendingQueue(session))
             .catch(err => {
               console.error('Error adding session to Redux:', err);
             });
@@ -681,8 +715,8 @@ const WorkoutInProgressScreen: React.FC<Props> = ({ route, navigation }) => {
     
     // First create a session from the current workout state
     if (activeWorkout) {
-      // Generate a unique ID for the session
-      const sessionId = `session_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+      // Generate a unique session ID using UUID v4
+      const sessionId = uuidv4();
 
       // Create completed segments array - mark all as completed
       const completedSegments = activeWorkout.segments.map((segment: WorkoutSegment) => {
@@ -701,6 +735,34 @@ const WorkoutInProgressScreen: React.FC<Props> = ({ route, navigation }) => {
         String(now.getMonth() + 1).padStart(2, '0') + '-' + 
         String(now.getDate()).padStart(2, '0');
         
+      // Get user's pace settings to include in the session
+      const paceSettings = userSettings?.paceSettings;
+      
+      // Calculate distance based on each segment's pace and duration
+      let distanceValue: number | undefined = undefined;
+      try {
+        // Ensure we have pace settings - either from user settings or default values
+        const effectivePaceSettings = paceSettings || {
+          recovery: { speed: 4, incline: 0 },
+          base: { speed: 6, incline: 0 },
+          run: { speed: 8, incline: 1 },
+          sprint: { speed: 10, incline: 2 }
+        };
+        
+        // For completed workout, calculate distance for all segments
+        if (activeWorkout && activeWorkout.segments) {
+          // Calculate distance using the utility function
+          distanceValue = calculateTotalDistance(
+            activeWorkout.segments,
+            effectivePaceSettings
+          );
+          
+          console.log(`[WORKOUT] Calculated total distance: ${distanceValue} km`);
+        }
+      } catch (error) {
+        console.error('[WORKOUT] Error calculating distance:', error);
+      }
+      
       const session = {
         id: sessionId,
         workoutId: activeWorkout.id,
@@ -708,11 +770,13 @@ const WorkoutInProgressScreen: React.FC<Props> = ({ route, navigation }) => {
         date: localDateString,
         startTime: now.toISOString(),
         endTime: now.toISOString(),
-        duration: totalDuration, // Use total duration instead of elapsed time
-        completed: true, // Mark as fully completed
+        duration: elapsedTime,
+        completed: true,
         pauses: [],
         segments: completedSegments,
         paceSettings: paceSettings, // Add pace settings to allow distance calculation
+        distance: distanceValue, // Add calculated distance
+        weight: userSettings?.weight, // Add user's weight from settings
         caloriesBurned: isPremium && hasWeight ? Math.round(caloriesBurned) : undefined,
       };
 
@@ -727,7 +791,7 @@ const WorkoutInProgressScreen: React.FC<Props> = ({ route, navigation }) => {
         dispatch(endWorkoutAction());
 
         // Add the session to Redux
-        dispatch(addWorkoutSession(session))
+        dispatch(addWorkoutSessionToPendingQueue(session))
           .catch(err => {
             console.error('Error adding session to Redux:', err);
           });

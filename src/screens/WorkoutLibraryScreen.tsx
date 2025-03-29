@@ -26,7 +26,8 @@ import {
   fetchStats, 
   toggleFavoriteWorkout,
   selectWorkoutPrograms, 
-  selectIsLoading 
+  selectIsLoading,
+  processPendingQueue
 } from '../redux/slices/workoutProgramsSlice';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'WorkoutLibrary'>;
@@ -98,8 +99,11 @@ const WorkoutLibraryScreen: React.FC<Props> = ({ navigation, route }) => {
     }
     
     // Fetch workout history and stats
-    dispatch(fetchWorkoutHistory());
+    dispatch(fetchWorkoutHistory({}));
     dispatch(fetchStats());
+    
+    // Try to process any pending workouts
+    dispatch(processPendingQueue());
     
     // Check if user is authenticated
     if (!authState.isAuthenticated) {

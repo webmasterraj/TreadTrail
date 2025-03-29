@@ -1,5 +1,4 @@
 import { WorkoutSession } from '../types';
-import { DataContext } from '../context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // Storage keys - avoid using @ symbol which might cause issues with Expo's storage

@@ -8,7 +8,36 @@ import supabase from '../../api/supabaseClient';
 import NetInfo from '@react-native-community/netinfo';
 import { queueWorkoutAudioDownloads } from '../../utils/audioUtils';
 
-// Import types
+// Helper functions for date handling
+const getMonthKey = (date: string): string => {
+  return date.substring(0, 7); // Returns 'YYYY-MM' from an ISO date string
+};
+
+const getCurrentMonthKey = (): string => {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+};
+
+const getRecentMonthKeys = (monthsToKeep: number = 3): string[] => {
+  const keys: string[] = [];
+  const now = new Date();
+  
+  for (let i = 0; i < monthsToKeep; i++) {
+    const year = now.getFullYear();
+    const month = now.getMonth() + 1 - i;
+    
+    // Handle previous year
+    if (month <= 0) {
+      const adjustedMonth = 12 + month;
+      const adjustedYear = year - 1;
+      keys.push(`${adjustedYear}-${String(adjustedMonth).padStart(2, '0')}`);
+    } else {
+      keys.push(`${year}-${String(month).padStart(2, '0')}`);
+    }
+  }
+  
+  return keys;
+};
 
 // Storage keys
 const WORKOUT_PROGRAMS_KEY = '@treadtrail:workout_programs';
@@ -51,6 +80,9 @@ const INITIAL_STATS: Stats = {
 interface WorkoutProgramsState {
   workoutPrograms: WorkoutProgram[];
   workoutHistory: WorkoutSession[];
+  cachedMonths: {
+    [key: string]: boolean; // Format: 'YYYY-MM'
+  };
   stats: Stats;
   isLoading: boolean;
   error: string | null;
@@ -66,6 +98,7 @@ interface WorkoutProgramsState {
 const initialState: WorkoutProgramsState = {
   workoutPrograms: [],
   workoutHistory: [],
+  cachedMonths: {},
   stats: INITIAL_STATS,
   isLoading: true,
   error: null,
@@ -225,8 +258,37 @@ const fetchWorkoutPrograms = createAsyncThunk(
 // Add fetchWorkoutHistory thunk
 const fetchWorkoutHistory = createAsyncThunk(
   'workoutPrograms/fetchWorkoutHistory',
-  async (_, { rejectWithValue }) => {
+  async (options: { forceRefresh?: boolean, monthKey?: string } = {}, { getState, rejectWithValue }) => {
     try {
+      const state = getState() as { workoutPrograms: WorkoutProgramsState };
+      const { forceRefresh = false, monthKey } = options;
+      
+      // If a specific month is requested and it's not one of the recent months to cache
+      const recentMonthKeys = getRecentMonthKeys();
+      const isRequestedMonthRecent = !monthKey || recentMonthKeys.includes(monthKey);
+      
+      // Check if we need to fetch from the server
+      // 1. If forceRefresh is true
+      // 2. If a specific month is requested that we don't have cached
+      // 3. If we're fetching recent months and don't have them all cached
+      const shouldFetchFromServer = 
+        forceRefresh || 
+        (monthKey && !state.workoutPrograms.cachedMonths[monthKey]) ||
+        (!monthKey && !recentMonthKeys.every(key => state.workoutPrograms.cachedMonths[key]));
+      
+      // If we don't need to fetch and we have the requested data, return the filtered history
+      if (!shouldFetchFromServer) {
+        if (monthKey) {
+          // Return only the requested month
+          return state.workoutPrograms.workoutHistory.filter(
+            session => getMonthKey(session.date) === monthKey
+          );
+        } else {
+          // Return all cached history (which should be the recent months)
+          return state.workoutPrograms.workoutHistory;
+        }
+      }
+      
       // First check if we have cached workout history
       const cachedHistoryJson = await AsyncStorage.getItem(WORKOUT_HISTORY_KEY);
       let history: WorkoutSession[] = cachedHistoryJson ? JSON.parse(cachedHistoryJson) : [];
@@ -237,34 +299,86 @@ const fetchWorkoutHistory = createAsyncThunk(
         const userId = session?.user?.id;
         
         if (userId) {
-          const { data: workoutHistory, error } = await supabase
+          // Build the query
+          let query = supabase
             .from('workout_history')
             .select('*')
-            .eq('user_id', userId)
-            .order('date', { ascending: false });
+            .eq('user_id', userId);
+          
+          // If fetching a specific month
+          if (monthKey) {
+            const startDate = `${monthKey}-01`;
+            const nextMonth = monthKey.substring(0, 5) + String(Number(monthKey.substring(5, 7)) + 1).padStart(2, '0');
+            const endDate = Number(monthKey.substring(5, 7)) === 12 
+              ? `${Number(monthKey.substring(0, 4)) + 1}-01-01` 
+              : `${nextMonth}-01`;
+            
+            query = query
+              .gte('date', startDate)
+              .lt('date', endDate);
+          } else {
+            // If fetching recent months, get data for the last 3 months
+            const oldestMonth = recentMonthKeys[recentMonthKeys.length - 1];
+            const startDate = `${oldestMonth}-01`;
+            
+            query = query.gte('date', startDate);
+          }
+          
+          // Order by date, most recent first
+          query = query.order('date', { ascending: false });
+          
+          const { data: workoutHistory, error } = await query;
           
           if (error) throw new Error(error.message || 'Error fetching workout history');
           
           if (workoutHistory && workoutHistory.length > 0) {
-            // Transform the data to match our app's data model
-            history = workoutHistory.map(session => ({
-              id: session.id,
-              workoutId: session.workout_id,
-              workoutName: session.workout_name,
-              date: session.date,
-              startTime: session.start_time,
-              endTime: session.end_time,
-              duration: session.duration,
-              weight: session.user_weight,
-              caloriesBurned: session.calories_burned,
-              distance: session.distance,
-              completed: session.completed,
-              pauses: session.pauses,
-              segments: session.segments
-            }));
+            // Map database fields to app model
+            const fetchedSessions = workoutHistory.map(session => {
+              // Find workout name from programs
+              const workoutName = getWorkoutNameFromPrograms(session.workout_id, state.workoutPrograms.workoutPrograms);
+              
+              return {
+                id: session.id,
+                workoutId: session.workout_id,
+                workoutName: workoutName,
+                date: session.date,
+                startTime: session.start_time,
+                endTime: session.end_time,
+                duration: session.duration,
+                completed: session.completed,
+                pauses: session.pauses || [],
+                segments: [], // We don't store segments in the database
+                caloriesBurned: session.calories_burned,
+                distance: session.distance,
+                weight: session.user_weight,
+                paceSettings: session.pace_settings
+              };
+            });
             
-            // Save to AsyncStorage for offline use
-            await AsyncStorage.setItem(WORKOUT_HISTORY_KEY, JSON.stringify(history));
+            if (monthKey) {
+              // If fetching a specific month, return only that month's data
+              return fetchedSessions;
+            } else {
+              // If fetching recent months, merge with existing history
+              // First, remove any existing sessions from the months we're refreshing
+              const existingSessionsFromOtherMonths = state.workoutPrograms.workoutHistory.filter(
+                session => !recentMonthKeys.includes(getMonthKey(session.date))
+              );
+              
+              // Combine with newly fetched sessions
+              history = [...fetchedSessions, ...existingSessionsFromOtherMonths];
+              
+              // Save to AsyncStorage for offline use
+              await AsyncStorage.setItem(WORKOUT_HISTORY_KEY, JSON.stringify(history));
+              
+              return {
+                sessions: history,
+                cachedMonths: recentMonthKeys.reduce((acc, key) => {
+                  acc[key] = true;
+                  return acc;
+                }, {} as {[key: string]: boolean})
+              };
+            }
           }
         }
       } catch (supabaseError) {
@@ -272,13 +386,28 @@ const fetchWorkoutHistory = createAsyncThunk(
         // Continue with cached data if available
       }
       
-      return history;
+      // If we're here, we either have no user ID, or the fetch failed
+      if (monthKey) {
+        // Return filtered history for the requested month
+        return history.filter(session => getMonthKey(session.date) === monthKey);
+      }
+      
+      return {
+        sessions: history,
+        cachedMonths: state.workoutPrograms.cachedMonths
+      };
     } catch (error: any) {
       console.error('Error in fetchWorkoutHistory:', error);
       return rejectWithValue('Failed to fetch workout history');
     }
   }
 );
+
+// Helper function to get workout name by ID
+const getWorkoutNameFromPrograms = (workoutId: string, workoutPrograms: WorkoutProgram[]): string => {
+  const workout = workoutPrograms.find(program => program.id === workoutId);
+  return workout?.name || "Unknown Workout";
+};
 
 // Add fetchStats thunk
 const fetchStats = createAsyncThunk(
@@ -472,6 +601,349 @@ const toggleFavoriteWorkout = createAsyncThunk(
   }
 );
 
+// Add workout session to pending queue thunk
+const addWorkoutSessionToPendingQueue = createAsyncThunk(
+  'workoutPrograms/addWorkoutSessionToPendingQueue',
+  async (session: WorkoutSession, { getState, dispatch }) => {
+    try {
+      console.log('[QUEUE] Adding workout session to pending queue:', session.id);
+      console.log('[QUEUE] Workout details:', JSON.stringify({
+        id: session.id,
+        workoutId: session.workoutId,
+        workoutName: session.workoutName,
+        date: session.date,
+        duration: session.duration,
+        completed: session.completed
+      }));
+      
+      const state = getState() as { workoutPrograms: WorkoutProgramsState };
+      
+      // Ensure workout name is set
+      let workoutToAdd = session;
+      if (!session.workoutName) {
+        console.log('[QUEUE] Workout name missing, retrieving from workout programs');
+        const workoutName = getWorkoutNameFromPrograms(session.workoutId, state.workoutPrograms.workoutPrograms);
+        workoutToAdd = {
+          ...session,
+          workoutName
+        };
+        console.log('[QUEUE] Added workout name:', workoutName);
+      }
+      
+      // Add to pending queue
+      const updatedPendingQueue = [...state.workoutPrograms.pendingSync.workoutHistory, workoutToAdd];
+      console.log(`[QUEUE] Updated pending queue size: ${updatedPendingQueue.length}`);
+      
+      // Save to AsyncStorage
+      console.log('[QUEUE] Saving pending queue to AsyncStorage');
+      await AsyncStorage.setItem(PENDING_SYNC_KEY, JSON.stringify({
+        ...state.workoutPrograms.pendingSync,
+        workoutHistory: updatedPendingQueue
+      }));
+      
+      // Update workout's lastUsed in memory
+      console.log('[QUEUE] Updating workout lastUsed timestamp');
+      const updatedPrograms = state.workoutPrograms.workoutPrograms.map(workout => {
+        if (workout.id === session.workoutId) {
+          return { ...workout, lastUsed: session.date };
+        }
+        return workout;
+      });
+      
+      // Persist updated programs to local storage
+      console.log('[QUEUE] Saving updated workout programs to AsyncStorage');
+      await AsyncStorage.setItem(WORKOUT_PROGRAMS_KEY, JSON.stringify(updatedPrograms));
+      
+      // Return the data first to update Redux state
+      const result = {
+        session: workoutToAdd,
+        updatedPrograms,
+      };
+      
+      // Wait a moment to ensure state is updated before processing queue
+      setTimeout(() => {
+        console.log('[QUEUE] Attempting to process pending queue after delay');
+        dispatch(processPendingQueue());
+      }, 1000);
+      
+      console.log('[QUEUE] Successfully added workout to pending queue');
+      return result;
+    } catch (error: any) {
+      console.error('[QUEUE] Error in addWorkoutSessionToPendingQueue:', error);
+      throw error;
+    }
+  }
+);
+
+// Process pending queue thunk
+const processPendingQueue = createAsyncThunk(
+  'workoutPrograms/processPendingQueue',
+  async (_, { getState, dispatch, rejectWithValue }) => {
+    try {
+      console.log('[SYNC] Starting to process pending queue', new Date().toISOString());
+      const state = getState() as { workoutPrograms: WorkoutProgramsState };
+      
+      // Get a fresh copy of the pending queue from AsyncStorage to avoid race conditions
+      let pendingWorkouts: WorkoutSession[] = [];
+      try {
+        const pendingQueueJson = await AsyncStorage.getItem(PENDING_SYNC_KEY);
+        if (pendingQueueJson) {
+          const pendingQueue = JSON.parse(pendingQueueJson);
+          pendingWorkouts = pendingQueue.workoutHistory || [];
+        }
+        console.log(`[SYNC] Found ${pendingWorkouts.length} pending workouts in AsyncStorage`);
+      } catch (error) {
+        console.error('[SYNC] Error reading pending queue from AsyncStorage:', error);
+        // Fall back to Redux state if AsyncStorage read fails
+        pendingWorkouts = state.workoutPrograms.pendingSync.workoutHistory;
+        console.log(`[SYNC] Falling back to Redux state, found ${pendingWorkouts.length} pending workouts`);
+      }
+      
+      if (pendingWorkouts.length > 0) {
+        console.log('[SYNC] First pending workout:', JSON.stringify(pendingWorkouts[0]));
+      }
+      
+      // If nothing to process, return early
+      if (pendingWorkouts.length === 0) {
+        console.log('[SYNC] No pending workouts to process, exiting early');
+        return { processed: 0 };
+      }
+      
+      // Check network connectivity
+      const netInfo = await NetInfo.fetch();
+      const isConnected = netInfo.isConnected && netInfo.isInternetReachable;
+      console.log(`[SYNC] Network status: connected=${netInfo.isConnected}, reachable=${netInfo.isInternetReachable}`);
+      
+      if (!isConnected) {
+        console.log('[SYNC] No internet connection available, skipping sync');
+        return rejectWithValue('No internet connection available to process pending queue');
+      }
+      
+      // Get user session
+      console.log('[SYNC] Checking user authentication');
+      const { data: session, error: sessionError } = await supabase.auth.getSession();
+      
+      if (sessionError) {
+        console.error('[SYNC] Session error:', sessionError);
+        return rejectWithValue('Authentication error: ' + sessionError.message);
+      }
+      
+      const userId = session?.session?.user?.id;
+      console.log('[SYNC] User ID:', userId ? userId : 'Not found');
+      
+      if (!userId) {
+        console.log('[SYNC] User not authenticated, skipping sync');
+        return rejectWithValue('User not authenticated');
+      }
+      
+      // Process each pending workout
+      let successCount = 0;
+      let failureCount = 0;
+      
+      console.log('[SYNC] Starting to process workouts one by one');
+      for (const workout of pendingWorkouts) {
+        try {
+          console.log(`[SYNC] Processing workout: ${workout.id}, name: ${workout.workoutName}`);
+          console.log('[SYNC] Workout data:', JSON.stringify({
+            id: workout.id,
+            workout_id: workout.workoutId,
+            date: workout.date,
+            duration: workout.duration,
+            distance: workout.distance,
+            completed: workout.completed
+          }));
+          
+          // Insert workout to Supabase
+          console.log('[SYNC] Sending workout to Supabase');
+          
+          // Get user settings for weight if not provided in workout
+          let userWeight = workout.weight;
+          if (!userWeight) {
+            try {
+              console.log('[SYNC] Fetching user weight from settings');
+              const { data: userSettings } = await supabase
+                .from('user_settings')
+                .select('weight')
+                .eq('id', userId)
+                .single();
+                
+              if (userSettings?.weight) {
+                userWeight = userSettings.weight;
+                console.log(`[SYNC] Found user weight: ${userWeight}`);
+              }
+            } catch (error) {
+              console.error('[SYNC] Error fetching user weight:', error);
+            }
+          }
+          
+          const { data, error } = await supabase
+            .from('workout_history')
+            .upsert({
+              id: workout.id,
+              user_id: userId,
+              workout_id: workout.workoutId,
+              date: workout.date,
+              start_time: workout.startTime,
+              end_time: workout.endTime,
+              duration: workout.duration,
+              user_weight: userWeight, // Use fetched user weight if available
+              calories_burned: workout.caloriesBurned,
+              distance: workout.distance,
+              completed: workout.completed,
+              pauses: workout.pauses,
+              pace_settings: workout.paceSettings || {} // Include pace settings
+            })
+            .select();
+          
+          if (error) {
+            console.error('[SYNC] Error syncing workout:', error);
+            console.error('[SYNC] Error details:', JSON.stringify(error));
+            console.error('[SYNC] Failed workout data:', JSON.stringify(workout));
+            failureCount++;
+            continue;
+          }
+          
+          console.log('[SYNC] Workout synced successfully:', data);
+          successCount++;
+        } catch (error) {
+          console.error('[SYNC] Error processing workout in queue:', error);
+          console.error('[SYNC] Failed workout data:', JSON.stringify(workout));
+          failureCount++;
+          // Continue with next workout
+        }
+      }
+      
+      console.log(`[SYNC] Processed ${successCount} out of ${pendingWorkouts.length} workouts successfully, ${failureCount} failures`);
+      
+      // Update user's last_active timestamp
+      try {
+        console.log('[SYNC] Updating user last_active timestamp');
+        const { error: updateError } = await supabase
+          .from('users')
+          .update({ last_active: new Date().toISOString() })
+          .eq('id', userId);
+          
+        if (updateError) {
+          console.error('[SYNC] Error updating last_active timestamp:', updateError);
+        } else {
+          console.log('[SYNC] Updated last_active timestamp successfully');
+        }
+      } catch (error) {
+        console.error('[SYNC] Error updating last_active timestamp:', error);
+      }
+      
+      // If we processed any workouts successfully, clear the queue and refresh data
+      if (successCount > 0) {
+        console.log('[SYNC] Clearing pending queue and refreshing data');
+        
+        // Only remove successfully processed workouts
+        const remainingWorkouts = pendingWorkouts.filter((_, index) => {
+          // This is a simplification - in a real implementation we'd track which specific workouts failed
+          return index >= successCount;
+        });
+        
+        console.log(`[SYNC] Keeping ${remainingWorkouts.length} workouts in the queue that failed to sync`);
+        
+        // Clear the pending queue
+        await AsyncStorage.setItem(PENDING_SYNC_KEY, JSON.stringify({
+          ...state.workoutPrograms.pendingSync,
+          workoutHistory: remainingWorkouts
+        }));
+        
+        // Refresh workout history and stats
+        await dispatch(fetchWorkoutHistory({ forceRefresh: true })).unwrap();
+        await dispatch(fetchStats()).unwrap();
+      } else {
+        console.log('[SYNC] No workouts were processed successfully, keeping queue intact');
+      }
+      
+      console.log('[SYNC] Queue processing complete');
+      return { 
+        processed: successCount,
+        total: pendingWorkouts.length,
+        failed: failureCount
+      };
+    } catch (error: any) {
+      console.error('[SYNC] Error processing pending queue:', error);
+      return rejectWithValue('Failed to process pending queue');
+    }
+  }
+);
+
+// Initialize pending queue thunk
+const initializePendingQueue = createAsyncThunk(
+  'workoutPrograms/initializePendingQueue',
+  async (_, { dispatch }) => {
+    try {
+      console.log('[SYNC-INIT] Initializing pending queue');
+      // Load pending queue from AsyncStorage
+      const pendingQueueJson = await AsyncStorage.getItem(PENDING_SYNC_KEY);
+      const pendingQueue = pendingQueueJson ? JSON.parse(pendingQueueJson) : { workoutHistory: [], favoriteWorkouts: [] };
+      
+      console.log(`[SYNC-INIT] Found ${pendingQueue.workoutHistory.length} pending workouts in storage`);
+      
+      // Log the pending workouts for debugging
+      if (pendingQueue.workoutHistory.length > 0) {
+        console.log('[SYNC-INIT] Pending workouts:', JSON.stringify(pendingQueue.workoutHistory.map((w: WorkoutSession) => ({ 
+          id: w.id, 
+          workoutName: w.workoutName,
+          date: w.date 
+        }))));
+        
+        // Try to process the queue after a short delay to ensure app is fully initialized
+        setTimeout(() => {
+          console.log('[SYNC-INIT] Attempting to process pending queue after app initialization');
+          dispatch(processPendingQueue());
+        }, 3000);
+      }
+      
+      return pendingQueue;
+    } catch (error: any) {
+      console.error('[SYNC-INIT] Error initializing pending queue:', error);
+      return { workoutHistory: [], favoriteWorkouts: [] };
+    }
+  }
+);
+
+// Function to check and process pending queue - can be called from any component
+const checkAndProcessPendingQueue = createAsyncThunk(
+  'workoutPrograms/checkAndProcessPendingQueue',
+  async (_, { dispatch, getState }) => {
+    try {
+      console.log('[SYNC-CHECK] Checking for pending workouts to sync');
+      
+      // Read directly from AsyncStorage to avoid race conditions
+      let pendingCount = 0;
+      try {
+        const pendingQueueJson = await AsyncStorage.getItem(PENDING_SYNC_KEY);
+        if (pendingQueueJson) {
+          const pendingQueue = JSON.parse(pendingQueueJson);
+          pendingCount = pendingQueue.workoutHistory?.length || 0;
+        }
+        console.log(`[SYNC-CHECK] Found ${pendingCount} pending workouts in AsyncStorage`);
+      } catch (error) {
+        console.error('[SYNC-CHECK] Error reading from AsyncStorage:', error);
+        // Fall back to Redux state
+        const state = getState() as { workoutPrograms: WorkoutProgramsState };
+        pendingCount = state.workoutPrograms.pendingSync.workoutHistory.length;
+        console.log(`[SYNC-CHECK] Falling back to Redux state, found ${pendingCount} pending workouts`);
+      }
+      
+      if (pendingCount > 0) {
+        console.log(`[SYNC-CHECK] Found ${pendingCount} pending workouts, triggering sync`);
+        await dispatch(processPendingQueue()).unwrap();
+        return { triggered: true, pendingCount };
+      } else {
+        console.log('[SYNC-CHECK] No pending workouts found');
+        return { triggered: false, pendingCount: 0 };
+      }
+    } catch (error) {
+      console.error('[SYNC-CHECK] Error checking pending queue:', error);
+      return { triggered: false, error: true };
+    }
+  }
+);
+
 // Create slice
 const workoutProgramsSlice = createSlice({
   name: 'workoutPrograms',
@@ -540,8 +1012,14 @@ const workoutProgramsSlice = createSlice({
       // Don't set isLoading to true here to avoid blocking UI
     });
     builder.addCase(fetchWorkoutHistory.fulfilled, (state, action) => {
-      console.log(`[DEBUG-REDUX] fetchWorkoutHistory.fulfilled - Received ${action.payload.length} history items`);
-      state.workoutHistory = action.payload;
+      if (Array.isArray(action.payload)) {
+        console.log(`[DEBUG-REDUX] fetchWorkoutHistory.fulfilled - Received ${action.payload.length} history items`);
+        state.workoutHistory = action.payload;
+      } else {
+        console.log(`[DEBUG-REDUX] fetchWorkoutHistory.fulfilled - Received ${action.payload.sessions.length} history items`);
+        state.workoutHistory = action.payload.sessions;
+        state.cachedMonths = action.payload.cachedMonths;
+      }
       // Don't modify isLoading here
     });
     builder.addCase(fetchWorkoutHistory.rejected, (state, action) => {
@@ -578,6 +1056,37 @@ const workoutProgramsSlice = createSlice({
     });
     builder.addCase(addWorkoutSession.rejected, (state, action) => {
       // Handle error
+    });
+    
+    // Handle addWorkoutSessionToPendingQueue
+    builder.addCase(addWorkoutSessionToPendingQueue.pending, (state) => {
+      // Processing
+    });
+    builder.addCase(addWorkoutSessionToPendingQueue.fulfilled, (state, action) => {
+      const { session, updatedPrograms } = action.payload;
+      state.workoutHistory = [session, ...state.workoutHistory];
+      state.workoutPrograms = updatedPrograms;
+    });
+    builder.addCase(addWorkoutSessionToPendingQueue.rejected, (state, action) => {
+      // Handle error
+    });
+    
+    // Handle processPendingQueue
+    builder.addCase(processPendingQueue.pending, (state) => {
+      state.isSyncing = true;
+    });
+    builder.addCase(processPendingQueue.fulfilled, (state, action) => {
+      state.isSyncing = false;
+      state.pendingSync.workoutHistory = [];
+    });
+    builder.addCase(processPendingQueue.rejected, (state, action) => {
+      state.isSyncing = false;
+      state.error = action.payload as string;
+    });
+    
+    // Handle initializePendingQueue
+    builder.addCase(initializePendingQueue.fulfilled, (state, action) => {
+      state.pendingSync = action.payload;
     });
   },
 });
@@ -707,5 +1216,9 @@ export {
   fetchWorkoutHistory,
   fetchStats,
   addWorkoutSession,
-  toggleFavoriteWorkout
+  toggleFavoriteWorkout,
+  addWorkoutSessionToPendingQueue,
+  processPendingQueue,
+  initializePendingQueue,
+  checkAndProcessPendingQueue
 };

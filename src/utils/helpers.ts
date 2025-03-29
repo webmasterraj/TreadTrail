@@ -269,9 +269,6 @@ export const formatNumber = (value: number, maxDecimals: number = 1): string => 
  * @returns Formatted distance string with appropriate unit and formatting
  */
 export const formatDistance = (distance: number, isMetric: boolean = false): string => {
-  // Log the input for debugging
-  console.log('formatDistance input:', distance, isMetric);
-  
   // Handle undefined, null, NaN, or negative values
   if (distance === undefined || distance === null || isNaN(distance) || distance < 0) {
     console.log('Invalid distance value:', distance);
@@ -280,13 +277,11 @@ export const formatDistance = (distance: number, isMetric: boolean = false): str
   
   // For very small values, don't show as exactly zero
   if (distance === 0) {
-    console.log('Zero distance value');
     return '0.0';
   }
   
   // For values less than 1000, always show 1 decimal place
   if (distance < 1000) {
-    console.log('Distance < 1000:', distance.toFixed(1));
     return distance.toFixed(1);
   }
   

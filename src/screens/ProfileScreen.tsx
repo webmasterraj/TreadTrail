@@ -55,17 +55,8 @@ const ProfileScreen: React.FC<Props> = ({ navigation, route }) => {
   // Initialize data when component mounts
   useEffect(() => {
     // No need to fetch workout programs here, using cached data from Redux store
-    dispatch(fetchWorkoutHistory());
+    dispatch(fetchWorkoutHistory({ forceRefresh: true }));
     dispatch(fetchStats());
-    
-    // Debug subscription status
-    console.log('Subscription status:', {
-      isActive: subscriptionInfo.isActive,
-      trialActive: subscriptionInfo.trialActive,
-      trialStartDate: subscriptionInfo.trialStartDate,
-      trialEndDate: subscriptionInfo.trialEndDate,
-      trialUsed: subscriptionInfo.trialUsed,
-    });
     
     // Start animation for gradient effect
     Animated.loop(
@@ -83,7 +74,7 @@ const ProfileScreen: React.FC<Props> = ({ navigation, route }) => {
       // Use async function to ensure we can await these calls
       const reloadData = async () => {
         try {
-          await dispatch(fetchWorkoutHistory()).unwrap();
+          await dispatch(fetchWorkoutHistory({ forceRefresh: true })).unwrap();
           await dispatch(fetchStats()).unwrap();
         } catch (error) {
           console.error('Error reloading stats:', error);
@@ -100,16 +91,6 @@ const ProfileScreen: React.FC<Props> = ({ navigation, route }) => {
       navigation.replace('Landing');
     }
   }, [authState.isAuthenticated, navigation]);
-
-  // Log stats for debugging
-  useEffect(() => {
-    if (stats) {
-      console.log('Stats object:', JSON.stringify(stats, null, 2));
-      console.log('Total Distance (raw):', stats.stats.totalDistance);
-      console.log('Total Distance (km):', milesToKm(stats.stats.totalDistance));
-      console.log('Units setting:', userSettings?.preferences?.units);
-    }
-  }, [stats, userSettings]);
 
   // Get favorite workouts
   const favoriteWorkouts = workoutPrograms.filter(workout => Boolean(workout.favorite));
@@ -161,28 +142,12 @@ const ProfileScreen: React.FC<Props> = ({ navigation, route }) => {
     return null; // Will redirect in useEffect
   }
 
-  // Fetch stats from Redux
-  console.log('ProfileScreen - Stats from Redux:', JSON.stringify(stats, null, 2));
-
   // Get user settings for unit preference
   const isMetric = userSettings?.preferences?.units === 'metric' || false;
-  console.log('ProfileScreen - User settings:', JSON.stringify(userSettings, null, 2));
-  
-  // Log workout history to check if sessions have distance
-  console.log('ProfileScreen - Workout history count:', workoutHistory.length);
-  console.log('ProfileScreen - First few workout sessions:', workoutHistory.slice(0, 3).map(session => ({
-    id: session.id,
-    date: session.date,
-    distance: session.distance,
-    hasPaceSettings: !!session.paceSettings,
-    segmentsCount: session.segments?.length
-  })));
 
   // Calculate total distance in km or miles
   const totalDistanceKm = stats?.stats.totalDistance || 0;
   const totalDistance = isMetric ? totalDistanceKm : totalDistanceKm * 0.621371;
-  console.log('ProfileScreen - Total distance raw:', totalDistanceKm);
-  console.log('ProfileScreen - Total distance formatted:', formatDistance(totalDistance, isMetric));
 
   return (
     <SafeAreaView style={styles.container}>
