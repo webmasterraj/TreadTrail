@@ -767,6 +767,10 @@ const addWorkoutSessionToPendingQueue = createAsyncThunk(
         updatedPrograms,
       };
       
+      // Refresh stats to include the new workout immediately (even when offline)
+      console.log('[QUEUE] Refreshing stats to include new workout');
+      dispatch(fetchStats());
+      
       // Wait a moment to ensure state is updated before processing queue
       setTimeout(() => {
         console.log('[QUEUE] Attempting to process pending queue after delay');
@@ -800,7 +804,7 @@ const processPendingQueue = createAsyncThunk(
         console.log(`[SYNC] Found ${pendingWorkouts.length} pending workouts in AsyncStorage`);
       } catch (error) {
         console.error('[SYNC] Error reading pending queue from AsyncStorage:', error);
-        // Fall back to Redux state if AsyncStorage read fails
+        // Fall back to Redux state
         pendingWorkouts = state.workoutPrograms.pendingSync.workoutHistory;
         console.log(`[SYNC] Falling back to Redux state, found ${pendingWorkouts.length} pending workouts`);
       }

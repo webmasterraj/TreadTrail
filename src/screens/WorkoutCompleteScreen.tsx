@@ -231,7 +231,7 @@ const WorkoutCompleteScreen: React.FC<Props> = ({ route, navigation }) => {
           </View>
         )}
         
-        {isPremium && !userSettings?.profile?.weight && (
+        {isPremium && !userSettings?.weight && (
           <View style={styles.weightPromptContainer}>
             <View style={styles.weightPromptIcon}>
               <Ionicons name="information-circle" size={24} color={COLORS.accent} />
