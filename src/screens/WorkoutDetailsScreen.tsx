@@ -40,7 +40,10 @@ const WorkoutDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
   const { userSettings, authState } = useContext(UserContext);
   const { isPremiumWorkout, subscriptionInfo } = useSubscription();
   
-  console.log(`[WorkoutDetailsScreen] Starting workout with ID: ${workoutId}`);
+  // Log workout ID only once when component mounts or workoutId changes
+  useEffect(() => {
+    console.log(`[WorkoutDetailsScreen] Starting workout with ID: ${workoutId}`);
+  }, [workoutId]);
   
   // Get the workout from the Redux store - Fix the selector usage
   const workout = useAppSelector(selectWorkoutById(workoutId));
@@ -159,7 +162,7 @@ const WorkoutDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
     }
     
     try {
-      console.log('[WorkoutDetailsScreen] Starting workout with ID:', workoutId);
+      console.log('[WorkoutDetailsScreen] User initiated workout start with ID:', workoutId);
       if (!workoutId || typeof workoutId !== 'string') {
         console.error('[WorkoutDetailsScreen] Invalid workout ID:', workoutId);
         Alert.alert('Error', 'Invalid workout. Please try again.');

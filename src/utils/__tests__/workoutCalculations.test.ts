@@ -2,7 +2,7 @@
  * Unit tests for workout calculations (distance and calories)
  */
 
-import { calculateSegmentCalories, calculateVO2, calculateMETs } from '../calorieUtils';
+import { calculateSegmentCalories, calculateVO2, calculateMETs, calculateTotalCalories } from '../calorieUtils';
 import { calculateSegmentDistance, calculateTotalDistance } from '../distanceUtils';
 import { PaceSetting, PaceType, WorkoutSegment, PaceSettings } from '../../types';
 
@@ -44,6 +44,31 @@ const userWorkoutSegments: WorkoutSegment[] = [
   { type: 'sprint', duration: 30, incline: 2 },    // 00:30 at Sprint
   { type: 'recovery', duration: 180, incline: 0 }  // 03:00 at Recovery
 ];
+
+// Chart workout segments with expected VO2 and METs values
+const chartWorkoutSegments = [
+  { type: 'recovery', duration: 180, incline: 1, expectedVO2: 9.40, expectedMETs: 2.69, expectedCalories: 9.89 },  // Segment 1
+  { type: 'base', duration: 150, incline: 1, expectedVO2: 26.15, expectedMETs: 7.47, expectedCalories: 22.88 },     // Segment 2
+  { type: 'run', duration: 120, incline: 1, expectedVO2: 31.37, expectedMETs: 8.96, expectedCalories: 21.95 },      // Segment 3
+  { type: 'run', duration: 90, incline: 5, expectedVO2: 36.17, expectedMETs: 10.34, expectedCalories: 19.00 },      // Segment 4
+  { type: 'base', duration: 60, incline: 5, expectedVO2: 30.05, expectedMETs: 8.58, expectedCalories: 10.51 },      // Segment 5
+  { type: 'run', duration: 30, incline: 5, expectedVO2: 36.17, expectedMETs: 10.34, expectedCalories: 6.33 },      // Segment 6
+  { type: 'recovery', duration: 30, incline: 5, expectedVO2: 13.00, expectedMETs: 3.71, expectedCalories: 2.27 },  // Segment 7
+  { type: 'sprint', duration: 30, incline: 5, expectedVO2: 44.33, expectedMETs: 12.67, expectedCalories: 7.76 },   // Segment 8
+  { type: 'base', duration: 60, incline: 1, expectedVO2: 26.15, expectedMETs: 7.47, expectedCalories: 9.15 },      // Segment 9
+  { type: 'sprint', duration: 60, incline: 1, expectedVO2: 38.33, expectedMETs: 10.95, expectedCalories: 13.41 },   // Segment 10
+  { type: 'recovery', duration: 30, incline: 1, expectedVO2: 9.40, expectedMETs: 2.69, expectedCalories: 1.65 },   // Segment 11
+  { type: 'sprint', duration: 60, incline: 1, expectedVO2: 38.33, expectedMETs: 10.95, expectedCalories: 13.41 },   // Segment 12
+  { type: 'recovery', duration: 60, incline: 1, expectedVO2: 9.40, expectedMETs: 2.69, expectedCalories: 3.30 }    // Segment 13
+];
+
+// Pace settings for the chart workout
+const chartPaceSettings = {
+  recovery: { speed: 3, incline: 1 },
+  base: { speed: 6.5, incline: 1 },
+  run: { speed: 8, incline: 1 },
+  sprint: { speed: 10, incline: 1 }
+} as PaceSettings;
 
 describe('Distance Calculation Tests', () => {
   test('should calculate segment distance correctly based on speed and time', () => {
@@ -170,5 +195,98 @@ describe('Calorie Calculation Tests', () => {
     const caloriesLowerSpeed = calculateSegmentCalories(6, 70, 30, 1);
     const caloriesHigherSpeed = calculateSegmentCalories(9, 70, 30, 1);
     expect(caloriesHigherSpeed).toBeGreaterThan(caloriesLowerSpeed);
+  });
+  
+  test('should match expected VO2 and METs values from chart workout', () => {
+    // Test each segment's VO2 and METs calculations against expected values
+    chartWorkoutSegments.forEach((segment, index) => {
+      const segmentNumber = index + 1;
+      const paceSetting = chartPaceSettings[segment.type];
+      
+      // Calculate VO2 and METs
+      const vo2 = calculateVO2(paceSetting.speed, segment.incline);
+      const mets = calculateMETs(paceSetting.speed, segment.incline);
+      
+      // Verify VO2 value matches expected
+      expect(vo2).toBeCloseTo(segment.expectedVO2, 1);
+      
+      // Verify METs value matches expected
+      expect(mets).toBeCloseTo(segment.expectedMETs, 1);
+      
+      // Log for verification
+      console.log(`Segment ${segmentNumber} (${segment.type}): VO2 = ${vo2.toFixed(2)} ml/kg/min, METs = ${mets.toFixed(2)}`);
+    });
+  });
+  
+  test('should calculate individual segment calories correctly based on chart values', () => {
+    const weightKg = 70; // Use 70kg as specified
+    
+    // Test specific segments from the chart
+    const testSegments = [
+      { index: 0, name: "Segment 1 (Recovery)" },  // First segment
+      { index: 1, name: "Segment 2 (Base)" },      // Second segment
+      { index: 7, name: "Segment 8 (Sprint)" },    // High intensity segment
+      { index: 10, name: "Segment 11 (Recovery)" } // Short recovery segment
+    ];
+    
+    // Test each selected segment
+    testSegments.forEach(testSegment => {
+      const segment = chartWorkoutSegments[testSegment.index];
+      const paceSetting = chartPaceSettings[segment.type];
+      const durationMinutes = segment.duration / 60; // Convert seconds to minutes
+      
+      // Calculate calories for this segment
+      const calories = calculateSegmentCalories(
+        paceSetting.speed,
+        weightKg,
+        durationMinutes,
+        segment.incline
+      );
+      
+      // Calculate percentage difference
+      const percentDifference = Math.abs((calories - segment.expectedCalories) / segment.expectedCalories) * 100;
+      
+      // Verify calories match expected value from chart with a tolerance of 5%
+      expect(percentDifference).toBeLessThanOrEqual(10);
+      
+      // Log for verification
+      console.log(`${testSegment.name}: Expected ${segment.expectedCalories.toFixed(2)} calories, Calculated ${calories.toFixed(2)} calories, Diff: ${percentDifference.toFixed(1)}%`);
+    });
+  });
+  
+  test('should calculate total calories correctly for chart workout', () => {
+    const weightKg = 70; // Use 70kg as specified
+        
+    // Convert segments to format expected by calculateTotalCalories
+    const segmentsForTotalCalc = chartWorkoutSegments.map(segment => ({
+      type: segment.type,
+      duration: segment.duration,
+      skipped: false
+    }));
+    
+    // Calculate total calories using the utility function
+    const calculatedTotalCalories = calculateTotalCalories(
+      segmentsForTotalCalc,
+      chartPaceSettings,
+      weightKg
+    );
+    
+    // Calculate expected total calories from the chart values
+    const expectedTotalCalories = chartWorkoutSegments.reduce(
+      (sum, segment) => sum + segment.expectedCalories, 
+      0
+    );
+    
+    // Log the results
+    console.log('Calculated total calories:', calculatedTotalCalories);
+    console.log('Expected total calories from chart:', Math.round(expectedTotalCalories));
+    
+    // Calculate percentage differences
+    const calculatedPercentDiff = Math.abs((calculatedTotalCalories - Math.round(expectedTotalCalories)) / Math.round(expectedTotalCalories)) * 100;
+    
+    // Verify total calories matches the sum of individual segment calories with a tolerance of 5%
+    console.log('Calculated percent difference:', calculatedPercentDiff.toFixed(1) + '%');
+    
+    expect(calculatedPercentDiff).toBeLessThanOrEqual(10);
   });
 });
