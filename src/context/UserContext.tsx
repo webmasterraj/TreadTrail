@@ -8,6 +8,7 @@ import * as AppleAuthentication from 'expo-apple-authentication';
 import { SubscriptionContext } from './SubscriptionContext';
 import supabase from '../api/supabaseClient';
 import { Session } from '@supabase/supabase-js';
+import NetInfo from '@react-native-community/netinfo';
 
 // Debug flag - set to true to enable debug logs
 const DEBUG_USER_CONTEXT = true;
@@ -68,6 +69,7 @@ interface UserContextType {
   isLoading: boolean;
   error: string | null;
   authState: AuthState;
+  hasPendingSettingsChanges: boolean;
   signUp: (name: string, email: string, password: string) => Promise<void>;
   signIn: (email: string, password: string) => Promise<boolean>;
   signInWithApple: () => Promise<boolean>;
@@ -87,6 +89,7 @@ export const UserContext = createContext<UserContextType>({
   isLoading: true,
   error: null,
   authState: DEFAULT_AUTH_STATE,
+  hasPendingSettingsChanges: false,
   signUp: async () => {},
   signIn: async () => false,
   signInWithApple: async () => false,
@@ -110,6 +113,7 @@ export const UserProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const [authState, setAuthState] = useState<AuthState>(DEFAULT_AUTH_STATE);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>('');
+  const [hasPendingSettingsChanges, setHasPendingSettingsChanges] = useState<boolean>(false);
 
   // Get subscription context for trial functionality
   const { startFreeTrial } = useContext(SubscriptionContext);
@@ -298,46 +302,90 @@ export const UserProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           console.log(`[DEBUG-USER-CONTEXT] Loading settings for authenticated user ${authState.user.id}`);
         }
         
-        // First try to get from Supabase
-        const { data: settingsData, error: settingsError } = await supabase
-          .from('user_settings')
-          .select('*')
-          .eq('id', authState.user.id)
-          .single();
+        // Check network connectivity
+        const netInfo = await NetInfo.fetch();
+        const isConnected = netInfo.isConnected && netInfo.isInternetReachable;
         
-        if (settingsError && settingsError.code !== 'PGRST116') {
-          console.error('[DEBUG-USER-CONTEXT] Error fetching user settings from Supabase:', settingsError);
+        // First try to get from local storage
+        const userKey = getUserSettingsKey(authState.user.id);
+        const userSpecificSettings = await AsyncStorage.getItem(userKey);
+        let localSettings = null;
+        
+        if (userSpecificSettings) {
+          if (DEBUG_USER_CONTEXT) {
+            console.log(`[DEBUG-USER-CONTEXT] Found user-specific settings in local storage for ${authState.user.id}`);
+          }
+          localSettings = JSON.parse(userSpecificSettings);
         }
         
-        if (settingsData) {
-          if (DEBUG_USER_CONTEXT) {
-            console.log('[DEBUG-USER-CONTEXT] Found user settings in Supabase');
-          }
-          
-          // Convert from database format to app format
-          settingsToLoad = {
-            profile: {
-              id: authState.user.id,
-              name: authState.user.name,
-              email: authState.user.email,
-            },
-            paceSettings: settingsData.pace_settings || DEFAULT_PACE_SETTINGS,
-            preferences: settingsData.preferences || DEFAULT_PREFERENCES,
-            weight: settingsData.weight || 0, // Default to 0 instead of null
-          };
-        } else {
-          // If not in Supabase, try local storage as fallback
-          const userKey = getUserSettingsKey(authState.user.id);
-          const userSpecificSettings = await AsyncStorage.getItem(userKey);
-          
-          if (userSpecificSettings) {
+        if (isConnected) {
+          // If we have pending changes and we're online, sync them first
+          if (hasPendingSettingsChanges && localSettings) {
             if (DEBUG_USER_CONTEXT) {
-              console.log(`[DEBUG-USER-CONTEXT] Found user-specific settings in local storage for ${authState.user.id}`);
+              console.log('[DEBUG-USER-CONTEXT] Syncing pending settings changes with backend');
             }
             
-            settingsToLoad = JSON.parse(userSpecificSettings);
+            try {
+              // Push local settings to Supabase
+              const { error: syncError } = await supabase
+                .from('user_settings')
+                .upsert({
+                  id: authState.user.id,
+                  weight: localSettings.weight,
+                  pace_settings: localSettings.paceSettings,
+                  preferences: localSettings.preferences,
+                  updated_at: new Date().toISOString(),
+                });
+              
+              if (syncError) {
+                console.error('[DEBUG-USER-CONTEXT] Error syncing settings to Supabase:', syncError);
+              } else {
+                // Reset the pending changes flag
+                setHasPendingSettingsChanges(false);
+                if (DEBUG_USER_CONTEXT) {
+                  console.log('[DEBUG-USER-CONTEXT] Successfully synced pending settings changes');
+                }
+              }
+            } catch (syncError) {
+              console.error('[DEBUG-USER-CONTEXT] Exception syncing settings:', syncError);
+            }
+          }
+          
+          // Now fetch from Supabase
+          const { data: settingsData, error: settingsError } = await supabase
+            .from('user_settings')
+            .select('*')
+            .eq('id', authState.user.id)
+            .single();
+          
+          if (settingsError && settingsError.code !== 'PGRST116') {
+            console.error('[DEBUG-USER-CONTEXT] Error fetching user settings from Supabase:', settingsError);
+          }
+          
+          if (settingsData) {
+            if (DEBUG_USER_CONTEXT) {
+              console.log('[DEBUG-USER-CONTEXT] Found user settings in Supabase');
+            }
             
-            // Sync to Supabase
+            // Convert from database format to app format
+            settingsToLoad = {
+              profile: {
+                id: authState.user.id,
+                name: authState.user.name,
+                email: authState.user.email,
+              },
+              paceSettings: settingsData.pace_settings || DEFAULT_PACE_SETTINGS,
+              preferences: settingsData.preferences || DEFAULT_PREFERENCES,
+              weight: settingsData.weight,
+            };
+            
+            // Update local storage with latest from server
+            await AsyncStorage.setItem(userKey, JSON.stringify(settingsToLoad));
+          } else if (localSettings) {
+            // If no settings in Supabase but we have local settings, use those
+            settingsToLoad = localSettings;
+            
+            // And try to sync them to Supabase
             const { error: insertError } = await supabase
               .from('user_settings')
               .insert({
@@ -352,8 +400,12 @@ export const UserProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             } else if (DEBUG_USER_CONTEXT) {
               console.log('[DEBUG-USER-CONTEXT] Synced local settings to Supabase');
             }
-          } else if (DEBUG_USER_CONTEXT) {
-            console.log(`[DEBUG-USER-CONTEXT] No user-specific settings found for ${authState.user.id}`);
+          }
+        } else if (localSettings) {
+          // Offline but we have local settings
+          settingsToLoad = localSettings;
+          if (DEBUG_USER_CONTEXT) {
+            console.log('[DEBUG-USER-CONTEXT] Offline, using local settings');
           }
         }
       }
@@ -430,27 +482,44 @@ export const UserProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         const userKey = getUserSettingsKey(authState.user.id);
         await AsyncStorage.setItem(userKey, JSON.stringify(settings));
         
-        // Get the weight value
-        const weightValue = settings.weight || 0;
+        // Check network connectivity
+        const netInfo = await NetInfo.fetch();
+        const isConnected = netInfo.isConnected && netInfo.isInternetReachable;
         
-        // Save to Supabase
-        const { error } = await supabase
-          .from('user_settings')
-          .upsert({
-            id: authState.user.id,
-            weight: weightValue,
-            pace_settings: settings.paceSettings,
-            preferences: settings.preferences,
-            updated_at: new Date().toISOString(),
-          }, { onConflict: 'id' });
-        
-        if (error) {
-          console.error('[DEBUG-USER-CONTEXT] Error saving settings to Supabase:', error);
-          return false;
-        }
-        
-        if (DEBUG_USER_CONTEXT) {
-          console.log('[DEBUG-USER-CONTEXT] Saved settings to Supabase');
+        if (isConnected) {
+          // Get the weight value
+          const weightValue = settings.weight;
+          
+          // Save to Supabase
+          const { error } = await supabase
+            .from('user_settings')
+            .upsert({
+              id: authState.user.id,
+              weight: weightValue,
+              pace_settings: settings.paceSettings,
+              preferences: settings.preferences,
+              updated_at: new Date().toISOString(),
+            });
+          
+          if (error) {
+            console.error('[DEBUG-USER-CONTEXT] Error saving settings to Supabase:', error);
+            // Set the pending changes flag even if there's an error with the API
+            setHasPendingSettingsChanges(true);
+            return false;
+          }
+          
+          // Successfully saved to Supabase, reset the pending changes flag
+          setHasPendingSettingsChanges(false);
+          
+          if (DEBUG_USER_CONTEXT) {
+            console.log('[DEBUG-USER-CONTEXT] Saved settings to Supabase');
+          }
+        } else {
+          // Offline, set the pending changes flag
+          if (DEBUG_USER_CONTEXT) {
+            console.log('[DEBUG-USER-CONTEXT] Offline, setting pending changes flag');
+          }
+          setHasPendingSettingsChanges(true);
         }
       }
       
@@ -487,7 +556,7 @@ export const UserProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           .update({
             pace_settings: settings.paceSettings,
             preferences: settings.preferences,
-            weight: settings.weight || 0, // Use 0 as default if weight is null
+            weight: settings.weight,
             updated_at: new Date().toISOString()
           })
           .eq('user_id', userId);
@@ -504,7 +573,7 @@ export const UserProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             user_id: userId,
             pace_settings: settings.paceSettings,
             preferences: settings.preferences,
-            weight: settings.weight || 0, // Use 0 as default if weight is null
+            weight: settings.weight,
             created_at: new Date().toISOString(),
             updated_at: new Date().toISOString()
           });
@@ -518,8 +587,8 @@ export const UserProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       // Update user profile
       const { error: profileError } = await supabase.auth.updateUser({
         data: {
-          name: settings.profile.name || 'User', // Use 'User' as default if name is null
-          weight: settings.weight || 0 // Use 0 as default if weight is null
+          name: settings.profile.name,
+          weight: settings.weight
         }
       });
       
@@ -934,9 +1003,11 @@ export const UserProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     <UserContext.Provider
       value={{
         userSettings,
+        preferences: userSettings?.preferences || DEFAULT_PREFERENCES,
         isLoading,
         error,
         authState,
+        hasPendingSettingsChanges,
         signUp,
         signIn,
         signInWithApple,
@@ -945,8 +1016,7 @@ export const UserProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         updatePaceSetting,
         updatePreference,
         resetToDefault,
-        saveSettings,
-        preferences: userSettings?.preferences || DEFAULT_PREFERENCES,
+        saveSettings: saveSettingsToStorage,
         updateWeight,
       }}
     >

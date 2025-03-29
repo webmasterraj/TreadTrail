@@ -78,6 +78,8 @@ interface WorkoutProgramsState {
     workoutHistory: WorkoutSession[];
     favoriteWorkouts: string[];
   };
+  favoriteWorkouts: string[];
+  hasPendingFavoriteChanges: boolean;
   lastSyncedAt: string | null;
 }
 
@@ -94,32 +96,106 @@ const initialState: WorkoutProgramsState = {
     workoutHistory: [],
     favoriteWorkouts: []
   },
+  favoriteWorkouts: [],
+  hasPendingFavoriteChanges: false,
   lastSyncedAt: null
 };
 
 // Async thunks
 const fetchWorkoutPrograms = createAsyncThunk(
   'workoutPrograms/fetch',
-  async (_, { rejectWithValue }) => {
+  async (_, { getState, dispatch, rejectWithValue }) => {
     try {
       // Check network connectivity
       const netInfo = await NetInfo.fetch();
       const isConnected = netInfo.isConnected && netInfo.isInternetReachable;
       
-      let workoutPrograms: WorkoutProgram[] = [];
-      let favoriteIds: string[] = [];
+      // First check if we have cached workout programs
+      const cachedWorkoutsJson = await AsyncStorage.getItem(WORKOUT_PROGRAMS_KEY);
+      let workouts: WorkoutProgram[] = cachedWorkoutsJson ? JSON.parse(cachedWorkoutsJson) : [];
+      
+      // Get favorite workout IDs from AsyncStorage
+      const favoriteWorkoutIdsJson = await AsyncStorage.getItem(FAVORITE_WORKOUTS_KEY);
+      const localFavoriteIds: string[] = favoriteWorkoutIdsJson 
+        ? JSON.parse(favoriteWorkoutIdsJson) 
+        : [];
+      
+      // Initialize favoriteIds with local favorites
+      let favoriteIds = [...localFavoriteIds];
+      
+      if (!isConnected) {
+        console.log('No internet connection, using cached workouts and local favorites');
+        
+        // Apply favorite status to cached workouts
+        workouts = workouts.map(workout => ({
+          ...workout,
+          favorite: localFavoriteIds.includes(workout.id)
+        }));
+        
+        return { workouts, favoriteIds: localFavoriteIds };
+      }
+      
+      // Get the current state to check if we have pending favorite changes
+      const state = getState() as { workoutPrograms: WorkoutProgramsState };
+      const hasPendingFavoriteChanges = state.workoutPrograms.hasPendingFavoriteChanges;
       
       // Get user session
-      const { data: session } = await supabase.auth.getSession();
-      const userId = session?.session?.user?.id;
+      const { data: { session } } = await supabase.auth.getSession();
+      const userId = session?.user?.id;
+      
+      // If we have pending favorite changes and user is authenticated, sync them first
+      if (hasPendingFavoriteChanges && userId) {
+        console.log('[FAVORITES] Syncing pending favorite changes with backend');
+        
+        try {
+          // Fetch current server favorites
+          const serverFavoriteIds = await fetchUserFavorites();
+          
+          // Find favorites to add (in local but not in server)
+          const favoritesToAdd = localFavoriteIds.filter(id => !serverFavoriteIds.includes(id));
+          
+          // Find favorites to remove (in server but not in local)
+          const favoritesToRemove = serverFavoriteIds.filter(id => !localFavoriteIds.includes(id));
+          
+          console.log(`[FAVORITES] Found ${favoritesToAdd.length} favorites to add and ${favoritesToRemove.length} to remove`);
+          
+          // Process additions
+          for (const workoutId of favoritesToAdd) {
+            await addFavoriteWorkout(workoutId);
+          }
+          
+          // Process removals
+          for (const workoutId of favoritesToRemove) {
+            await removeFavoriteWorkout(workoutId);
+          }
+          
+          // Reset the pending changes flag
+          dispatch(setPendingFavoriteChanges(false));
+          
+          // Use local favorites as the source of truth
+          favoriteIds = localFavoriteIds;
+          
+        } catch (error) {
+          console.error('[FAVORITES] Error syncing favorites:', error);
+          // Continue with fetching workouts even if favorite sync fails
+        }
+      } else if (userId) {
+        // User is authenticated, fetch favorites from Supabase
+        favoriteIds = await fetchUserFavorites();
+        
+        // Update local storage with server favorites if no pending changes
+        if (!hasPendingFavoriteChanges) {
+          await AsyncStorage.setItem(FAVORITE_WORKOUTS_KEY, JSON.stringify(favoriteIds));
+        }
+      }
       
       // If offline, try to load from cache
       if (!isConnected) {
         console.log('Offline, trying to load workouts from cache');
         const cachedPrograms = await AsyncStorage.getItem('workoutPrograms');
         if (cachedPrograms) {
-          workoutPrograms = JSON.parse(cachedPrograms);
-          console.log(`Loaded ${workoutPrograms.length} workouts from cache`);
+          workouts = JSON.parse(cachedPrograms);
+          console.log(`Loaded ${workouts.length} workouts from cache`);
         } else {
           console.log('No cached workout programs found');
           return rejectWithValue('No internet connection and no cached data available');
@@ -140,8 +216,8 @@ const fetchWorkoutPrograms = createAsyncThunk(
           // Try to use cached data as fallback
           const cachedPrograms = await AsyncStorage.getItem('workoutPrograms');
           if (cachedPrograms) {
-            workoutPrograms = JSON.parse(cachedPrograms);
-            console.log(`Using cached data due to Supabase error (${workoutPrograms.length} workouts)`);
+            workouts = JSON.parse(cachedPrograms);
+            console.log(`Using cached data due to Supabase error (${workouts.length} workouts)`);
           } else {
             return rejectWithValue('Failed to fetch workout programs and no cache available');
           }
@@ -197,39 +273,27 @@ const fetchWorkoutPrograms = createAsyncThunk(
             })
           );
           
-          workoutPrograms = workoutsWithSegments;
-          console.log(`Processed ${workoutPrograms.length} workouts with segments`);
+          workouts = workoutsWithSegments;
+          console.log(`Processed ${workouts.length} workouts with segments`);
           
           // Cache the results for offline use
-          await AsyncStorage.setItem('workoutPrograms', JSON.stringify(workoutPrograms));
+          await AsyncStorage.setItem('workoutPrograms', JSON.stringify(workouts));
         } else {
           console.log('No workouts found in Supabase');
           
           // Try to use cached data if no workouts found
           const cachedPrograms = await AsyncStorage.getItem('workoutPrograms');
           if (cachedPrograms) {
-            workoutPrograms = JSON.parse(cachedPrograms);
-            console.log(`Using cached data as no workouts found in Supabase (${workoutPrograms.length} workouts)`);
+            workouts = JSON.parse(cachedPrograms);
+            console.log(`Using cached data as no workouts found in Supabase (${workouts.length} workouts)`);
           } else {
             return rejectWithValue('No workout programs found in database and no cache available');
           }
         }
       }
       
-      // Fetch user's favorite workouts
-      if (userId) {
-        // User is authenticated, fetch favorites from Supabase
-        favoriteIds = await fetchUserFavorites();
-      } else {
-        // User is not authenticated, use local storage as fallback
-        const storedFavorites = await AsyncStorage.getItem(FAVORITE_WORKOUTS_KEY);
-        if (storedFavorites) {
-          favoriteIds = JSON.parse(storedFavorites);
-        }
-      }
-      
       // Apply favorite status to workout programs
-      const result = workoutPrograms.map(workout => ({
+      const result = workouts.map(workout => ({
         ...workout,
         favorite: favoriteIds.includes(workout.id)
       }));
@@ -686,17 +750,32 @@ const toggleFavoriteWorkout = createAsyncThunk(
       // First update local state for immediate UI feedback
       dispatch(toggleWorkoutFavorite(workoutId));
       
+      // Check network connectivity
+      const netInfo = await NetInfo.fetch();
+      const isConnected = netInfo.isConnected && netInfo.isInternetReachable;
+      
       // Check if user is authenticated
       const { data: session } = await supabase.auth.getSession();
       
-      if (session?.session?.user) {
-        // User is authenticated, update in Supabase
+      if (session?.session?.user && isConnected) {
+        // User is authenticated and online, update in Supabase
         if (newFavoriteStatus) {
           await addFavoriteWorkout(workoutId);
         } else {
           await removeFavoriteWorkout(workoutId);
         }
+      } else if (session?.session?.user) {
+        // User is authenticated but offline, set the pending changes flag
+        console.log('[FAVORITES] Offline changes detected, setting pending flag');
+        dispatch(setPendingFavoriteChanges(true));
       }
+      
+      // Save favorite workouts to AsyncStorage
+      const updatedFavorites = state.workoutPrograms.workoutPrograms
+        .filter(w => w.favorite || (w.id === workoutId && newFavoriteStatus))
+        .map(w => w.id);
+      
+      await AsyncStorage.setItem(FAVORITE_WORKOUTS_KEY, JSON.stringify(updatedFavorites));
       
       return { workoutId, favorite: newFavoriteStatus };
     } catch (error: any) {
@@ -985,6 +1064,7 @@ const checkAndProcessPendingQueue = createAsyncThunk(
           const pendingQueue = JSON.parse(pendingQueueJson);
           pendingCount = pendingQueue.workoutHistory?.length || 0;
         }
+        console.log(`[SYNC-CHECK] Found ${pendingCount} pending workouts in AsyncStorage`);
       } catch (error) {
         console.error('[SYNC-CHECK] Error reading from AsyncStorage:', error);
         // Fall back to Redux state
@@ -1040,6 +1120,9 @@ const workoutProgramsSlice = createSlice({
           .catch((err: any) => console.error('AsyncStorage error:', err));
       }
     },
+    setPendingFavoriteChanges: (state, action: PayloadAction<boolean>) => {
+      state.hasPendingFavoriteChanges = action.payload;
+    }
   },
 
   extraReducers: (builder) => {
@@ -1055,10 +1138,22 @@ const workoutProgramsSlice = createSlice({
       state.error = null;
     });
     builder.addCase(fetchWorkoutPrograms.fulfilled, (state, action) => {
-      console.log(`[DEBUG-REDUX] fetchWorkoutPrograms.fulfilled - Received ${action.payload.length} workouts`);
-      state.workoutPrograms = action.payload;
+      // Safe logging that handles both array and object return types
+      if (Array.isArray(action.payload)) {
+        console.log(`[DEBUG-REDUX] fetchWorkoutPrograms.fulfilled - Received ${action.payload.length} workouts`);
+      } else if (action.payload && 'workouts' in action.payload) {
+        console.log(`[DEBUG-REDUX] fetchWorkoutPrograms.fulfilled - Received ${action.payload.workouts.length} workouts`);
+      }
+      
       state.isLoading = false;
-      console.log('[DEBUG-REDUX] fetchWorkoutPrograms.fulfilled - Set isLoading to false');
+      
+      // Handle both array and object return types
+      if (Array.isArray(action.payload)) {
+        state.workoutPrograms = action.payload;
+      } else if (action.payload && 'workouts' in action.payload) {
+        state.workoutPrograms = action.payload.workouts;
+        state.favoriteWorkouts = action.payload.favoriteIds;
+      }
     });
     builder.addCase(fetchWorkoutPrograms.rejected, (state, action) => {
       console.log(`[DEBUG-REDUX] fetchWorkoutPrograms.rejected - Error: ${action.payload}`);
@@ -1154,7 +1249,7 @@ const workoutProgramsSlice = createSlice({
 });
 
 // Export actions and selectors
-export const { toggleWorkoutFavorite } = workoutProgramsSlice.actions;
+export const { toggleWorkoutFavorite, setPendingFavoriteChanges } = workoutProgramsSlice.actions;
 
 // Export selectors
 export const selectWorkoutPrograms = (state: { workoutPrograms: WorkoutProgramsState }) => state.workoutPrograms.workoutPrograms;
