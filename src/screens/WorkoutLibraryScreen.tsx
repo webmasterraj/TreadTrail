@@ -16,6 +16,7 @@ import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList, WorkoutProgram, CategoryType } from '../types';
 import { COLORS, FONT_SIZES, SPACING } from '../styles/theme';
 import { UserContext } from '../context';
+import { useSubscription } from '../context/SubscriptionContext';
 import WorkoutCard from '../components/workout/WorkoutCard';
 import BottomTabBar from '../components/common/BottomTabBar';
 import { useAppDispatch, useAppSelector } from '../redux/store';
@@ -35,6 +36,7 @@ const WorkoutLibraryScreen: React.FC<Props> = ({ navigation, route }) => {
   const workoutPrograms = useAppSelector(selectWorkoutPrograms);
   const isLoading = useAppSelector(selectIsLoading);
   const { userSettings, authState } = useContext(UserContext);
+  const { isPremiumWorkout, validateSubscription, subscriptionInfo } = useSubscription();
   const cameFromWelcome = useRef(false);
   
   // Check if we came from the Welcome screen
@@ -60,7 +62,7 @@ const WorkoutLibraryScreen: React.FC<Props> = ({ navigation, route }) => {
   // Track if we're using metric units
   const [isMetric, setIsMetric] = useState(userSettings?.preferences?.units === 'metric');
   // Track selected categories
-  const [selectedCategories, setSelectedCategories] = useState<CategoryType[]>([]);
+  const [selectedCategories, setSelectedCategories] = useState<(CategoryType | 'Free' | 'Premium')[]>([]);
   
   // All available categories in the desired order
   const CATEGORIES: CategoryType[] = [
@@ -71,6 +73,19 @@ const WorkoutLibraryScreen: React.FC<Props> = ({ navigation, route }) => {
     'Death 💀'
   ];
   
+  // Special filter categories
+  const SPECIAL_FILTERS = ['Free'];
+
+  // Define special filters based on subscription status
+  const getSpecialFilters = useCallback(() => {
+    // If user is subscribed, don't show any special filters
+    if (subscriptionInfo.isActive) {
+      return [];
+    }
+    // Otherwise show only Free filter
+    return ['Free'];
+  }, [subscriptionInfo.isActive]);
+
   // Initialize data on component mount
   useEffect(() => {
     dispatch(fetchWorkoutPrograms());
@@ -91,14 +106,14 @@ const WorkoutLibraryScreen: React.FC<Props> = ({ navigation, route }) => {
   }, [dispatch, navigation, authState.isAuthenticated]);
   
   
-  // Convert mph to km/h for display
-  const convertToMetric = (speed: number) => {
-    return (speed * 1.60934).toFixed(1);
+  // Convert km/h to mph for display
+  const convertToImperial = (speed: number) => {
+    return (speed / 1.60934).toFixed(1);
   };
   
   // Function to get the displayed speed value based on current unit setting
   const getDisplaySpeed = (speed: number) => {
-    return isMetric ? convertToMetric(speed) : speed.toFixed(1);
+    return isMetric ? speed.toFixed(1) : convertToImperial(speed);
   };
 
 
@@ -145,8 +160,23 @@ const WorkoutLibraryScreen: React.FC<Props> = ({ navigation, route }) => {
     }, [userSettings])
   );
   
+  // Check subscription status when screen comes into focus
+  useFocusEffect(
+    useCallback(() => {
+      const refreshSubscriptionStatus = async () => {
+        try {
+          await validateSubscription();
+        } catch (error) {
+          console.error('Error refreshing subscription status:', error);
+        }
+      };
+      
+      refreshSubscriptionStatus();
+    }, [validateSubscription])
+  );
+  
   // Toggle category selection
-  const toggleCategorySelection = (category: CategoryType) => {
+  const toggleCategorySelection = (category: CategoryType | 'Free' | 'Premium') => {
     setSelectedCategories(prevSelected => {
       if (prevSelected.includes(category)) {
         // Remove category if already selected
@@ -169,10 +199,26 @@ const WorkoutLibraryScreen: React.FC<Props> = ({ navigation, route }) => {
       favorite: Boolean(workout.favorite)
     }));
     
-    // Apply category filter if any categories are selected
-    if (selectedCategories.length > 0) {
+    // Check if we have any special filters
+    const hasSpecialFilters = selectedCategories.some(cat => SPECIAL_FILTERS.includes(cat));
+    const regularCategoryFilters = selectedCategories.filter(cat => !SPECIAL_FILTERS.includes(cat)) as CategoryType[];
+    
+    // Apply special filters if selected
+    if (hasSpecialFilters) {
+      if (selectedCategories.includes('Free') && !selectedCategories.includes('Premium')) {
+        // Only show free workouts
+        filtered = filtered.filter(workout => !workout.premium);
+      } else if (selectedCategories.includes('Premium') && !selectedCategories.includes('Free')) {
+        // Only show premium workouts
+        filtered = filtered.filter(workout => workout.premium);
+      }
+      // If both Free and Premium are selected, show all workouts (no filtering needed)
+    }
+    
+    // Apply regular category filter if any categories are selected
+    if (regularCategoryFilters.length > 0) {
       filtered = filtered.filter(workout => 
-        selectedCategories.includes(workout.category)
+        regularCategoryFilters.includes(workout.category)
       );
     }
     
@@ -181,7 +227,27 @@ const WorkoutLibraryScreen: React.FC<Props> = ({ navigation, route }) => {
   
   // Navigate to workout details
   const handleWorkoutPress = (workoutId: string) => {
-    navigation.navigate('WorkoutDetails', { workoutId });
+    // Find the workout to check if it's premium
+    const workout = workoutPrograms.find(w => w.id === workoutId);
+    
+    if (!workout) {
+      console.error('[WorkoutLibraryScreen] Workout not found:', workoutId);
+      return;
+    }
+    
+    // If it's a premium workout, check subscription status
+    if (workout.premium) {
+      // If user has active subscription, go to regular details screen
+      if (isPremiumWorkout(workout.premium)) {
+        navigation.navigate('WorkoutDetails', { workoutId });
+      } else {
+        // Otherwise, go to premium preview screen
+        navigation.navigate('PremiumWorkoutPreview', { workoutId });
+      }
+    } else {
+      // For non-premium workouts, go to regular details screen
+      navigation.navigate('WorkoutDetails', { workoutId });
+    }
   };
   
   // Toggle favorite status using Redux
@@ -269,7 +335,7 @@ const WorkoutLibraryScreen: React.FC<Props> = ({ navigation, route }) => {
                   <View style={styles.paceCircle}>
                     <View style={[styles.circle, { backgroundColor: COLORS.recovery }]}>
                       <Text style={styles.circleText}>
-                        {getDisplaySpeed(paceSettings?.recovery?.speed || 4.5)}
+                        {getDisplaySpeed(paceSettings?.recovery?.speed || 7.2)}
                       </Text>
                     </View>
                     <Text style={styles.circleLabel}>Recovery</Text>
@@ -279,7 +345,7 @@ const WorkoutLibraryScreen: React.FC<Props> = ({ navigation, route }) => {
                   <View style={styles.paceCircle}>
                     <View style={[styles.circle, { backgroundColor: COLORS.base }]}>
                       <Text style={styles.circleText}>
-                        {getDisplaySpeed(paceSettings?.base?.speed || 5.5)}
+                        {getDisplaySpeed(paceSettings?.base?.speed || 8.8)}
                       </Text>
                     </View>
                     <Text style={styles.circleLabel}>Base</Text>
@@ -289,7 +355,7 @@ const WorkoutLibraryScreen: React.FC<Props> = ({ navigation, route }) => {
                   <View style={styles.paceCircle}>
                     <View style={[styles.circle, { backgroundColor: COLORS.run }]}>
                       <Text style={styles.circleText}>
-                        {getDisplaySpeed(paceSettings?.run?.speed || 7.0)}
+                        {getDisplaySpeed(paceSettings?.run?.speed || 11.3)}
                       </Text>
                     </View>
                     <Text style={styles.circleLabel}>Run</Text>
@@ -299,7 +365,7 @@ const WorkoutLibraryScreen: React.FC<Props> = ({ navigation, route }) => {
                   <View style={styles.paceCircle}>
                     <View style={[styles.circle, { backgroundColor: COLORS.sprint }]}>
                       <Text style={styles.circleText}>
-                        {getDisplaySpeed(paceSettings?.sprint?.speed || 9.0)}
+                        {getDisplaySpeed(paceSettings?.sprint?.speed || 14.5)}
                       </Text>
                     </View>
                     <Text style={styles.circleLabel}>Sprint</Text>
@@ -341,6 +407,30 @@ const WorkoutLibraryScreen: React.FC<Props> = ({ navigation, route }) => {
               alwaysBounceVertical={false}
               nestedScrollEnabled={false}
             >
+              {/* Special filters first */}
+              {getSpecialFilters().map((filter) => (
+                <TouchableOpacity
+                  key={filter}
+                  style={[
+                    styles.categoryPill,
+                    selectedCategories.includes(filter as any) && styles.categoryPillSelected,
+                    filter === 'Free' ? styles.freePill : {},
+                    filter === 'Premium' ? styles.premiumPill : {}
+                  ]}
+                  onPress={() => toggleCategorySelection(filter as any)}
+                >
+                  <Text 
+                    style={[
+                      styles.categoryPillText,
+                      selectedCategories.includes(filter as any) && styles.categoryPillTextSelected
+                    ]}
+                  >
+                    {filter}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+              
+              {/* Regular category filters */}
               {CATEGORIES.map((category) => (
                 <TouchableOpacity
                   key={category}
@@ -380,6 +470,8 @@ const WorkoutLibraryScreen: React.FC<Props> = ({ navigation, route }) => {
                     onFavoriteToggle={() => dispatch(toggleWorkoutFavorite(reduxWorkout.id))}
                     showVisualization={true}
                     showFavoriteButton={authState.isAuthenticated}
+                    isSubscribed={subscriptionInfo.isActive && !subscriptionInfo.trialActive}
+                    isTrialActive={subscriptionInfo.trialActive}
                   />
                 );
               }}
@@ -542,6 +634,11 @@ const styles = StyleSheet.create({
     color: COLORS.white,
     fontWeight: '600',
   },
+  freePill: {
+    // borderColor: COLORS.accent,
+  },
+  premiumPill: {
+    borderColor: COLORS.gold,
+  },
 });
-
 export default WorkoutLibraryScreen;

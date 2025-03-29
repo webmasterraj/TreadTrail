@@ -33,9 +33,6 @@ const LandingScreen: React.FC<Props> = ({ navigation }) => {
         // If user is authenticated, navigate to the Welcome screen
         if (authState.isAuthenticated) {
           navigation.replace('Welcome', { name: authState.user?.name || 'Runner' });
-        } else if (userSettings?.profile.name) {
-          // For backward compatibility - if user has a profile but isn't authenticated
-          navigation.replace('Welcome', { name: userSettings.profile.name });
         }
         setIsLoading(false);
       } catch (error) {
@@ -45,7 +42,7 @@ const LandingScreen: React.FC<Props> = ({ navigation }) => {
     };
     
     checkAuthStatus();
-  }, [authState.isAuthenticated, userSettings, navigation]);
+  }, [authState.isAuthenticated, navigation]);
   
   // Handle Sign In with Apple
   const handleAppleSignIn = async () => {

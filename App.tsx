@@ -8,6 +8,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { Provider } from 'react-redux';
 import { PersistGate } from 'redux-persist/integration/react';
 import { UserProvider, DataProvider } from './src/context';
+import { SubscriptionProvider } from './src/context/SubscriptionContext';
 import { store, persistor } from './src/redux/store';
 import Navigation from './src/navigation/Navigation';
 import { COLORS } from './src/styles/theme';
@@ -20,7 +21,9 @@ const App: React.FC = () => {
           <StatusBar barStyle="light-content" backgroundColor={COLORS.black} />
           <UserProvider>
             <DataProvider>
-              <Navigation />
+              <SubscriptionProvider>
+                <Navigation />
+              </SubscriptionProvider>
             </DataProvider>
           </UserProvider>
         </SafeAreaProvider>

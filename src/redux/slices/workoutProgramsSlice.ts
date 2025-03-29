@@ -18,6 +18,7 @@ const INITIAL_STATS: Stats = {
     totalDuration: 0,
     totalSegmentsCompleted: 0,
     totalDistance: 0,
+    totalCaloriesBurned: 0,
     workoutsByCategory: {
       'Easy \ud83d\udc23': 0,
       'Trad HIIT \ud83c\udfc3\ud83c\udffc': 0,
@@ -228,6 +229,7 @@ const updateStats = createAsyncThunk(
           return sum + session.segments.filter(segment => segment && !segment.skipped).length;
         }, 0),
         totalDistance: 0,
+        totalCaloriesBurned: 0,
         workoutsByCategory: {
           'Easy \ud83d\udc23': 0,
           'Trad HIIT \ud83c\udfc3\ud83c\udffc': 0,
@@ -285,14 +287,22 @@ const updateStats = createAsyncThunk(
       let totalDistance = 0;
       
       workoutHistory.forEach(session => {
-        // Add session distance to total distance if available
+        console.log('Processing session for distance:', session.id, 'Has distance:', !!session.distance);
         if (session.distance) {
+          console.log('Adding pre-calculated distance:', session.distance);
           totalDistance += session.distance;
         }
         // If distance is not pre-calculated but we have segments and paceSettings, calculate it
         else if (session.segments && session.paceSettings) {
+          console.log('Calculating distance from segments:', session.segments.length, 'segments');
           const sessionDistance = calculateTotalDistance(session.segments, session.paceSettings);
+          console.log('Calculated session distance:', sessionDistance);
           totalDistance += sessionDistance;
+        }
+        
+        // Add calories burned to total if available
+        if (session.caloriesBurned) {
+          calculatedStats.totalCaloriesBurned += session.caloriesBurned;
         }
       });
       
@@ -477,7 +487,6 @@ function calculateStats(workoutHistory: WorkoutSession[], workoutPrograms: Worko
   const statsData = {
     totalWorkouts: workoutHistory.length,
     totalDuration: workoutHistory.reduce((sum, session) => sum + (session.duration || 0), 0),
-    totalDistance: 0,
     totalSegmentsCompleted: workoutHistory.reduce((sum, session) => {
       // Add safety check for sessions that might have undefined segments
       if (!session.segments) {
@@ -485,6 +494,8 @@ function calculateStats(workoutHistory: WorkoutSession[], workoutPrograms: Worko
       }
       return sum + session.segments.filter(segment => segment && !segment.skipped).length;
     }, 0),
+    totalDistance: 0,
+    totalCaloriesBurned: 0,
     workoutsByCategory: {
       'Easy \ud83d\udc23': 0,
       'Trad HIIT \ud83c\udfc3\ud83c\udffc': 0,
@@ -535,14 +546,22 @@ function calculateStats(workoutHistory: WorkoutSession[], workoutPrograms: Worko
       }
     }
 
-    // Add session distance to total distance if available
+    console.log('Processing session for distance:', session.id, 'Has distance:', !!session.distance);
     if (session.distance) {
+      console.log('Adding pre-calculated distance:', session.distance);
       totalDistance += session.distance;
     }
     // If distance is not pre-calculated but we have segments and paceSettings, calculate it
     else if (session.segments && session.paceSettings) {
+      console.log('Calculating distance from segments:', session.segments.length, 'segments');
       const sessionDistance = calculateTotalDistance(session.segments, session.paceSettings);
+      console.log('Calculated session distance:', sessionDistance);
       totalDistance += sessionDistance;
+    }
+    
+    // Add calories burned to total if available
+    if (session.caloriesBurned) {
+      statsData.totalCaloriesBurned += session.caloriesBurned;
     }
   });
 
@@ -551,7 +570,7 @@ function calculateStats(workoutHistory: WorkoutSession[], workoutPrograms: Worko
     date: longestDate,
   };
 
-  // Set the total distance
+  console.log('Final total distance:', totalDistance);
   statsData.totalDistance = totalDistance;
 
   // Create the full Stats object

@@ -13,7 +13,15 @@ import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../types';
 import { COLORS, FONT_SIZES, SPACING, BORDER_RADIUS, PACE_COLORS } from '../styles/theme';
 import { UserContext } from '../context';
-import { formatDuration, milesToKm, kmToMiles } from '../utils/helpers';
+import { useSubscription } from '../context/SubscriptionContext';
+import { 
+  formatDuration, 
+  formatDate, 
+  milesToKm, 
+  formatNumber, 
+  formatDistance,
+  kmToMiles 
+} from '../utils/helpers';
 import BottomTabBar from '../components/common/BottomTabBar';
 import WorkoutCard from '../components/workout/WorkoutCard';
 import WorkoutCalendar from '../components/common/WorkoutCalendar';
@@ -32,6 +40,7 @@ type Props = NativeStackScreenProps<RootStackParamList, 'Profile'>;
 
 const ProfileScreen: React.FC<Props> = ({ navigation, route }) => {
   const { authState, userSettings } = useContext(UserContext);
+  const { subscriptionInfo } = useSubscription();
   const dispatch = useAppDispatch();
   const workoutPrograms = useAppSelector(selectWorkoutPrograms);
   const workoutHistory = useAppSelector(selectWorkoutHistory);
@@ -49,6 +58,15 @@ const ProfileScreen: React.FC<Props> = ({ navigation, route }) => {
     dispatch(fetchWorkoutPrograms());
     dispatch(fetchWorkoutHistory());
     dispatch(fetchStats());
+    
+    // Debug subscription status
+    console.log('Subscription status:', {
+      isActive: subscriptionInfo.isActive,
+      trialActive: subscriptionInfo.trialActive,
+      trialStartDate: subscriptionInfo.trialStartDate,
+      trialEndDate: subscriptionInfo.trialEndDate,
+      trialUsed: subscriptionInfo.trialUsed,
+    });
     
     // Start animation for gradient effect
     Animated.loop(
@@ -83,6 +101,16 @@ const ProfileScreen: React.FC<Props> = ({ navigation, route }) => {
       navigation.replace('Landing');
     }
   }, [authState.isAuthenticated, navigation]);
+
+  // Log stats for debugging
+  useEffect(() => {
+    if (stats) {
+      console.log('Stats object:', JSON.stringify(stats, null, 2));
+      console.log('Total Distance (raw):', stats.stats.totalDistance);
+      console.log('Total Distance (km):', milesToKm(stats.stats.totalDistance));
+      console.log('Units setting:', userSettings?.preferences?.units);
+    }
+  }, [stats, userSettings]);
 
   // Get favorite workouts
   const favoriteWorkouts = workoutPrograms.filter(workout => Boolean(workout.favorite));
@@ -141,6 +169,29 @@ const ProfileScreen: React.FC<Props> = ({ navigation, route }) => {
     return null; // Will redirect in useEffect
   }
 
+  // Fetch stats from Redux
+  console.log('ProfileScreen - Stats from Redux:', JSON.stringify(stats, null, 2));
+
+  // Get user settings for unit preference
+  const isMetric = userSettings?.preferences?.units === 'metric' || false;
+  console.log('ProfileScreen - User settings:', JSON.stringify(userSettings, null, 2));
+  
+  // Log workout history to check if sessions have distance
+  console.log('ProfileScreen - Workout history count:', workoutHistory.length);
+  console.log('ProfileScreen - First few workout sessions:', workoutHistory.slice(0, 3).map(session => ({
+    id: session.id,
+    date: session.date,
+    distance: session.distance,
+    hasPaceSettings: !!session.paceSettings,
+    segmentsCount: session.segments?.length
+  })));
+
+  // Calculate total distance in km or miles
+  const totalDistanceKm = stats?.stats.totalDistance || 0;
+  const totalDistance = isMetric ? totalDistanceKm : totalDistanceKm * 0.621371;
+  console.log('ProfileScreen - Total distance raw:', totalDistanceKm);
+  console.log('ProfileScreen - Total distance formatted:', formatDistance(totalDistance, isMetric));
+
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor={COLORS.black} />
@@ -164,6 +215,7 @@ const ProfileScreen: React.FC<Props> = ({ navigation, route }) => {
         <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>Lifetime Stats</Text>
           </View>
+          {/* First row of stat cards */}
           <View style={styles.statsRow}>
             <View style={styles.statCard}>
               <Animated.View 
@@ -210,7 +262,10 @@ const ProfileScreen: React.FC<Props> = ({ navigation, route }) => {
               </Text>
               <Text style={styles.statLabel}>Total Time</Text>
             </View>
-
+          </View>
+          
+          {/* Second row of stat cards */}
+          <View style={styles.statsRow}>
             <View style={styles.statCard}>
               <Animated.View 
                 style={[
@@ -230,15 +285,93 @@ const ProfileScreen: React.FC<Props> = ({ navigation, route }) => {
                 ]} 
               />
               <Text style={styles.statValue}>
-                {userSettings?.preferences?.units === 'metric' 
-                  ? milesToKm(stats.stats.totalSegmentsCompleted / 5).toFixed(1)
-                  : (stats.stats.totalSegmentsCompleted / 5).toFixed(1)
+                {isMetric 
+                  ? formatDistance(milesToKm(stats.stats.totalDistance), true)
+                  : formatDistance(stats.stats.totalDistance, false)
                 }
               </Text>
               <Text style={styles.statLabel}>
-                {userSettings?.preferences?.units === 'metric' ? 'Kms' : 'Miles'}
+                {isMetric ? 'Kms' : 'Miles'}
               </Text>
             </View>
+
+            {/* Calories Card - Different versions based on subscription status */}
+            {subscriptionInfo.isActive || subscriptionInfo.trialActive ? (
+              // Subscribed users - show calories without badge
+              <View style={styles.statCard}>
+                <Animated.View 
+                  style={[
+                    styles.gradientBorder,
+                    {
+                      borderColor: animatedValue.interpolate({
+                        inputRange: [0, 0.25, 0.5, 0.75, 1],
+                        outputRange: [
+                          COLORS.sprint, 
+                          COLORS.recovery, 
+                          COLORS.sprint, 
+                          COLORS.recovery, 
+                          COLORS.sprint
+                        ]
+                      })
+                    }
+                  ]} 
+                />
+                <Text style={styles.statValue}>
+                  {formatNumber(stats.stats.totalCaloriesBurned)}
+                </Text>
+                <Text style={styles.statLabel}>Calories Burned</Text>
+                {subscriptionInfo.trialActive && (
+                  <View style={{
+                    position: 'absolute',
+                    top: 0,
+                    left: 0,
+                    backgroundColor: COLORS.accent,
+                    paddingHorizontal: 8,
+                    paddingVertical: 4,
+                    borderTopLeftRadius: 11,
+                    borderBottomRightRadius: 11,
+                    zIndex: 20,
+                    elevation: 5,
+                  }}>
+                    <Text style={{
+                      color: COLORS.black,
+                      fontSize: 10,
+                      fontWeight: 'bold',
+                    }}>PREMIUM</Text>
+                  </View>
+                )}
+              </View>
+            ) : (
+              // Free users - show CTA to subscription screen
+              <TouchableOpacity 
+                style={styles.statCard}
+                onPress={() => navigation.navigate('Subscription')}
+                activeOpacity={0.7}
+              >
+                <Animated.View 
+                  style={[
+                    styles.gradientBorder,
+                    {
+                      borderColor: animatedValue.interpolate({
+                        inputRange: [0, 0.25, 0.5, 0.75, 1],
+                        outputRange: [
+                          COLORS.sprint, 
+                          COLORS.recovery, 
+                          COLORS.sprint, 
+                          COLORS.recovery, 
+                          COLORS.sprint
+                        ]
+                      })
+                    }
+                  ]} 
+                />
+                <Text style={styles.statValue}>-</Text>
+                <Text style={styles.statLabel}>
+                  Calories Burned
+                </Text>
+                <Text style={styles.upgradeText}>Tap to unlock</Text>
+              </TouchableOpacity>
+            )}
           </View>
         </View>
 
@@ -267,6 +400,8 @@ const ProfileScreen: React.FC<Props> = ({ navigation, route }) => {
                   onFavoriteToggle={() => handleFavoriteToggle(workout.id)}
                   showVisualization={true}
                   showFavoriteButton={authState.isAuthenticated}
+                  isSubscribed={subscriptionInfo.isActive}
+                  isTrialActive={subscriptionInfo.trialActive}
                 />
               ))
             ) : (
@@ -375,10 +510,7 @@ const styles = StyleSheet.create({
   statValue: {
     fontSize: 26,
     fontWeight: '800',
-    color: COLORS.white,
     marginBottom: SPACING.xsmall,
-    // Gradient text effect in React Native is not easily applied with standard styles,
-    // but we can get close with the accent color
     color: COLORS.accent,
   },
   statLabel: {
@@ -386,6 +518,25 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     color: 'rgba(255, 255, 255, 0.7)',
     textAlign: 'center',
+  },
+  premiumBadge: {
+    position: 'absolute',
+    backgroundColor: COLORS.accent,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderTopLeftRadius: 11,
+    borderBottomRightRadius: 11,
+  },
+  premiumText: {
+    color: COLORS.black,
+    fontSize: 10,
+    fontWeight: 'bold',
+  },
+  upgradeText: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: COLORS.white,
+    marginTop: 5,
   },
   calendarSection: {
     marginBottom: SPACING.small,

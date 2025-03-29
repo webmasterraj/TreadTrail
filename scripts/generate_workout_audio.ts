@@ -27,7 +27,6 @@ import axios from 'axios';
 import { getAudioDurationInSeconds } from 'get-audio-duration';
 
 // Default ElevenLabs voice ID (Hope)
-const API_KEY = "sk_80388a5a8a13b6a756df0ef81f9e2c2e740097d72b0d87b8";
 const DEFAULT_VOICE_ID = "tnSpp4vdxKPjI9w0GnoV";
 
 // Directory paths

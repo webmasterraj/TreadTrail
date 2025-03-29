@@ -11,23 +11,26 @@ import {
   Switch,
   ActivityIndicator,
   Button,
+  Platform,
 } from 'react-native';
 import {NativeStackScreenProps} from '@react-navigation/native-stack';
 import {RootStackParamList} from '../types';
 import {COLORS, FONT_SIZES, SPACING, BORDER_RADIUS} from '../styles/theme';
 import {UserContext} from '../context';
+import {SubscriptionContext} from '../context/SubscriptionContext';
 import BottomTabBar from '../components/common/BottomTabBar';
+
+// Debug flag - set to false to disable debug logs
+const DEBUG_SETTINGS = false;
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Settings'>;
 
 const APP_VERSION = '1.0.0';
 const BUILD_NUMBER = '42';
 
-// Debug flag - set to false to disable debug logs
-const DEBUG_SETTINGS = false;
-
 const SettingsScreen: React.FC<Props> = ({navigation}) => {
   const {authState, signOut, preferences, updatePreference, isLoading, userSettings} = useContext(UserContext);
+  const {subscriptionInfo} = useContext(SubscriptionContext);
   const [isError, setIsError] = useState(false);
 
   // Add debug logging on component mount
@@ -88,6 +91,11 @@ const SettingsScreen: React.FC<Props> = ({navigation}) => {
   // Handle navigation to profile screen
   const handleProfilePress = () => {
     navigation.navigate('Profile');
+  };
+
+  // Handle navigation to subscription screen
+  const handleSubscriptionPress = () => {
+    navigation.navigate('Subscription');
   };
 
   // Toggle audio cues
@@ -163,11 +171,20 @@ const SettingsScreen: React.FC<Props> = ({navigation}) => {
           <Text style={styles.sectionTitle}>Account</Text>
           <View style={styles.card}>
             {authState.isAuthenticated ? (
-              <TouchableOpacity
-                style={styles.settingsItem}
-                onPress={handleSignOut}>
-                <Text style={styles.signOutText}>Sign Out</Text>
-              </TouchableOpacity>
+              <>
+                <TouchableOpacity
+                  style={styles.settingsItem}
+                  onPress={handleSubscriptionPress}>
+                  <Text style={styles.itemLabel}>Manage Subscription</Text>
+                  <Text style={styles.chevron}>→</Text>
+                </TouchableOpacity>
+                
+                <TouchableOpacity
+                  style={styles.settingsItem}
+                  onPress={handleSignOut}>
+                  <Text style={styles.signOutText}>Sign Out</Text>
+                </TouchableOpacity>
+              </>
             ) : (
               <TouchableOpacity
                 style={styles.settingsItem}
@@ -185,14 +202,19 @@ const SettingsScreen: React.FC<Props> = ({navigation}) => {
             <View style={styles.settingsItem}>
               <Text style={styles.itemLabel}>Audio Cues</Text>
               <Switch
-                trackColor={{ false: COLORS.darkGray, true: COLORS.accent }}
-                thumbColor={userSettings?.preferences?.enableAudioCues ? COLORS.white : COLORS.lightGray}
-                ios_backgroundColor={COLORS.darkGray}
+                value={preferences?.enableAudioCues || false}
                 onValueChange={toggleAudioCues}
-                value={userSettings?.preferences?.enableAudioCues}
-                testID="audio-cues-toggle"
+                trackColor={{false: COLORS.darkGray, true: COLORS.accent}}
+                thumbColor={COLORS.white}
               />
             </View>
+            
+            <TouchableOpacity
+              style={styles.settingsItem}
+              onPress={() => navigation.navigate('EditPace')}>
+              <Text style={styles.itemLabel}>Set Paces & Weight</Text>
+              <Text style={styles.chevron}>→</Text>
+            </TouchableOpacity>
           </View>
         </View>
 
@@ -236,8 +258,8 @@ const SettingsScreen: React.FC<Props> = ({navigation}) => {
           </TouchableOpacity>
         </View>
       </ScrollView>
-
-      {/* No bottom tab bar in settings */}
+      
+      <BottomTabBar currentScreen="Settings" navigation={navigation} />
     </SafeAreaView>
   );
 };
@@ -295,7 +317,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     padding: SPACING.medium,
     borderBottomWidth: 1,
-    borderBottomColor: COLORS.lightGray,
+    borderBottomColor: COLORS.darkGray,
   },
   itemLabel: {
     color: COLORS.white,

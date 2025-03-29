@@ -4,6 +4,7 @@ import { COLORS } from '../../styles/theme';
 import { WorkoutProgram } from '../../types';
 import WorkoutVisualization from './WorkoutVisualization';
 import { formatDuration } from '../../utils/helpers';
+import TrialBanner from '../subscription/TrialBanner';
 
 interface WorkoutCardProps {
   workout: WorkoutProgram;
@@ -14,6 +15,8 @@ interface WorkoutCardProps {
   showTicks?: boolean;
   showTimeLabels?: boolean;
   showConnectingLine?: boolean;
+  isSubscribed?: boolean;
+  isTrialActive?: boolean;
 }
 
 const WorkoutCard: React.FC<WorkoutCardProps> = ({ 
@@ -24,7 +27,9 @@ const WorkoutCard: React.FC<WorkoutCardProps> = ({
   showFavoriteButton = true,
   showTicks = true,
   showTimeLabels = true,
-  showConnectingLine = true
+  showConnectingLine = true,
+  isSubscribed = false,
+  isTrialActive = false
 }) => {
   const { 
     id, 
@@ -34,7 +39,8 @@ const WorkoutCard: React.FC<WorkoutCardProps> = ({
     intensity, 
     focus, 
     favorite,
-    segments
+    segments,
+    premium
   } = workout;
 
   // Add state for card dimensions and visualization height
@@ -75,11 +81,21 @@ const WorkoutCard: React.FC<WorkoutCardProps> = ({
 
   return (
     <TouchableOpacity 
-      style={styles.container} 
+      style={[
+        styles.container, 
+        premium && (!isSubscribed || isTrialActive) && styles.premiumContainer
+      ]} 
       onPress={onPress}
       onLayout={(e: LayoutChangeEvent) => setCardWidth(e.nativeEvent.layout.width)}
       activeOpacity={0.7}
     >
+      {/* Premium Badge - Show for premium workouts when not subscribed or in trial */}
+      {premium && (!isSubscribed || isTrialActive) && (
+        <View style={styles.premiumBadge}>
+          <Text style={styles.premiumText}>PREMIUM</Text>
+        </View>
+      )}
+      
       {/* Favorite Heart Icon - Only shown if showFavoriteButton is true */}
       {showFavoriteButton && (
         <TouchableOpacity 
@@ -93,30 +109,37 @@ const WorkoutCard: React.FC<WorkoutCardProps> = ({
         </TouchableOpacity>
       )}
       
-      {/* Workout Name */}
-      <Text style={styles.title}>{name}</Text>
-      
-      {/* Workout Meta Information */}
-      <View style={styles.metaContainer}>
-        <Text style={styles.metaItem}>{formatDuration(duration, 'decimal')}</Text>
-        <Text style={styles.metaItem}>{getIntensityStars()} intensity</Text>
-        <Text style={styles.metaItem}>{countIntervals()} intervals</Text>
-      </View>
-      
-      {/* Visualization using the shared component */}
-      {showVisualization && segments && segments.length > 0 && (
-        <View style={[styles.visualizationContainer, { height: visualizationHeight }]}>
-          <WorkoutVisualization 
-            segments={segments} 
-            minutePerBar={true}
-            containerHeight={visualizationHeight - 12} // Account for margins
-            showTimeLabels={showTimeLabels} 
-            showTicks={showTicks} 
-            showConnectingLine={showConnectingLine}
-            connectingLineOffset={20} // Match the offset used in other screens
-          />
+      <View style={styles.contentContainer}>
+        {/* Workout Name */}
+        <Text style={styles.title}>{name}</Text>
+        
+        {/* Workout Meta Information */}
+        <View style={styles.metaContainer}>
+          <Text style={styles.metaItem}>{formatDuration(duration, 'decimal')}</Text>
+          <Text style={styles.metaItem}>★ {intensity}</Text>
+          <Text style={styles.metaItem}>{segments.length} intervals</Text>
         </View>
-      )}
+        
+        {/* Trial Banner - Show compact version for premium workouts during trial */}
+        {premium && isTrialActive && !isSubscribed && (
+          <TrialBanner compact={true} />
+        )}
+        
+        {/* Visualization using the shared component */}
+        {showVisualization && segments && segments.length > 0 && (
+          <View style={[styles.visualizationContainer, { height: visualizationHeight }]}>
+            <WorkoutVisualization 
+              segments={segments} 
+              minutePerBar={true}
+              containerHeight={visualizationHeight - 12} // Account for margins
+              showTimeLabels={showTimeLabels} 
+              showTicks={showTicks} 
+              showConnectingLine={showConnectingLine}
+              connectingLineOffset={20} // Match the offset used in other screens
+            />
+          </View>
+        )}
+      </View>
     </TouchableOpacity>
   );
 };
@@ -125,28 +148,53 @@ const styles = StyleSheet.create({
   container: {
     backgroundColor: COLORS.darkGray,
     borderRadius: 12, 
-    padding: 14, 
-    marginBottom: 15, 
+    padding: 12, 
+    marginBottom: 12, 
     borderWidth: 1,
     borderColor: COLORS.darkGray,
     position: 'relative',
+    minHeight: 120, 
+  },
+  premiumContainer: {
+    borderColor: COLORS.accent,
+    borderWidth: 1,
+  },
+  premiumBadge: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    backgroundColor: COLORS.accent,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderTopLeftRadius: 11,
+    borderBottomRightRadius: 11,
+    zIndex: 1,
+  },
+  premiumText: {
+    color: COLORS.black,
+    fontSize: 10,
+    fontWeight: 'bold',
   },
   title: {
     color: COLORS.accent,
-    fontSize: 20, 
+    fontSize: 18, 
     fontWeight: '700', 
-    marginBottom: 3, 
+    marginBottom: 2, 
     letterSpacing: -0.5, 
     fontFamily: 'System', 
   },
+  contentContainer: {
+    flex: 1,
+    marginTop: 10, // Fixed margin for all cards
+  },
   metaContainer: {
     flexDirection: 'row',
-    gap: 15, 
-    marginBottom: 8, 
+    gap: 12, 
+    marginBottom: 6, 
   },
   metaItem: {
     color: 'rgba(255, 255, 255, 0.6)', 
-    fontSize: 12, 
+    fontSize: 11, 
   },
   favoriteHeart: {
     position: 'absolute',
@@ -164,10 +212,10 @@ const styles = StyleSheet.create({
     color: COLORS.accent,
   },
   visualizationContainer: {
-    minHeight: 60, // Minimum height as a fallback
+    height: 50, 
     width: '100%',
-    marginTop: 8, 
-    marginBottom: 4,
+    marginTop: 6, 
+    marginBottom: 0, 
   }
 });
 

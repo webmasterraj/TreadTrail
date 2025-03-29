@@ -17,6 +17,7 @@ import { RootStackParamList, WorkoutSegment, PaceType } from '../types';
 import { COLORS, FONT_SIZES, SPACING, BORDER_RADIUS, DIFFICULTY_INDICATORS, FOCUS_INDICATORS, PACE_COLORS } from '../styles/theme';
 import WorkoutVisualization from '../components/workout/WorkoutVisualization';
 import { UserContext } from '../context';
+import { useSubscription } from '../context/SubscriptionContext';
 import { formatDuration, formatTime } from '../utils/helpers';
 import BottomTabBar from '../components/common/BottomTabBar';
 import Button from '../components/common/Button';
@@ -26,6 +27,7 @@ import {
   toggleWorkoutFavorite,
   selectWorkoutById
 } from '../redux/slices/workoutProgramsSlice';
+import PremiumCard from '../components/subscription/PremiumCard';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'WorkoutDetails'>;
 
@@ -34,6 +36,21 @@ const WorkoutDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
   const dispatch = useAppDispatch();
   // Get user context once at component level
   const { userSettings, authState } = useContext(UserContext);
+  const { isPremiumWorkout, subscriptionInfo } = useSubscription();
+  
+  // Calculate days remaining in trial
+  const getDaysRemaining = () => {
+    if (!subscriptionInfo.trialActive || !subscriptionInfo.trialEndDate) {
+      return 0;
+    }
+    
+    const now = new Date();
+    const trialEnd = new Date(subscriptionInfo.trialEndDate);
+    const diffTime = trialEnd.getTime() - now.getTime();
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    
+    return Math.max(0, diffDays); // Ensure we don't return negative days
+  };
   
   // Initialize workout data if not loaded
   useEffect(() => {
@@ -99,6 +116,13 @@ const WorkoutDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
           },
         ]
       );
+      return;
+    }
+    
+    // Check if this is a premium workout and user doesn't have premium access
+    if (workout.premium && !isPremiumWorkout(workout.premium)) {
+      // Navigate to subscription screen
+      navigation.navigate('Subscription');
       return;
     }
     
@@ -244,7 +268,17 @@ const WorkoutDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
             </View>
           </View>
           
-          <View 
+          {/* Premium Subscription Card for Trial Users */}
+          {workout.premium && subscriptionInfo.trialActive && authState && authState.isAuthenticated && (
+            <PremiumCard
+              description={`You have access to this workout during your free trial. Subscribe to keep access when your trial ends in ${getDaysRemaining()} days.`}
+              showButton={false}
+              onCardPress={() => navigation.navigate('Subscription')}
+            />
+          )}
+          
+          { authState && authState.isAuthenticated && (
+            <View 
             style={styles.structureSection}
             onLayout={(e: LayoutChangeEvent) => setStructureHeight(e.nativeEvent.layout.height)}
           >
@@ -272,6 +306,7 @@ const WorkoutDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
               ))}
             </View>
           </View>
+          )}
           
           {/* Only show the Start Workout button for logged-in users */}
           {authState && authState.isAuthenticated && (
@@ -307,78 +342,69 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollContent: {
-    padding: 20, // Exact value from mockup
+    paddingHorizontal: SPACING.medium,
+    paddingBottom: 100, // Extra padding at bottom for bottom tab bar
   },
   header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 15, // Exact value from mockup
+    marginTop: SPACING.large,
+    marginBottom: SPACING.medium,
   },
   title: {
-    color: COLORS.accent,
-    fontSize: 22, // Exact value from mockup
+    color: COLORS.white,
+    fontSize: FONT_SIZES.xl,
     fontWeight: 'bold',
+    marginBottom: SPACING.small,
   },
   description: {
-    color: 'rgba(255, 255, 255, 0.8)', // Exact value from mockup
-    fontSize: 14, // Exact value from mockup
-    marginBottom: 20, // Exact value from mockup
-    lineHeight: 19.6, // 1.4 line height as in mockup
+    color: COLORS.lightGray,
+    fontSize: FONT_SIZES.medium,
+    lineHeight: 24,
+    marginBottom: SPACING.medium,
   },
   statsContainer: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginBottom: 20, // Exact value from mockup
-    padding: 12, // Exact value from mockup
-    backgroundColor: COLORS.darkGray,
-    borderRadius: 12, // Exact value from mockup
+    marginBottom: SPACING.large,
   },
   statItem: {
     alignItems: 'center',
-    fontWeight: 'bold', // As per mockup
-  },
-  statLabel: {
-    color: 'rgba(255, 255, 255, 0.6)',
-    fontSize: 12, // Exact value from mockup
-    fontWeight: 'normal', // As per mockup
+    flex: 1,
   },
   statValue: {
     color: COLORS.white,
-    fontSize: 18, // Exact value from mockup
+    fontSize: FONT_SIZES.large,
     fontWeight: 'bold',
+    marginBottom: 4,
+  },
+  statLabel: {
+    color: COLORS.lightGray,
+    fontSize: FONT_SIZES.small,
   },
   previewSection: {
-    marginBottom: 20, // Exact value from mockup
-    paddingHorizontal: 0, // Let the visualization component fill the width
+    marginBottom: SPACING.large,
   },
   previewContainer: {
-    minHeight: 100, // Minimum height as a fallback
-    marginBottom: 10,
+    width: '100%',
+    marginBottom: 15,
   },
   sectionTitle: {
     color: COLORS.white,
-    fontSize: 18, // Exact value from mockup
+    fontSize: 18, 
     fontWeight: 'bold',
-    marginBottom: 12, // Exact value from mockup
-    opacity: 0.9,
+    marginBottom: 16,
   },
   structureSection: {
-    marginBottom: 20, // Exact value from mockup
+    marginBottom: SPACING.large,
   },
   compactStructure: {
-    borderRadius: 12, // Exact value from mockup
+    borderRadius: 12, 
     overflow: 'hidden',
-    // shadowColor: '#000',
-    // shadowOffset: { width: 0, height: 1 },
-    // shadowOpacity: 0.3,
-    // shadowRadius: 3,
     elevation: 3,
   },
   structureRow: {
     flexDirection: 'row',
-    padding: 8, // Left/right padding from mockup
-    paddingHorizontal: 10, // Left/right padding from mockup
+    padding: 8, 
+    paddingHorizontal: 10, 
     alignItems: 'center',
     backgroundColor: COLORS.mediumGray,
     marginBottom: 1,
@@ -400,69 +426,69 @@ const styles = StyleSheet.create({
     borderLeftColor: COLORS.sprint,
   },
   timeCell: {
-    width: '20%', // Exact value from mockup
+    width: '20%', 
   },
   timeCellText: {
     color: COLORS.white,
     fontWeight: 'bold',
-    fontSize: 14, // Exact value from mockup
+    fontSize: 14, 
   },
   paceCell: {
-    width: '50%', // Exact value from mockup
+    width: '50%', 
     flexDirection: 'row',
     alignItems: 'center',
   },
   paceCellText: {
     color: COLORS.white,
-    fontSize: 14, // Exact value from mockup
+    fontSize: 14, 
   },
   paceIndicator: {
-    width: 8, // Exact value from mockup
-    height: 8, // Exact value from mockup
+    width: 8, 
+    height: 8, 
     borderRadius: 4,
-    marginRight: 8, // Exact value from mockup
+    marginRight: 8, 
   },
   inclineCell: {
-    width: '30%', // Exact value from mockup
+    width: '30%', 
     alignItems: 'flex-end',
   },
   inclineCellText: {
     color: 'rgba(255, 255, 255, 0.6)',
-    fontSize: 14, // Exact value from mockup
+    fontSize: 14, 
   },
   startButton: {
     backgroundColor: COLORS.accent,
-    borderRadius: 25, // Exact value from mockup
-    padding: 16, // Exact value from mockup
+    paddingVertical: 16,
+    borderRadius: 25, 
     alignItems: 'center',
-    marginTop: 20, // Exact value from mockup
-    marginBottom: 30, // Add space at bottom
+    marginTop: 20, 
+    marginBottom: 30, 
   },
   startButtonText: {
     color: COLORS.black,
-    fontSize: 16, // Exact value from mockup
+    fontSize: 16, 
     fontWeight: 'bold',
   },
   signInButton: {
     backgroundColor: COLORS.darkGray,
-    borderRadius: 25, // Exact value from mockup
-    padding: 16, // Exact value from mockup
+    paddingVertical: 16,
+    borderRadius: 25, 
     alignItems: 'center',
-    marginTop: 20, // Exact value from mockup
-    marginBottom: 30, // Add space at bottom
+    marginTop: 20, 
+    marginBottom: 30, 
     borderWidth: 1,
     borderColor: COLORS.accent,
   },
   signInButtonText: {
     color: COLORS.accent,
-    fontSize: 16, // Exact value from mockup
+    fontSize: 16, 
     fontWeight: 'bold',
   },
   errorText: {
     color: COLORS.white,
     fontSize: FONT_SIZES.large,
     textAlign: 'center',
-    marginTop: 100,
+    marginTop: SPACING.large,
   },
   favoriteButton: {
     position: 'absolute',

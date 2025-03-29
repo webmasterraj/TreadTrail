@@ -19,7 +19,7 @@ export const COLORS = {
   black: '#000000',    // Pure black for background
   darkGray: '#121212', // Slightly lighter black for cards
   mediumGray: '#222222', // For secondary backgrounds
-  lightGray: 'rgba(255, 255, 255, 0.1)', // For subtle highlights
+  lightGray: 'rgba(255, 255, 255, 0.8)', // For subtle highlights
   white: '#FFFFFF',    // For text
   
   // Transparency overlays - for gradients matching mockups
