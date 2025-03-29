@@ -12,14 +12,34 @@ import { SubscriptionProvider } from './src/context/SubscriptionContext';
 import { store, persistor } from './src/redux/store';
 import Navigation from './src/navigation/Navigation';
 import { COLORS } from './src/styles/theme';
-import { fetchWorkoutPrograms } from './src/redux/slices/workoutProgramsSlice';
+import { fetchWorkoutPrograms, selectWorkoutPrograms } from './src/redux/slices/workoutProgramsSlice';
 import NetInfo from '@react-native-community/netinfo';
+import { initializeAudioSystem, preFetchWorkoutAudio } from './src/utils/audioUtils';
 
 const App: React.FC = () => {
   // Initialize data and set up network listener
   useEffect(() => {
+    // Initialize audio system
+    initializeAudioSystem().catch(error => {
+      console.error('Failed to initialize audio system:', error);
+    });
+    
     // Dispatch fetch in background without awaiting
-    store.dispatch(fetchWorkoutPrograms());
+    store.dispatch(fetchWorkoutPrograms())
+      .then(() => {
+        // After workout programs are loaded, pre-fetch audio files
+        const state = store.getState();
+        const workoutPrograms = selectWorkoutPrograms(state);
+        
+        // Pre-fetch audio files regardless of user preferences
+        if (workoutPrograms.length > 0) {
+          console.log('[APP] Pre-fetching audio files for workouts');
+          preFetchWorkoutAudio(workoutPrograms);
+        }
+      })
+      .catch(error => {
+        console.error('Failed to fetch workout programs:', error);
+      });
     
     // Set up network listener for sync when connection is restored
     const unsubscribe = NetInfo.addEventListener(state => {

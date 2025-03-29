@@ -57,6 +57,8 @@ import { useSubscription } from '../context/SubscriptionContext';
 import { calculateSegmentCalories } from '../utils/calorieUtils';
 import { Ionicons } from '@expo/vector-icons';
 import Svg, { Circle } from 'react-native-svg';
+import { loadSegmentAudio, loadCountdownSound } from '../utils/audioUtils';
+import { AppDispatch } from '../redux/store';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'WorkoutInProgress'>;
 
@@ -145,7 +147,7 @@ const WorkoutInProgressScreen: React.FC<Props> = ({ route, navigation }) => {
   const prevIsSkippingRef = useRef(false);
   
   // Redux state
-  const dispatch = useDispatch();
+  const dispatch = useDispatch<AppDispatch>();
   const activeWorkout = useSelector(selectActiveWorkout);
   const isWorkoutActive = activeWorkout !== null;
   const isRunning = useSelector(selectIsRunning);
@@ -364,7 +366,7 @@ const WorkoutInProgressScreen: React.FC<Props> = ({ route, navigation }) => {
   useEffect(() => {
     if (!activeWorkout || !audioEnabled) return;
 
-    const loadSegmentAudio = async () => {
+    const loadWorkoutAudio = async () => {
       try {
         // Clean up any existing sounds
         for (const key in sounds) {
@@ -378,10 +380,13 @@ const WorkoutInProgressScreen: React.FC<Props> = ({ route, navigation }) => {
         // Load audio for each segment that has an audio file
         for (let i = 0; i < activeWorkout.segments.length; i++) {
           const segment = activeWorkout.segments[i];
-          if (segment.audio && segment.audio.file) {
+          if (segment.audio) {
             try {
-              const { sound } = await Audio.Sound.createAsync({ uri: segment.audio.file });
-              sounds[`segment-${i}`] = sound;
+              // Use the new audio caching system to load audio
+              const sound = await loadSegmentAudio(segment);
+              if (sound) {
+                sounds[`segment-${i}`] = sound;
+              }
             } catch (e) {
               console.error(`Failed to load audio for segment ${i}:`, e);
             }
@@ -393,7 +398,7 @@ const WorkoutInProgressScreen: React.FC<Props> = ({ route, navigation }) => {
       }
     };
 
-    loadSegmentAudio();
+    loadWorkoutAudio();
 
     // Clean up sounds when component unmounts
     return () => {
@@ -589,75 +594,84 @@ const WorkoutInProgressScreen: React.FC<Props> = ({ route, navigation }) => {
   };
 
   // Handle workout completion
-  const handleWorkoutComplete = () => {
-    // First create a session from the current workout state
-    if (activeWorkout) {
-      // Generate a unique ID for the session
-      const sessionId = `session_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+  const handleWorkoutComplete = async () => {
+    try {
+      // First create a session from the current workout state
+      if (activeWorkout) {
+        // Generate a unique ID for the session
+        const sessionId = `session_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
 
-      // Create completed segments array
-      const completedSegments = activeWorkout.segments.map((segment: WorkoutSegment, index: number) => {
-        return {
-          type: segment.type,
-          duration: index < currentSegmentIndex ? segment.duration : 
-                   index === currentSegmentIndex ? segmentElapsedTime : 0,
-          plannedDuration: segment.duration,
-          skipped: index > currentSegmentIndex || 
-                  (index === currentSegmentIndex && segmentElapsedTime < segment.duration)
+        // Create completed segments array
+        const completedSegments = activeWorkout.segments.map((segment: WorkoutSegment, index: number) => {
+          return {
+            type: segment.type,
+            duration: index < currentSegmentIndex ? segment.duration : 
+                     index === currentSegmentIndex ? segmentElapsedTime : 0,
+            plannedDuration: segment.duration,
+            skipped: index > currentSegmentIndex || 
+                    (index === currentSegmentIndex && segmentElapsedTime < segment.duration)
+          };
+        });
+
+        // Create the session object
+        const now = new Date();
+        const localDateString = 
+          now.getFullYear() + '-' + 
+          String(now.getMonth() + 1).padStart(2, '0') + '-' + 
+          String(now.getDate()).padStart(2, '0');
+        
+        // Get user's pace settings to include in the session
+        const paceSettings = userSettings?.paceSettings;
+        
+        const session = {
+          id: sessionId,
+          workoutId: activeWorkout.id,
+          workoutName: activeWorkout.name,
+          date: localDateString, // Local date string in YYYY-MM-DD format
+          startTime: now.toISOString(), // Keep ISO string for full timestamp
+          endTime: now.toISOString(),
+          duration: elapsedTime,
+          completed: currentSegmentIndex >= activeWorkout.segments.length - 1,
+          pauses: [], // Could track pauses in a real implementation
+          segments: completedSegments,
+          paceSettings: paceSettings, // Add pace settings to allow distance calculation
+          caloriesBurned: isPremium && hasWeight ? Math.round(caloriesBurned) : undefined,
         };
-      });
 
-      // Create the session object
-      const now = new Date();
-      const localDateString = 
-        now.getFullYear() + '-' + 
-        String(now.getMonth() + 1).padStart(2, '0') + '-' + 
-        String(now.getDate()).padStart(2, '0');
-        
-      // Get user's pace settings to include in the session
-      const paceSettings = userSettings?.paceSettings;
-        
-      const session = {
-        id: sessionId,
-        workoutId: activeWorkout.id,
-        workoutName: activeWorkout.name,
-        date: localDateString, // Local date string in YYYY-MM-DD format
-        startTime: now.toISOString(), // Keep ISO string for full timestamp
-        endTime: now.toISOString(),
-        duration: elapsedTime,
-        completed: currentSegmentIndex >= activeWorkout.segments.length - 1,
-        pauses: [], // Could track pauses in a real implementation
-        segments: completedSegments,
-        paceSettings: paceSettings, // Add pace settings to allow distance calculation
-        caloriesBurned: isPremium && hasWeight ? Math.round(caloriesBurned) : undefined,
-      };
+        console.log('Creating workout session with pace settings:', paceSettings);
 
-      console.log('Creating workout session with pace settings:', paceSettings);
+        // Stop any playing audio
+        if (audioEnabled) {
+          stopAudio();
+        }
 
-      // Stop any playing audio
-      if (audioEnabled) {
-        stopAudio();
+        // Save the session using the utility function
+        createWorkoutSession(session).then(() => {
+          // End the workout in Redux
+          dispatch(endWorkoutAction());
+
+          // Add the session to Redux
+          dispatch(addWorkoutSession(session))
+            .catch(err => {
+              console.error('Error adding session to Redux:', err);
+            });
+
+          // Navigate to the complete screen
+          navigation.navigate('WorkoutComplete', { sessionId });
+        }).catch(error => {
+          console.error('Error saving workout session:', error);
+          // Still end the workout in redux
+          dispatch(endWorkoutAction());
+          navigation.navigate('WorkoutLibrary');
+        });
       }
-
-      // Save the session using the utility function
-      createWorkoutSession(session).then(() => {
-        // End the workout in Redux
-        dispatch(endWorkoutAction());
-
-        // IMPORTANT: Add the session to Redux directly to ensure stats are calculated properly
-        dispatch(addWorkoutSession(session))
-          .catch(err => {
-            console.error('Error adding session to Redux:', err);
-          });
-
-        // Navigate to the complete screen
-        navigation.navigate('WorkoutComplete', { sessionId });
-      }).catch(error => {
-        console.error('Error saving workout session:', error);
-        // Still end the workout in redux
-        dispatch(endWorkoutAction());
-        navigation.navigate('WorkoutLibrary');
-      });
+    } catch (error: any) {
+      console.error('Error completing workout:', error);
+      Alert.alert(
+        'Error',
+        'There was a problem saving your workout. Please try again.',
+        [{ text: 'OK' }]
+      );
     }
   };
 

@@ -37,6 +37,20 @@ const WorkoutDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
   const { userSettings, authState } = useContext(UserContext);
   const { isPremiumWorkout, subscriptionInfo } = useSubscription();
   
+  console.log(`[WorkoutDetailsScreen] Starting workout with ID: ${workoutId}`);
+  
+  // Get the workout from the Redux store - Fix the selector usage
+  const workout = useAppSelector(selectWorkoutById(workoutId));
+  
+  // Add detailed logging of the workout data
+  useEffect(() => {
+    if (workout) {
+      console.log(`[WorkoutDetailsScreen] Loaded workout: ${workout.name} with ${workout.segments.length} segments`);
+    } else {
+      console.log(`[WorkoutDetailsScreen] No workout found with ID: ${workoutId}`);
+    }
+  }, [workout, workoutId]);
+  
   // Calculate days remaining in trial
   const getDaysRemaining = () => {
     if (!subscriptionInfo.trialActive || !subscriptionInfo.trialEndDate) {
@@ -55,9 +69,6 @@ const WorkoutDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
   useEffect(() => {
     // No need to fetch workout programs here, using cached data from Redux store
   }, [dispatch]);
-  
-  // Get the workout from Redux
-  const workout = useAppSelector(selectWorkoutById(workoutId));
   
   // Handle case where workout is not found
   if (!workout) {
