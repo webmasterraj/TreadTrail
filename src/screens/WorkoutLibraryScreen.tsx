@@ -24,7 +24,7 @@ import {
   fetchWorkoutPrograms, 
   fetchWorkoutHistory, 
   fetchStats, 
-  toggleWorkoutFavorite,
+  toggleFavoriteWorkout,
   selectWorkoutPrograms, 
   selectIsLoading 
 } from '../redux/slices/workoutProgramsSlice';
@@ -246,35 +246,10 @@ const WorkoutLibraryScreen: React.FC<Props> = ({ navigation, route }) => {
     }
   };
   
-  // Toggle favorite status using Redux
+  // Handle favorite toggle
   const handleFavoriteToggle = (workoutId: string) => {
-    if (!authState.isAuthenticated) {
-      Alert.alert(
-        'Sign In Required',
-        'Please sign in to add workouts to your favorites.',
-        [
-          {
-            text: 'Sign In',
-            onPress: () => navigation.navigate('Landing'),
-          },
-          {
-            text: 'Cancel',
-            style: 'cancel',
-          },
-        ]
-      );
-      return;
-    }
-    
-    try {
-      if (!workoutId) {
-        return;
-      }
-      
-      // Directly dispatch the toggle action
-      dispatch(toggleWorkoutFavorite(workoutId));
-    } catch (error) {
-      console.error('Error toggling favorite:', error);
+    if (workoutId) {
+      dispatch(toggleFavoriteWorkout(workoutId));
     }
   };
   
@@ -476,7 +451,7 @@ const WorkoutLibraryScreen: React.FC<Props> = ({ navigation, route }) => {
                         key={`workout-${item.id}`} // Use a stable key that doesn't change on favorite toggle
                         workout={reduxWorkout} // Use the latest data from Redux
                         onPress={() => handleWorkoutPress(reduxWorkout.id)}
-                        onFavoriteToggle={() => dispatch(toggleWorkoutFavorite(reduxWorkout.id))}
+                        onFavoriteToggle={() => handleFavoriteToggle(reduxWorkout.id)}
                         showVisualization={true}
                         showFavoriteButton={authState.isAuthenticated}
                         isSubscribed={subscriptionInfo.isActive && !subscriptionInfo.trialActive}

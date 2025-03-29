@@ -1,13 +1,14 @@
 // Import necessary libraries
 import { createSlice, createAsyncThunk, PayloadAction } from '@reduxjs/toolkit';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import supabase from '../../api/supabaseClient';
-import { queueWorkoutAudioDownloads } from '../../utils/audioUtils';
-import NetInfo from '@react-native-community/netinfo';
-
-// Import types
 import { WorkoutProgram, WorkoutSession, Stats } from '../../types';
 import { calculateTotalDistance } from '../../utils/helpers';
+import { fetchUserFavorites, addFavoriteWorkout, removeFavoriteWorkout } from '../../api/favoritesApi';
+import supabase from '../../api/supabaseClient';
+import NetInfo from '@react-native-community/netinfo';
+import { queueWorkoutAudioDownloads } from '../../utils/audioUtils';
+
+// Import types
 
 // Storage keys
 const WORKOUT_PROGRAMS_KEY = '@treadtrail:workout_programs';
@@ -77,45 +78,35 @@ const initialState: WorkoutProgramsState = {
 };
 
 // Async thunks
-export const fetchWorkoutPrograms = createAsyncThunk(
+const fetchWorkoutPrograms = createAsyncThunk(
   'workoutPrograms/fetch',
-  async (_, { rejectWithValue, getState }) => {
+  async (_, { rejectWithValue }) => {
     try {
-      console.log('[DEBUG] fetchWorkoutPrograms: Starting fetch');
-      
       // Check network connectivity
       const netInfo = await NetInfo.fetch();
       const isConnected = netInfo.isConnected && netInfo.isInternetReachable;
-      console.log(`[DEBUG] fetchWorkoutPrograms: Network status - connected: ${isConnected}, reachable: ${netInfo.isInternetReachable}`);
-      
-      // Get user session
-      const { data: { session } } = await supabase.auth.getSession();
-      const userId = session?.user?.id;
-      console.log(`[DEBUG] fetchWorkoutPrograms: User session - userId: ${userId ? 'exists' : 'null'}`);
       
       let workoutPrograms: WorkoutProgram[] = [];
       let favoriteIds: string[] = [];
       
+      // Get user session
+      const { data: session } = await supabase.auth.getSession();
+      const userId = session?.session?.user?.id;
+      
       // If offline, try to load from cache
       if (!isConnected) {
-        console.log('[DEBUG] fetchWorkoutPrograms: Offline, trying to load from cache');
-        try {
-          const cachedPrograms = await AsyncStorage.getItem('workoutPrograms');
-          if (cachedPrograms) {
-            workoutPrograms = JSON.parse(cachedPrograms);
-            console.log(`[DEBUG] fetchWorkoutPrograms: Loaded ${workoutPrograms.length} workouts from cache`);
-            return workoutPrograms;
-          } else {
-            console.log('[DEBUG] fetchWorkoutPrograms: No cached programs found');
-          }
-        } catch (error) {
-          console.log('[DEBUG] fetchWorkoutPrograms: Error loading from cache:', error);
+        console.log('Offline, trying to load workouts from cache');
+        const cachedPrograms = await AsyncStorage.getItem('workoutPrograms');
+        if (cachedPrograms) {
+          workoutPrograms = JSON.parse(cachedPrograms);
+          console.log(`Loaded ${workoutPrograms.length} workouts from cache`);
+        } else {
+          console.log('No cached workout programs found');
+          return rejectWithValue('No internet connection and no cached data available');
         }
-      }
-      
-      // If online, always fetch from Supabase
-      if (isConnected) {
-        console.log('[DEBUG] fetchWorkoutPrograms: Online, fetching from Supabase');
+      } else {
+        // Online, fetch from Supabase
+        console.log('Fetching workout programs from Supabase');
         
         // Fetch workout programs from Supabase
         const { data: supabaseWorkouts, error: workoutsError } = await supabase
@@ -124,24 +115,20 @@ export const fetchWorkoutPrograms = createAsyncThunk(
           .eq('is_active', true);
         
         if (workoutsError) {
-          console.error('[DEBUG] fetchWorkoutPrograms: Error fetching workouts from Supabase:', workoutsError);
-          // If we have cached data, use that instead of failing
-          try {
-            const cachedPrograms = await AsyncStorage.getItem('workoutPrograms');
-            if (cachedPrograms) {
-              workoutPrograms = JSON.parse(cachedPrograms);
-              console.log(`[DEBUG] fetchWorkoutPrograms: Using cached data due to Supabase error (${workoutPrograms.length} workouts)`);
-              return workoutPrograms;
-            }
-          } catch (cacheError) {
-            console.error('[DEBUG] fetchWorkoutPrograms: Error loading from cache after Supabase error:', cacheError);
+          console.error('Error fetching workouts from Supabase:', workoutsError);
+          
+          // Try to use cached data as fallback
+          const cachedPrograms = await AsyncStorage.getItem('workoutPrograms');
+          if (cachedPrograms) {
+            workoutPrograms = JSON.parse(cachedPrograms);
+            console.log(`Using cached data due to Supabase error (${workoutPrograms.length} workouts)`);
+          } else {
+            return rejectWithValue('Failed to fetch workout programs and no cache available');
           }
-          return rejectWithValue('Failed to fetch workout programs from Supabase');
         } else if (supabaseWorkouts && supabaseWorkouts.length > 0) {
-          console.log(`[DEBUG] fetchWorkoutPrograms: Fetched ${supabaseWorkouts.length} workouts from Supabase`);
+          console.log(`Fetched ${supabaseWorkouts.length} workouts from Supabase`);
           
           // Fetch segments for each workout
-          console.log('[DEBUG] fetchWorkoutPrograms: Fetching segments for each workout');
           const workoutsWithSegments = await Promise.all(
             supabaseWorkouts.map(async (workout) => {
               const { data: segments, error: segmentsError } = await supabase
@@ -151,7 +138,7 @@ export const fetchWorkoutPrograms = createAsyncThunk(
                 .order('sequence_number', { ascending: true });
               
               if (segmentsError) {
-                console.error(`[DEBUG] fetchWorkoutPrograms: Error fetching segments for workout ${workout.id}:`, segmentsError);
+                console.error(`Error fetching segments for workout ${workout.id}:`, segmentsError);
                 return {
                   ...workout,
                   segments: [],
@@ -164,8 +151,6 @@ export const fetchWorkoutPrograms = createAsyncThunk(
                 let audioObj = undefined;
                 if (segment.audio_file_url) {
                   audioObj = { file: segment.audio_file_url };
-                } else {
-                  console.log(`[DEBUG] No audio_file_url for segment type: ${segment.type}, sequence: ${segment.sequence_number}`);
                 }
                 
                 return {
@@ -183,57 +168,44 @@ export const fetchWorkoutPrograms = createAsyncThunk(
                 duration: workout.duration,
                 category: workout.category,
                 segments: formattedSegments,
-                focus: workout.focus,
-                premium: workout.is_premium,
-                intensity: workout.intensity,
-                favorite: false,
+                focus: workout.focus || 'endurance', // Default focus if not provided
+                premium: workout.is_premium || false, // Default to non-premium
+                intensity: workout.intensity || 1, // Default intensity
+                favorite: false, // Will be set later
                 lastUsed: null
               };
             })
           );
           
           workoutPrograms = workoutsWithSegments;
-          console.log(`[DEBUG] fetchWorkoutPrograms: Processed ${workoutPrograms.length} workouts with segments`);
+          console.log(`Processed ${workoutPrograms.length} workouts with segments`);
           
-          // Cache the results
-          try {
-            await AsyncStorage.setItem('workoutPrograms', JSON.stringify(workoutPrograms));
-            console.log('[DEBUG] fetchWorkoutPrograms: Cached workout programs to AsyncStorage');
-          } catch (error) {
-            console.error('[DEBUG] fetchWorkoutPrograms: Error caching workout programs:', error);
-          }
-          
-          // Fetch user's favorite workouts
-          if (userId) {
-            console.log('[DEBUG] fetchWorkoutPrograms: Fetching user favorite workouts');
-            const { data: favorites, error: favoritesError } = await supabase
-              .from('user_favorite_workouts')
-              .select('workout_id')
-              .eq('user_id', userId);
-            
-            if (favoritesError) {
-              console.error('[DEBUG] fetchWorkoutPrograms: Error fetching favorites from Supabase:', favoritesError);
-            } else if (favorites) {
-              favoriteIds = favorites.map(fav => fav.workout_id);
-              console.log(`[DEBUG] fetchWorkoutPrograms: Fetched ${favoriteIds.length} favorite workouts`);
-            }
-          }
+          // Cache the results for offline use
+          await AsyncStorage.setItem('workoutPrograms', JSON.stringify(workoutPrograms));
         } else {
-          console.log('[DEBUG] fetchWorkoutPrograms: No workouts found in Supabase');
-          // Try to use cached data if no workouts found in Supabase
-          try {
-            const cachedPrograms = await AsyncStorage.getItem('workoutPrograms');
-            if (cachedPrograms) {
-              workoutPrograms = JSON.parse(cachedPrograms);
-              console.log(`[DEBUG] fetchWorkoutPrograms: Using cached data as no workouts found in Supabase (${workoutPrograms.length} workouts)`);
-              return workoutPrograms;
-            }
-          } catch (cacheError) {
-            console.error('[DEBUG] fetchWorkoutPrograms: Error loading from cache after finding no workouts:', cacheError);
+          console.log('No workouts found in Supabase');
+          
+          // Try to use cached data if no workouts found
+          const cachedPrograms = await AsyncStorage.getItem('workoutPrograms');
+          if (cachedPrograms) {
+            workoutPrograms = JSON.parse(cachedPrograms);
+            console.log(`Using cached data as no workouts found in Supabase (${workoutPrograms.length} workouts)`);
+          } else {
+            return rejectWithValue('No workout programs found in database and no cache available');
           }
         }
+      }
+      
+      // Fetch user's favorite workouts
+      if (userId) {
+        // User is authenticated, fetch favorites from Supabase
+        favoriteIds = await fetchUserFavorites();
       } else {
-        console.log('[DEBUG] fetchWorkoutPrograms: Offline and no cached data available');
+        // User is not authenticated, use local storage as fallback
+        const storedFavorites = await AsyncStorage.getItem(FAVORITE_WORKOUTS_KEY);
+        if (storedFavorites) {
+          favoriteIds = JSON.parse(storedFavorites);
+        }
       }
       
       // Apply favorite status to workout programs
@@ -242,17 +214,16 @@ export const fetchWorkoutPrograms = createAsyncThunk(
         favorite: favoriteIds.includes(workout.id)
       }));
       
-      console.log(`[DEBUG] fetchWorkoutPrograms: Returning ${result.length} workouts`);
       return result;
-    } catch (error) {
-      console.error('[DEBUG] fetchWorkoutPrograms: Unhandled error:', error);
+    } catch (error: any) {
+      console.error('Error in fetchWorkoutPrograms:', error);
       return rejectWithValue('Failed to fetch workout programs');
     }
   }
 );
 
 // Add fetchWorkoutHistory thunk
-export const fetchWorkoutHistory = createAsyncThunk(
+const fetchWorkoutHistory = createAsyncThunk(
   'workoutPrograms/fetchWorkoutHistory',
   async (_, { rejectWithValue }) => {
     try {
@@ -302,7 +273,7 @@ export const fetchWorkoutHistory = createAsyncThunk(
       }
       
       return history;
-    } catch (error: unknown) {
+    } catch (error: any) {
       console.error('Error in fetchWorkoutHistory:', error);
       return rejectWithValue('Failed to fetch workout history');
     }
@@ -310,7 +281,7 @@ export const fetchWorkoutHistory = createAsyncThunk(
 );
 
 // Add fetchStats thunk
-export const fetchStats = createAsyncThunk(
+const fetchStats = createAsyncThunk(
   'workoutPrograms/fetchStats',
   async (_, { getState, rejectWithValue }) => {
     try {
@@ -324,7 +295,7 @@ export const fetchStats = createAsyncThunk(
       await AsyncStorage.setItem(STATS_KEY, JSON.stringify(stats));
       
       return stats;
-    } catch (error: unknown) {
+    } catch (error: any) {
       console.error('Error in fetchStats:', error);
       return rejectWithValue('Failed to calculate stats');
     }
@@ -407,7 +378,7 @@ const fetchWorkoutProgramsFromCache = createAsyncThunk(
           
           // Queue audio downloads for all workouts in the background
           workouts.forEach(workout => {
-            queueWorkoutAudioDownloads(workout).catch(error => {
+            queueWorkoutAudioDownloads(workout).catch((error: any) => {
               console.error(`Error queuing audio downloads for workout ${workout.id}:`, error);
             });
           });
@@ -418,14 +389,14 @@ const fetchWorkoutProgramsFromCache = createAsyncThunk(
       }
       
       return workouts;
-    } catch (error: unknown) {
+    } catch (error: any) {
       return rejectWithValue((error as Error).message);
     }
   }
 );
 
 // Add workout session thunk
-export const addWorkoutSession = createAsyncThunk(
+const addWorkoutSession = createAsyncThunk(
   'workoutPrograms/addWorkoutSession',
   async (session: WorkoutSession, { getState, rejectWithValue }) => {
     try {
@@ -460,6 +431,47 @@ export const addWorkoutSession = createAsyncThunk(
   }
 );
 
+// New thunk for toggling workout favorites with backend integration
+const toggleFavoriteWorkout = createAsyncThunk(
+  'workoutPrograms/toggleFavorite',
+  async (workoutId: string, { getState, dispatch }) => {
+    try {
+      const state = getState() as { workoutPrograms: WorkoutProgramsState };
+      const workout = state.workoutPrograms.workoutPrograms.find(w => w.id === workoutId);
+      
+      if (!workout) {
+        throw new Error('Workout not found');
+      }
+      
+      // Get current favorite status
+      const currentFavorite = Boolean(workout.favorite);
+      const newFavoriteStatus = !currentFavorite;
+      
+      // First update local state for immediate UI feedback
+      dispatch(toggleWorkoutFavorite(workoutId));
+      
+      // Check if user is authenticated
+      const { data: session } = await supabase.auth.getSession();
+      
+      if (session?.session?.user) {
+        // User is authenticated, update in Supabase
+        if (newFavoriteStatus) {
+          await addFavoriteWorkout(workoutId);
+        } else {
+          await removeFavoriteWorkout(workoutId);
+        }
+      }
+      
+      return { workoutId, favorite: newFavoriteStatus };
+    } catch (error: any) {
+      console.error('Error toggling favorite workout:', error);
+      // If there was an error, toggle back to original state
+      dispatch(toggleWorkoutFavorite(workoutId));
+      throw error;
+    }
+  }
+);
+
 // Create slice
 const workoutProgramsSlice = createSlice({
   name: 'workoutPrograms',
@@ -489,10 +501,11 @@ const workoutProgramsSlice = createSlice({
           .map(workout => workout.id);
         
         // Persist only the favorite IDs to storage asynchronously
+        // This is kept for offline fallback
         AsyncStorage.setItem(FAVORITE_WORKOUTS_KEY, JSON.stringify(favoriteIds))
-          .catch(err => console.error('AsyncStorage error:', err));
+          .catch((err: any) => console.error('AsyncStorage error:', err));
       }
-    }
+    },
   },
 
   extraReducers: (builder) => {
@@ -687,3 +700,12 @@ export function calculateStats(workoutHistory: WorkoutSession[], workoutPrograms
 
 // Export reducer
 export default workoutProgramsSlice.reducer;
+
+// Export async thunks
+export {
+  fetchWorkoutPrograms,
+  fetchWorkoutHistory,
+  fetchStats,
+  addWorkoutSession,
+  toggleFavoriteWorkout
+};

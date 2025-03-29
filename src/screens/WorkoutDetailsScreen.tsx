@@ -1,13 +1,14 @@
-import React, { useContext, useEffect, useState } from 'react';
-import { 
-  View, 
-  Text, 
-  StyleSheet, 
-  SafeAreaView, 
-  ScrollView, 
+import React, { useContext, useState, useEffect } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
   TouchableOpacity,
-  Alert,
+  SafeAreaView,
   StatusBar,
+  Share,
+  Alert,
   Dimensions,
   Platform,
   LayoutChangeEvent
@@ -15,18 +16,20 @@ import {
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList, WorkoutSegment, PaceType } from '../types';
 import { COLORS, FONT_SIZES, SPACING, BORDER_RADIUS, DIFFICULTY_INDICATORS, FOCUS_INDICATORS, PACE_COLORS } from '../styles/theme';
-import WorkoutVisualization from '../components/workout/WorkoutVisualization';
 import { UserContext } from '../context';
 import { useSubscription } from '../context/SubscriptionContext';
 import { formatDuration, formatTime } from '../utils/helpers';
-import BottomTabBar from '../components/common/BottomTabBar';
+import { Ionicons } from '@expo/vector-icons';
+import WorkoutVisualization from '../components/workout/WorkoutVisualization';
 import Button from '../components/common/Button';
 import { useAppDispatch, useAppSelector } from '../redux/store';
 import { 
-  toggleWorkoutFavorite,
-  selectWorkoutById
+  selectWorkoutById, 
+  selectWorkoutPrograms,
+  toggleFavoriteWorkout,
 } from '../redux/slices/workoutProgramsSlice';
 import PremiumCard from '../components/subscription/PremiumCard';
+import BottomTabBar from '../components/common/BottomTabBar';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'WorkoutDetails'>;
 
@@ -171,15 +174,8 @@ const WorkoutDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
   
   // Handle favorite toggle
   const handleFavoriteToggle = () => {
-    try {
-      if (!workoutId || !workout) {
-        return;
-      }
-      
-      // Directly dispatch action to toggle the favorite status
-      dispatch(toggleWorkoutFavorite(workoutId));
-    } catch (error) {
-      console.error('Error toggling favorite:', error);
+    if (workoutId) {
+      dispatch(toggleFavoriteWorkout(workoutId));
     }
   };
   

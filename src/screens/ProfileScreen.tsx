@@ -32,7 +32,7 @@ import {
   selectWorkoutPrograms,
   selectWorkoutHistory,
   selectStats,
-  toggleWorkoutFavorite
+  toggleFavoriteWorkout
 } from '../redux/slices/workoutProgramsSlice';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Profile'>;
@@ -139,17 +139,10 @@ const ProfileScreen: React.FC<Props> = ({ navigation, route }) => {
     navigation.navigate('WorkoutDetails', { workoutId });
   };
   
-  // Toggle workout favorite status
+  // Handle favorite toggle
   const handleFavoriteToggle = (workoutId: string) => {
-    try {
-      if (!workoutId) {
-        return;
-      }
-      
-      // Dispatch the toggle action
-      dispatch(toggleWorkoutFavorite(workoutId));
-    } catch (error) {
-      console.error('Error toggling favorite:', error);
+    if (workoutId) {
+      dispatch(toggleFavoriteWorkout(workoutId));
     }
   };
 
