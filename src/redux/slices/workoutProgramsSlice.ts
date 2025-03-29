@@ -52,26 +52,13 @@ const INITIAL_STATS: Stats = {
   stats: {
     totalWorkouts: 0,
     totalDuration: 0,
-    totalSegmentsCompleted: 0,
     totalDistance: 0,
     totalCaloriesBurned: 0,
-    workoutsByCategory: {
-      'Easy \ud83d\udc23': 0,
-      'Trad HIIT \ud83c\udfc3\ud83c\udffc': 0,
-      'Hills \u26f0': 0,
-      'Endurance \ud83d\udcaa\ud83c\udffd': 0,
-      'Death \ud83d\udc80': 0,
-    },
-    workoutsByFocus: {
-      endurance: 0,
-      hiit: 0,
-      fat_burn: 0,
-    },
     lastWorkoutDate: null,
     longestWorkout: {
       duration: 0,
       date: '',
-    },
+    }
   },
   achievements: [],
 };
@@ -415,13 +402,62 @@ const fetchStats = createAsyncThunk(
   async (_, { getState, rejectWithValue }) => {
     try {
       const state = getState() as { workoutPrograms: WorkoutProgramsState };
-      const { workoutHistory, workoutPrograms } = state.workoutPrograms;
+      const { pendingSync } = state.workoutPrograms;
       
-      // Calculate stats from workout history and programs
-      const stats = calculateStats(workoutHistory, workoutPrograms);
+      // Check network connectivity
+      const netInfo = await NetInfo.fetch();
+      const isConnected = netInfo.isConnected && netInfo.isInternetReachable;
       
-      // Save stats to AsyncStorage
-      await AsyncStorage.setItem(STATS_KEY, JSON.stringify(stats));
+      let stats: Stats;
+      
+      if (isConnected) {
+        try {
+          // Get the current user ID
+          const { data: { session } } = await supabase.auth.getSession();
+          const userId = session?.user?.id;
+          
+          if (!userId) {
+            throw new Error('User not authenticated');
+          }
+          
+          // Fetch stats directly from Supabase database function with user_id parameter
+          const { data, error } = await supabase.rpc('calculate_user_stats', {
+            p_user_id: userId
+          });
+          
+          if (error) throw new Error(error.message);
+          
+          // Use the server-calculated stats
+          stats = {
+            stats: data,
+            lastUpdated: new Date().toISOString(),
+            achievements: []
+          };
+          
+          // Add any pending workouts to the stats
+          if (pendingSync.workoutHistory.length > 0) {
+            // Add pending workout stats to the server stats
+            stats = addPendingWorkoutStats(stats, pendingSync.workoutHistory);
+          }
+          
+          // Cache the stats
+          await AsyncStorage.setItem(STATS_KEY, JSON.stringify(stats));
+        } catch (error) {
+          console.error('Error fetching stats from server:', error);
+          // Fall back to cached stats
+          const cachedStatsJson = await AsyncStorage.getItem(STATS_KEY);
+          stats = cachedStatsJson ? JSON.parse(cachedStatsJson) : createEmptyStats();
+        }
+      } else {
+        // Offline mode: use cached stats
+        const cachedStatsJson = await AsyncStorage.getItem(STATS_KEY);
+        stats = cachedStatsJson ? JSON.parse(cachedStatsJson) : createEmptyStats();
+        
+        // Add pending workouts to cached stats
+        if (pendingSync.workoutHistory.length > 0) {
+          stats = addPendingWorkoutStats(stats, pendingSync.workoutHistory);
+        }
+      }
       
       return stats;
     } catch (error: any) {
@@ -430,6 +466,74 @@ const fetchStats = createAsyncThunk(
     }
   }
 );
+
+// Helper function to create empty stats object
+function createEmptyStats(): Stats {
+  return {
+    stats: {
+      totalWorkouts: 0,
+      totalDuration: 0,
+      totalDistance: 0,
+      totalCaloriesBurned: 0,
+      lastWorkoutDate: null,
+      longestWorkout: {
+        duration: 0,
+        date: '',
+      }
+    },
+    lastUpdated: new Date().toISOString(),
+    achievements: []
+  };
+}
+
+// Helper function to add pending workout stats to server stats
+function addPendingWorkoutStats(serverStats: Stats, pendingWorkouts: WorkoutSession[]): Stats {
+  // Create a copy of the server stats
+  const updatedStats = {
+    ...serverStats,
+    stats: { ...serverStats.stats }
+  };
+  
+  // Add pending workout stats to the server stats
+  pendingWorkouts.forEach(workout => {
+    // Update total workouts count
+    updatedStats.stats.totalWorkouts += 1;
+    
+    // Add duration
+    if (workout.duration) {
+      updatedStats.stats.totalDuration += workout.duration;
+      
+      // Check if this is the longest workout
+      if (workout.duration > updatedStats.stats.longestWorkout.duration) {
+        updatedStats.stats.longestWorkout = {
+          duration: workout.duration,
+          date: workout.date || ''
+        };
+      }
+    }
+    
+    // Add distance
+    if (workout.distance) {
+      updatedStats.stats.totalDistance += workout.distance;
+    }
+    
+    // Add calories burned
+    if (workout.caloriesBurned) {
+      updatedStats.stats.totalCaloriesBurned += workout.caloriesBurned;
+    }
+    
+    // Update last workout date if this workout is more recent
+    if (workout.date && (!updatedStats.stats.lastWorkoutDate || 
+        new Date(workout.date) > new Date(updatedStats.stats.lastWorkoutDate))) {
+      updatedStats.stats.lastWorkoutDate = workout.date;
+    }
+  });
+  
+  // Update the last updated timestamp
+  updatedStats.lastUpdated = new Date().toISOString();
+  
+  return updatedStats;
+}
 
 const fetchWorkoutProgramsFromCache = createAsyncThunk(
   'workoutPrograms/fetchWorkoutProgramsFromCache',
@@ -527,7 +631,7 @@ const fetchWorkoutProgramsFromCache = createAsyncThunk(
 // Add workout session thunk
 const addWorkoutSession = createAsyncThunk(
   'workoutPrograms/addWorkoutSession',
-  async (session: WorkoutSession, { getState, rejectWithValue }) => {
+  async (session: WorkoutSession, { getState, dispatch, rejectWithValue }) => {
     try {
       const state = getState() as { workoutPrograms: WorkoutProgramsState };
       const { workoutHistory, workoutPrograms } = state.workoutPrograms;
@@ -548,6 +652,9 @@ const addWorkoutSession = createAsyncThunk(
       
       // Persist updated programs to local storage
       await AsyncStorage.setItem(WORKOUT_PROGRAMS_KEY, JSON.stringify(updatedPrograms));
+      
+      // Refresh stats after adding a new workout
+      dispatch(fetchStats());
       
       return {
         session,
@@ -1112,100 +1219,6 @@ export const selectWorkoutById = (id: string) =>
 export const selectSessionById = (id: string) => 
   (state: { workoutPrograms: WorkoutProgramsState }) => 
     state.workoutPrograms.workoutHistory.find(session => session.id === id);
-
-// Calculate stats helper function
-export function calculateStats(workoutHistory: WorkoutSession[], workoutPrograms: WorkoutProgram[]): Stats {
-  const statsData = {
-    totalWorkouts: workoutHistory.length,
-    totalDuration: workoutHistory.reduce((sum, session) => sum + (session.duration || 0), 0),
-    totalSegmentsCompleted: workoutHistory.reduce((sum, session) => {
-      // Add safety check for sessions that might have undefined segments
-      if (!session.segments) {
-        return sum;
-      }
-      return sum + session.segments.filter(segment => segment && !segment.skipped).length;
-    }, 0),
-    totalDistance: 0,
-    totalCaloriesBurned: 0,
-    workoutsByCategory: {
-      'Easy \ud83d\udc23': 0,
-      'Trad HIIT \ud83c\udfc3\ud83c\udffc': 0,
-      'Hills \u26f0': 0,
-      'Endurance \ud83d\udcaa\ud83c\udffd': 0,
-      'Death \ud83d\udc80': 0,
-    },
-    workoutsByFocus: {
-      endurance: 0,
-      hiit: 0,
-      fat_burn: 0,
-    },
-    lastWorkoutDate: workoutHistory.length > 0 ? workoutHistory[0].date : null,
-    longestWorkout: {
-      duration: 0,
-      date: '',
-    },
-  };
-
-  // Find longest workout
-  let longestDuration = 0;
-  let longestDate = '';
-
-  // Calculate total distance across all workout sessions
-  let totalDistance = 0;
-
-  workoutHistory.forEach(session => {
-    if (session.duration && session.duration > longestDuration) {
-      longestDuration = session.duration;
-      longestDate = session.date || '';
-    }
-
-    // Skip invalid sessions
-    if (!session.workoutId) {
-      return;
-    }
-
-    // Count by category and focus
-    const workout = workoutPrograms.find(workout => workout.id === session.workoutId);
-    if (workout) {
-      // Make sure the values exist in our enum objects
-      if (workout.category && statsData.workoutsByCategory[workout.category] !== undefined) {
-        statsData.workoutsByCategory[workout.category]++;
-      }
-
-      if (workout.focus && statsData.workoutsByFocus[workout.focus] !== undefined) {
-        statsData.workoutsByFocus[workout.focus]++;
-      }
-    }
-
-    if (session.distance) {
-      totalDistance += session.distance;
-    }
-    // If distance is not pre-calculated but we have segments and paceSettings, calculate it
-    else if (session.segments && session.paceSettings) {
-      const sessionDistance = calculateTotalDistance(session.segments, session.paceSettings);
-      totalDistance += sessionDistance;
-    }
-    
-    // Add calories burned to total if available
-    if (session.caloriesBurned) {
-      statsData.totalCaloriesBurned += session.caloriesBurned;
-    }
-  });
-
-  statsData.longestWorkout = {
-    duration: longestDuration,
-    date: longestDate,
-  };
-
-  statsData.totalDistance = totalDistance;
-
-  // Create the full Stats object
-  return {
-    stats: statsData,
-    lastUpdated: new Date().toISOString(),
-    achievements: []
-  };
-}
 
 // Export reducer
 export default workoutProgramsSlice.reducer;

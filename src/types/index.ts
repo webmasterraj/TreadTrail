@@ -111,20 +111,7 @@ export interface WorkoutStats {
   totalWorkouts: number;
   totalDuration: number; // In seconds
   totalDistance: number; // In miles (always stored in miles internally)
-  totalSegmentsCompleted: number;
   totalCaloriesBurned: number; // Total calories burned across all workouts
-  workoutsByCategory: {
-    'Easy \ud83d\udc23': number;
-    'Trad HIIT \ud83c\udfc3\ud83c\udffc': number;
-    'Hills \u26f0': number;
-    'Endurance \ud83d\udcaa\ud83c\udffd': number;
-    'Death \ud83d\udc80': number;
-  };
-  workoutsByFocus: {
-    endurance: number;
-    hiit: number;
-    fat_burn: number;
-  };
   lastWorkoutDate: string | null; // ISO date string
   longestWorkout: {
     duration: number; // In seconds

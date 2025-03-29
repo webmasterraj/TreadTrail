@@ -13,19 +13,8 @@ const INITIAL_STATS: Stats = {
   stats: {
     totalWorkouts: 0,
     totalDuration: 0,
-    totalSegmentsCompleted: 0,
-    workoutsByCategory: {
-      'Easy \ud83d\udc23': 0,
-      'Trad HIIT \ud83c\udfc3\ud83c\udffc': 0,
-      'Hills \u26f0': 0,
-      'Endurance \ud83d\udcaa\ud83c\udffd': 0,
-      'Death \ud83d\udc80': 0,
-    },
-    workoutsByFocus: {
-      endurance: 0,
-      hiit: 0,
-      fat_burn: 0,
-    },
+    totalDistance: 0,
+    totalCaloriesBurned: 0,
     lastWorkoutDate: null,
     longestWorkout: {
       duration: 0,
@@ -208,20 +197,8 @@ export const DataProvider: React.FC<DataProviderProps> = ({ children }) => {
       const updatedStats: WorkoutStats = {
         totalWorkouts: workoutHistory.length,
         totalDuration: workoutHistory.reduce((sum, session) => sum + session.duration, 0),
-        totalSegmentsCompleted: workoutHistory.reduce((sum, session) => 
-          sum + session.segments.filter(segment => !segment.skipped).length, 0),
-        workoutsByCategory: {
-          'Easy \ud83d\udc23': 0,
-          'Trad HIIT \ud83c\udfc3\ud83c\udffc': 0,
-          'Hills \u26f0': 0,
-          'Endurance \ud83d\udcaa\ud83c\udffd': 0,
-          'Death \ud83d\udc80': 0,
-        },
-        workoutsByFocus: {
-          endurance: 0,
-          hiit: 0,
-          fat_burn: 0,
-        },
+        totalDistance: 0,
+        totalCaloriesBurned: 0,
         lastWorkoutDate: workoutHistory.length > 0 ? workoutHistory[0].date : null,
         longestWorkout: {
           duration: 0,
@@ -237,13 +214,6 @@ export const DataProvider: React.FC<DataProviderProps> = ({ children }) => {
         if (session.duration > longestDuration) {
           longestDuration = session.duration;
           longestDate = session.date;
-        }
-        
-        // Count by category and focus
-        const workout = getWorkoutById(session.workoutId);
-        if (workout) {
-          updatedStats.workoutsByCategory[workout.category]++;
-          updatedStats.workoutsByFocus[workout.focus]++;
         }
       });
       
