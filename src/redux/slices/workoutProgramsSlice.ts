@@ -787,7 +787,6 @@ const processPendingQueue = createAsyncThunk(
   'workoutPrograms/processPendingQueue',
   async (_, { getState, dispatch, rejectWithValue }) => {
     try {
-      console.log('[SYNC] Starting to process pending queue', new Date().toISOString());
       const state = getState() as { workoutPrograms: WorkoutProgramsState };
       
       // Get a fresh copy of the pending queue from AsyncStorage to avoid race conditions
@@ -806,20 +805,14 @@ const processPendingQueue = createAsyncThunk(
         console.log(`[SYNC] Falling back to Redux state, found ${pendingWorkouts.length} pending workouts`);
       }
       
-      if (pendingWorkouts.length > 0) {
-        console.log('[SYNC] First pending workout:', JSON.stringify(pendingWorkouts[0]));
-      }
-      
       // If nothing to process, return early
       if (pendingWorkouts.length === 0) {
-        console.log('[SYNC] No pending workouts to process, exiting early');
         return { processed: 0 };
       }
       
       // Check network connectivity
       const netInfo = await NetInfo.fetch();
       const isConnected = netInfo.isConnected && netInfo.isInternetReachable;
-      console.log(`[SYNC] Network status: connected=${netInfo.isConnected}, reachable=${netInfo.isInternetReachable}`);
       
       if (!isConnected) {
         console.log('[SYNC] No internet connection available, skipping sync');
@@ -827,7 +820,6 @@ const processPendingQueue = createAsyncThunk(
       }
       
       // Get user session
-      console.log('[SYNC] Checking user authentication');
       const { data: session, error: sessionError } = await supabase.auth.getSession();
       
       if (sessionError) {
@@ -835,9 +827,7 @@ const processPendingQueue = createAsyncThunk(
         return rejectWithValue('Authentication error: ' + sessionError.message);
       }
       
-      const userId = session?.session?.user?.id;
-      console.log('[SYNC] User ID:', userId ? userId : 'Not found');
-      
+      const userId = session?.session?.user?.id;      
       if (!userId) {
         console.log('[SYNC] User not authenticated, skipping sync');
         return rejectWithValue('User not authenticated');
@@ -847,27 +837,12 @@ const processPendingQueue = createAsyncThunk(
       let successCount = 0;
       let failureCount = 0;
       
-      console.log('[SYNC] Starting to process workouts one by one');
       for (const workout of pendingWorkouts) {
         try {
-          console.log(`[SYNC] Processing workout: ${workout.id}, name: ${workout.workoutName}`);
-          console.log('[SYNC] Workout data:', JSON.stringify({
-            id: workout.id,
-            workout_id: workout.workoutId,
-            date: workout.date,
-            duration: workout.duration,
-            distance: workout.distance,
-            completed: workout.completed
-          }));
-          
-          // Insert workout to Supabase
-          console.log('[SYNC] Sending workout to Supabase');
-          
           // Get user settings for weight if not provided in workout
           let userWeight = workout.weight;
           if (!userWeight) {
             try {
-              console.log('[SYNC] Fetching user weight from settings');
               const { data: userSettings } = await supabase
                 .from('user_settings')
                 .select('weight')
@@ -876,13 +851,12 @@ const processPendingQueue = createAsyncThunk(
                 
               if (userSettings?.weight) {
                 userWeight = userSettings.weight;
-                console.log(`[SYNC] Found user weight: ${userWeight}`);
               }
             } catch (error) {
               console.error('[SYNC] Error fetching user weight:', error);
             }
           }
-          
+          // Insert workout to Supabase          
           const { data, error } = await supabase
             .from('workout_history')
             .upsert({
@@ -910,7 +884,6 @@ const processPendingQueue = createAsyncThunk(
             continue;
           }
           
-          console.log('[SYNC] Workout synced successfully:', data);
           successCount++;
         } catch (error) {
           console.error('[SYNC] Error processing workout in queue:', error);
@@ -924,7 +897,6 @@ const processPendingQueue = createAsyncThunk(
       
       // Update user's last_active timestamp
       try {
-        console.log('[SYNC] Updating user last_active timestamp');
         const { error: updateError } = await supabase
           .from('users')
           .update({ last_active: new Date().toISOString() })
@@ -932,8 +904,6 @@ const processPendingQueue = createAsyncThunk(
           
         if (updateError) {
           console.error('[SYNC] Error updating last_active timestamp:', updateError);
-        } else {
-          console.log('[SYNC] Updated last_active timestamp successfully');
         }
       } catch (error) {
         console.error('[SYNC] Error updating last_active timestamp:', error);
@@ -941,15 +911,11 @@ const processPendingQueue = createAsyncThunk(
       
       // If we processed any workouts successfully, clear the queue and refresh data
       if (successCount > 0) {
-        console.log('[SYNC] Clearing pending queue and refreshing data');
-        
         // Only remove successfully processed workouts
         const remainingWorkouts = pendingWorkouts.filter((_, index) => {
           // This is a simplification - in a real implementation we'd track which specific workouts failed
           return index >= successCount;
         });
-        
-        console.log(`[SYNC] Keeping ${remainingWorkouts.length} workouts in the queue that failed to sync`);
         
         // Clear the pending queue
         await AsyncStorage.setItem(PENDING_SYNC_KEY, JSON.stringify({
@@ -982,21 +948,11 @@ const initializePendingQueue = createAsyncThunk(
   'workoutPrograms/initializePendingQueue',
   async (_, { dispatch }) => {
     try {
-      console.log('[SYNC-INIT] Initializing pending queue');
       // Load pending queue from AsyncStorage
       const pendingQueueJson = await AsyncStorage.getItem(PENDING_SYNC_KEY);
       const pendingQueue = pendingQueueJson ? JSON.parse(pendingQueueJson) : { workoutHistory: [], favoriteWorkouts: [] };
       
-      console.log(`[SYNC-INIT] Found ${pendingQueue.workoutHistory.length} pending workouts in storage`);
-      
-      // Log the pending workouts for debugging
       if (pendingQueue.workoutHistory.length > 0) {
-        console.log('[SYNC-INIT] Pending workouts:', JSON.stringify(pendingQueue.workoutHistory.map((w: WorkoutSession) => ({ 
-          id: w.id, 
-          workoutName: w.workoutName,
-          date: w.date 
-        }))));
-        
         // Try to process the queue after a short delay to ensure app is fully initialized
         setTimeout(() => {
           console.log('[SYNC-INIT] Attempting to process pending queue after app initialization');
@@ -1017,8 +973,6 @@ const checkAndProcessPendingQueue = createAsyncThunk(
   'workoutPrograms/checkAndProcessPendingQueue',
   async (_, { dispatch, getState }) => {
     try {
-      console.log('[SYNC-CHECK] Checking for pending workouts to sync');
-      
       // Read directly from AsyncStorage to avoid race conditions
       let pendingCount = 0;
       try {
@@ -1027,7 +981,6 @@ const checkAndProcessPendingQueue = createAsyncThunk(
           const pendingQueue = JSON.parse(pendingQueueJson);
           pendingCount = pendingQueue.workoutHistory?.length || 0;
         }
-        console.log(`[SYNC-CHECK] Found ${pendingCount} pending workouts in AsyncStorage`);
       } catch (error) {
         console.error('[SYNC-CHECK] Error reading from AsyncStorage:', error);
         // Fall back to Redux state
@@ -1037,11 +990,9 @@ const checkAndProcessPendingQueue = createAsyncThunk(
       }
       
       if (pendingCount > 0) {
-        console.log(`[SYNC-CHECK] Found ${pendingCount} pending workouts, triggering sync`);
         await dispatch(processPendingQueue()).unwrap();
         return { triggered: true, pendingCount };
       } else {
-        console.log('[SYNC-CHECK] No pending workouts found');
         return { triggered: false, pendingCount: 0 };
       }
     } catch (error) {
