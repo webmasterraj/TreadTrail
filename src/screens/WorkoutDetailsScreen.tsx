@@ -23,7 +23,6 @@ import BottomTabBar from '../components/common/BottomTabBar';
 import Button from '../components/common/Button';
 import { useAppDispatch, useAppSelector } from '../redux/store';
 import { 
-  fetchWorkoutPrograms,
   toggleWorkoutFavorite,
   selectWorkoutById
 } from '../redux/slices/workoutProgramsSlice';
@@ -54,7 +53,7 @@ const WorkoutDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
   
   // Initialize workout data if not loaded
   useEffect(() => {
-    dispatch(fetchWorkoutPrograms());
+    // No need to fetch workout programs here, using cached data from Redux store
   }, [dispatch]);
   
   // Get the workout from Redux

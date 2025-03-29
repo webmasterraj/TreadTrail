@@ -2,7 +2,7 @@
  * TreadTrail - Treadmill Interval Training App
  */
 
-import React from 'react';
+import React, { useEffect } from 'react';
 import { StatusBar } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { Provider } from 'react-redux';
@@ -12,8 +12,27 @@ import { SubscriptionProvider } from './src/context/SubscriptionContext';
 import { store, persistor } from './src/redux/store';
 import Navigation from './src/navigation/Navigation';
 import { COLORS } from './src/styles/theme';
+import { fetchWorkoutPrograms } from './src/redux/slices/workoutProgramsSlice';
+import NetInfo from '@react-native-community/netinfo';
 
 const App: React.FC = () => {
+  // Initialize data and set up network listener
+  useEffect(() => {
+    // Dispatch fetch in background without awaiting
+    store.dispatch(fetchWorkoutPrograms());
+    
+    // Set up network listener for sync when connection is restored
+    const unsubscribe = NetInfo.addEventListener(state => {
+      const isConnected = state.isConnected && state.isInternetReachable;
+      if (isConnected) {
+        // Sync data when connection is restored
+        // We'll implement syncOfflineData in workoutProgramsSlice
+      }
+    });
+    
+    return () => unsubscribe();
+  }, []);
+
   return (
     <Provider store={store}>
       <PersistGate loading={null} persistor={persistor}>

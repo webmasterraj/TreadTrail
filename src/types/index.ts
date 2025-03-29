@@ -9,6 +9,7 @@ export interface PaceSetting {
 }
 
 export interface PaceSettings {
+  [key: string]: { speed: number };
   recovery: PaceSetting;
   base: PaceSetting;
   run: PaceSetting;
@@ -25,8 +26,10 @@ export interface UserPreferences {
 // User profile
 export interface UserProfile {
   name: string;
-  dateCreated: string; // ISO date string
-  lastActive: string; // ISO date string
+  email?: string;
+  id?: string;
+  dateCreated?: string; // ISO date string
+  lastActive?: string; // ISO date string
   weight?: number; // Weight in kg for calorie calculations (optional)
 }
 
@@ -36,6 +39,7 @@ export interface UserSettings {
   paceSettings: PaceSettings;
   preferences: UserPreferences;
   subscription?: SubscriptionInfo; // Optional subscription information
+  weight?: number; // User weight in kg
 }
 
 // Workout types
@@ -99,6 +103,7 @@ export interface WorkoutSession {
   paceSettings?: PaceSettings; // Pace settings used during this workout
   distance?: number; // Distance in miles
   caloriesBurned?: number; // Calories burned during workout (for premium users)
+  weight?: number; // User weight at the time of workout
 }
 
 // Workout stats

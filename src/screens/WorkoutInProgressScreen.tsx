@@ -378,9 +378,9 @@ const WorkoutInProgressScreen: React.FC<Props> = ({ route, navigation }) => {
         // Load audio for each segment that has an audio file
         for (let i = 0; i < activeWorkout.segments.length; i++) {
           const segment = activeWorkout.segments[i];
-          if (segment.audio && segment.audio.uri) {
+          if (segment.audio && segment.audio.file) {
             try {
-              const { sound } = await Audio.Sound.createAsync({ uri: segment.audio.uri });
+              const { sound } = await Audio.Sound.createAsync({ uri: segment.audio.file });
               sounds[`segment-${i}`] = sound;
             } catch (e) {
               console.error(`Failed to load audio for segment ${i}:`, e);

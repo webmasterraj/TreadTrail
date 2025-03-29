@@ -27,7 +27,6 @@ import WorkoutCard from '../components/workout/WorkoutCard';
 import WorkoutCalendar from '../components/common/WorkoutCalendar';
 import { useAppDispatch, useAppSelector } from '../redux/store';
 import { 
-  fetchWorkoutPrograms, 
   fetchWorkoutHistory, 
   fetchStats,
   selectWorkoutPrograms,
@@ -55,7 +54,7 @@ const ProfileScreen: React.FC<Props> = ({ navigation, route }) => {
 
   // Initialize data when component mounts
   useEffect(() => {
-    dispatch(fetchWorkoutPrograms());
+    // No need to fetch workout programs here, using cached data from Redux store
     dispatch(fetchWorkoutHistory());
     dispatch(fetchStats());
     

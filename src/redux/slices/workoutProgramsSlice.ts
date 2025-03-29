@@ -1,7 +1,12 @@
+// Import necessary libraries
 import { createSlice, createAsyncThunk, PayloadAction } from '@reduxjs/toolkit';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { WorkoutProgram, WorkoutSession, Stats } from '../../types';
-import { DEFAULT_WORKOUT_PROGRAMS } from '../../constants/workoutData';
+import { v4 as uuidv4 } from 'uuid';
+import supabase from '../../api/supabaseClient';
+import NetInfo, { NetInfoState } from '@react-native-community/netinfo';
+
+// Import types
+import { WorkoutProgram, WorkoutSession, Stats, WorkoutPause, CompletedSegment, PaceSettings } from '../../types';
 import { calculateTotalDistance } from '../../utils/helpers';
 
 // Storage keys
@@ -9,6 +14,7 @@ const WORKOUT_PROGRAMS_KEY = '@treadtrail:workout_programs';
 const WORKOUT_HISTORY_KEY = '@treadtrail:workout_history';
 const STATS_KEY = '@treadtrail:stats';
 const FAVORITE_WORKOUTS_KEY = '@treadtrail:favorite_workouts';
+const PENDING_SYNC_KEY = '@treadtrail:pending_sync';
 
 // Initial stats
 const INITIAL_STATS: Stats = {
@@ -47,6 +53,12 @@ interface WorkoutProgramsState {
   stats: Stats;
   isLoading: boolean;
   error: string | null;
+  isSyncing: boolean;
+  pendingSync: {
+    workoutHistory: WorkoutSession[];
+    favoriteWorkouts: string[];
+  };
+  lastSyncedAt: string | null;
 }
 
 // Define initial state
@@ -56,31 +68,105 @@ const initialState: WorkoutProgramsState = {
   stats: INITIAL_STATS,
   isLoading: true,
   error: null,
+  isSyncing: false,
+  pendingSync: {
+    workoutHistory: [],
+    favoriteWorkouts: []
+  },
+  lastSyncedAt: null
 };
 
 // Async thunks
 const fetchWorkoutPrograms = createAsyncThunk(
   'workoutPrograms/fetch',
-  async (_, { rejectWithValue }) => {
+  async (_, { rejectWithValue, getState }) => {
     try {
-      // Always use default workout programs for structure
-      const workoutPrograms = [...DEFAULT_WORKOUT_PROGRAMS];
+      // Check network connectivity
+      const netInfo = await NetInfo.fetch();
+      const isConnected = netInfo.isConnected && netInfo.isInternetReachable;
       
-      // Try to load favorite workout IDs from storage
-      const storedFavorites = await AsyncStorage.getItem(FAVORITE_WORKOUTS_KEY);
+      // Get user session
+      const { data: { session } } = await supabase.auth.getSession();
+      const userId = session?.user?.id;
       
-      if (storedFavorites) {
-        const favoriteIds = JSON.parse(storedFavorites) as string[];
+      let workoutPrograms: WorkoutProgram[] = [];
+      let favoriteIds: string[] = [];
+      
+      // If online, fetch from Supabase
+      if (isConnected) {
+        // Fetch workout programs from Supabase
+        const { data: supabaseWorkouts, error: workoutsError } = await supabase
+          .from('workout_programs')
+          .select('*')
+          .eq('is_active', true);
         
-        // Apply favorite status to workout programs
-        return workoutPrograms.map(workout => ({
-          ...workout,
-          favorite: favoriteIds.includes(workout.id)
-        }));
-      } else {
-        return workoutPrograms;
+        if (workoutsError) {
+          console.error('Error fetching workouts from Supabase:', workoutsError);
+        } else if (supabaseWorkouts && supabaseWorkouts.length > 0) {
+          // Fetch segments for each workout
+          const workoutsWithSegments = await Promise.all(
+            supabaseWorkouts.map(async (workout) => {
+              const { data: segments, error: segmentsError } = await supabase
+                .from('workout_segments')
+                .select('*')
+                .eq('workout_id', workout.id)
+                .order('sequence_number', { ascending: true });
+              
+              if (segmentsError) {
+                console.error(`Error fetching segments for workout ${workout.id}:`, segmentsError);
+                return {
+                  ...workout,
+                  segments: [],
+                };
+              }
+              
+              // Transform segments to match app format
+              const formattedSegments = segments.map(segment => ({
+                type: segment.type,
+                duration: segment.duration,
+                incline: segment.incline,
+                audio: segment.audio_file_url ? { file: segment.audio_file_url } : undefined,
+              }));
+              
+              return {
+                id: workout.id,
+                name: workout.name,
+                description: workout.description,
+                duration: workout.duration,
+                category: workout.category,
+                segments: formattedSegments,
+                focus: workout.focus || 'endurance', // Default focus if not specified
+                premium: workout.is_premium || false,
+                intensity: workout.intensity || 1,
+                favorite: false,
+                lastUsed: null
+              };
+            })
+          );
+          
+          workoutPrograms = workoutsWithSegments;
+          
+          // Fetch user's favorite workouts
+          const { data: favorites, error: favoritesError } = await supabase
+            .from('user_favorite_workouts')
+            .select('workout_id')
+            .eq('user_id', userId);
+          
+          if (favoritesError) {
+            console.error('Error fetching favorites from Supabase:', favoritesError);
+          } else if (favorites) {
+            favoriteIds = favorites.map(fav => fav.workout_id);
+          }
+        }
       }
+      
+      // Apply favorite status to workout programs
+      return workoutPrograms.map(workout => ({
+        ...workout,
+        favorite: favoriteIds.includes(workout.id)
+      }));
     } catch (error) {
+      console.error('Error in fetchWorkoutPrograms:', error);
       return rejectWithValue('Failed to fetch workout programs');
     }
   }
@@ -90,16 +176,64 @@ const fetchWorkoutHistory = createAsyncThunk(
   'workoutPrograms/fetchHistory',
   async (_, { rejectWithValue }) => {
     try {
-      // Load workout history from storage
-      const storedHistory = await AsyncStorage.getItem(WORKOUT_HISTORY_KEY);
-      if (storedHistory) {
-        return JSON.parse(storedHistory) as WorkoutSession[];
-      } else {
-        // Initialize empty history
-        await AsyncStorage.setItem(WORKOUT_HISTORY_KEY, JSON.stringify([]));
-        return [] as WorkoutSession[];
+      // First try to get from Supabase if online
+      const netInfo = await NetInfo.fetch();
+      const isConnected = netInfo.isConnected && netInfo.isInternetReachable;
+      
+      if (isConnected) {
+        // Check if user is authenticated
+        const { data: sessionData } = await supabase.auth.getSession();
+        const userId = sessionData.session?.user?.id;
+        
+        if (userId) {
+          // Fetch from Supabase
+          const { data: historyData, error } = await supabase
+            .from('workout_history')
+            .select('*')
+            .eq('user_id', userId)
+            .order('created_at', { ascending: false });
+          
+          if (error) {
+            console.error('Error fetching history from Supabase:', error);
+          } else if (historyData && historyData.length > 0) {
+            // Transform the data to match our app's structure
+            const transformedHistory: WorkoutSession[] = historyData.map((session: any) => ({
+              id: session.id,
+              workoutId: session.workout_id,
+              workoutName: session.workout_name,
+              date: session.created_at,
+              duration: session.duration,
+              distance: session.distance,
+              calories: session.calories,
+              avgPace: session.avg_pace,
+              weight: session.user_weight,
+              notes: session.notes,
+              startTime: session.start_time || session.created_at,
+              endTime: session.end_time || new Date(new Date(session.created_at).getTime() + session.duration * 1000).toISOString(),
+              completed: true,
+              pauses: session.pauses || [],
+              segments: session.segments || [],
+              paceSettings: session.pace_settings || null,
+            }));
+            
+            // Save to AsyncStorage for offline use
+            await AsyncStorage.setItem(WORKOUT_HISTORY_KEY, JSON.stringify(transformedHistory));
+            
+            return transformedHistory;
+          }
+        }
       }
+      
+      // Fallback to local storage if offline or Supabase fetch failed
+      const historyJson = await AsyncStorage.getItem(WORKOUT_HISTORY_KEY);
+      
+      if (historyJson) {
+        return JSON.parse(historyJson);
+      }
+      
+      return [];
     } catch (error) {
+      console.error('Error fetching workout history:', error);
       return rejectWithValue('Failed to fetch workout history');
     }
   }
@@ -138,8 +272,6 @@ const fetchStats = createAsyncThunk(
   }
 );
 
-// We've removed the toggleFavorite thunk and are using directSetFavorite reducer instead
-
 const addWorkoutSession = createAsyncThunk(
   'workoutPrograms/addWorkoutSession',
   async (session: WorkoutSession, { getState, rejectWithValue, dispatch }) => {
@@ -149,7 +281,7 @@ const addWorkoutSession = createAsyncThunk(
       
       // Get user's pace settings to calculate distance
       const userSettings = await AsyncStorage.getItem('@treadtrail:user_settings');
-      let paceSettings = null;
+      let paceSettings: PaceSettings | null = null;
       
       if (userSettings) {
         const settings = JSON.parse(userSettings);
@@ -167,10 +299,102 @@ const addWorkoutSession = createAsyncThunk(
         };
       }
       
-      // Add session to history
+      // Check network connectivity
+      const netInfo = await NetInfo.fetch();
+      const isConnected = netInfo.isConnected && netInfo.isInternetReachable;
+      
+      // Get user session
+      const { data: { session: userSession } } = await supabase.auth.getSession();
+      const userId = userSession?.user?.id;
+      
+      // If online and authenticated, save to Supabase
+      if (isConnected && userId) {
+        // Insert workout session to Supabase
+        const { error: insertError } = await supabase
+          .from('workout_history')
+          .insert({
+            id: sessionWithDistance.id,
+            user_id: userId,
+            workout_id: sessionWithDistance.workoutId,
+            date: sessionWithDistance.date,
+            start_time: sessionWithDistance.startTime,
+            end_time: sessionWithDistance.endTime,
+            duration: sessionWithDistance.duration,
+            completed: sessionWithDistance.completed || true,
+            distance: sessionWithDistance.distance,
+            calories_burned: sessionWithDistance.caloriesBurned,
+            user_weight: sessionWithDistance.weight,
+            pauses: sessionWithDistance.pauses,
+            pace_settings: sessionWithDistance.paceSettings,
+          });
+        
+        if (insertError) {
+          console.error('Error saving workout session to Supabase:', insertError);
+          
+          // Store in pending sync if there was an error
+          const pendingSyncData = await AsyncStorage.getItem(PENDING_SYNC_KEY);
+          const pendingSync = pendingSyncData ? JSON.parse(pendingSyncData) : { workoutHistory: [], favoriteWorkouts: [] };
+          
+          pendingSync.workoutHistory.push(sessionWithDistance);
+          await AsyncStorage.setItem(PENDING_SYNC_KEY, JSON.stringify(pendingSync));
+        } else {
+          // Update user stats in Supabase
+          const { data: existingStats, error: statsError } = await supabase
+            .from('user_stats')
+            .select('*')
+            .eq('id', userId)
+            .single();
+          
+          if (statsError && statsError.code !== 'PGRST116') { // PGRST116 is "row not found"
+            console.error('Error fetching user stats:', statsError);
+          }
+          
+          // Calculate updated stats
+          const totalWorkouts = (existingStats?.total_workouts || 0) + 1;
+          const totalDuration = (existingStats?.total_duration || 0) + (sessionWithDistance.duration || 0);
+          const totalDistance = (existingStats?.total_distance || 0) + (sessionWithDistance.distance || 0);
+          const totalCaloriesBurned = (existingStats?.total_calories_burned || 0) + (sessionWithDistance.caloriesBurned || 0);
+          
+          // Determine if this is the longest workout
+          let longestWorkout = existingStats?.longest_workout || { duration: 0, date: '' };
+          if (sessionWithDistance.duration && sessionWithDistance.duration > (longestWorkout.duration || 0)) {
+            longestWorkout = {
+              duration: sessionWithDistance.duration,
+              date: sessionWithDistance.date || '',
+            };
+          }
+          
+          // Upsert user stats
+          const { error: upsertError } = await supabase
+            .from('user_stats')
+            .upsert({
+              id: userId,
+              total_workouts: totalWorkouts,
+              total_duration: totalDuration,
+              total_distance: totalDistance,
+              total_calories_burned: totalCaloriesBurned,
+              last_workout_date: sessionWithDistance.date,
+              longest_workout: longestWorkout,
+              updated_at: new Date().toISOString(),
+            });
+          
+          if (upsertError) {
+            console.error('Error updating user stats:', upsertError);
+          }
+        }
+      } else {
+        // Offline or not authenticated, store in pending sync
+        const pendingSyncData = await AsyncStorage.getItem(PENDING_SYNC_KEY);
+        const pendingSync = pendingSyncData ? JSON.parse(pendingSyncData) : { workoutHistory: [], favoriteWorkouts: [] };
+        
+        pendingSync.workoutHistory.push(sessionWithDistance);
+        await AsyncStorage.setItem(PENDING_SYNC_KEY, JSON.stringify(pendingSync));
+      }
+      
+      // Add session to local history
       const updatedHistory = [sessionWithDistance, ...workoutHistory];
       
-      // Persist updated history
+      // Persist updated history to local storage
       await AsyncStorage.setItem(WORKOUT_HISTORY_KEY, JSON.stringify(updatedHistory));
       
       // Update workout's lastUsed
@@ -181,10 +405,10 @@ const addWorkoutSession = createAsyncThunk(
         return workout;
       });
       
-      // Persist updated programs
+      // Persist updated programs to local storage
       await AsyncStorage.setItem(WORKOUT_PROGRAMS_KEY, JSON.stringify(updatedPrograms));
       
-      // Update stats after adding a new workout session
+      // Update local stats after adding a new workout session
       const updatedStats = calculateStats(updatedHistory, state.workoutPrograms.workoutPrograms);
       await AsyncStorage.setItem(STATS_KEY, JSON.stringify(updatedStats));
       
@@ -193,6 +417,7 @@ const addWorkoutSession = createAsyncThunk(
         updatedPrograms,
       };
     } catch (error) {
+      console.error('Error in addWorkoutSession:', error);
       return rejectWithValue('Failed to save workout session');
     }
   }
@@ -341,6 +566,237 @@ const initializeFavoriteWorkouts = createAsyncThunk(
   }
 );
 
+const syncOfflineData = createAsyncThunk(
+  'workoutPrograms/syncOfflineData',
+  async (_, { rejectWithValue, getState }) => {
+    try {
+      // Check network connectivity
+      const netInfo = await NetInfo.fetch();
+      const isConnected = netInfo.isConnected && netInfo.isInternetReachable;
+      
+      if (!isConnected) {
+        return { synced: false, message: 'No internet connection available', lastSyncedAt: null };
+      }
+      
+      // Get user session
+      const { data } = await supabase.auth.getSession();
+      const userId = data.session?.user?.id;
+      
+      if (!userId) {
+        return { synced: false, message: 'User not authenticated', lastSyncedAt: null };
+      }
+      
+      // Get pending sync data
+      const pendingSyncData = await AsyncStorage.getItem(PENDING_SYNC_KEY);
+      
+      if (!pendingSyncData) {
+        return { synced: true, message: 'No data to sync', lastSyncedAt: new Date().toISOString() };
+      }
+      
+      const pendingSync = JSON.parse(pendingSyncData) as {
+        workoutHistory: WorkoutSession[],
+        favoriteWorkouts: string[]
+      };
+      
+      let syncResults = {
+        workoutHistory: { success: 0, failed: 0 },
+        favoriteWorkouts: { success: 0, failed: 0 }
+      };
+      
+      // Sync workout history
+      if (pendingSync.workoutHistory && pendingSync.workoutHistory.length > 0) {
+        for (const session of pendingSync.workoutHistory) {
+          const { error } = await supabase
+            .from('workout_history')
+            .insert({
+              id: session.id,
+              user_id: userId,
+              workout_id: session.workoutId,
+              date: session.date,
+              start_time: session.startTime,
+              end_time: session.endTime,
+              duration: session.duration,
+              completed: session.completed || true,
+              distance: session.distance,
+              calories_burned: session.caloriesBurned,
+              user_weight: session.weight,
+              pauses: session.pauses,
+              pace_settings: session.paceSettings,
+            });
+          
+          if (error) {
+            console.error('Error syncing workout session:', error);
+            syncResults.workoutHistory.failed++;
+          } else {
+            syncResults.workoutHistory.success++;
+          }
+        }
+      }
+      
+      // Sync favorite workouts
+      if (pendingSync.favoriteWorkouts && pendingSync.favoriteWorkouts.length > 0) {
+        // First, delete all existing favorites
+        const { error: deleteError } = await supabase
+          .from('user_favorite_workouts')
+          .delete()
+          .eq('user_id', userId);
+        
+        if (deleteError) {
+          console.error('Error deleting existing favorites:', deleteError);
+        }
+        
+        // Then insert all current favorites
+        for (const workoutId of pendingSync.favoriteWorkouts) {
+          const { error } = await supabase
+            .from('user_favorite_workouts')
+            .insert({
+              user_id: userId,
+              workout_id: workoutId,
+              created_at: new Date().toISOString()
+            });
+          
+          if (error) {
+            console.error('Error syncing favorite workout:', error);
+            syncResults.favoriteWorkouts.failed++;
+          } else {
+            syncResults.favoriteWorkouts.success++;
+          }
+        }
+      }
+      
+      // Clear pending sync after successful sync
+      await AsyncStorage.setItem(PENDING_SYNC_KEY, JSON.stringify({
+        workoutHistory: [],
+        favoriteWorkouts: []
+      }));
+      
+      const lastSyncedAt = new Date().toISOString();
+      
+      return { 
+        synced: true, 
+        results: syncResults,
+        lastSyncedAt 
+      };
+    } catch (error) {
+      console.error('Error in syncOfflineData:', error);
+      return rejectWithValue({ message: 'Failed to sync offline data', lastSyncedAt: null });
+    }
+  }
+);
+
+const fetchFavoriteWorkoutsFromSupabase = createAsyncThunk(
+  'workoutPrograms/fetchFavoriteWorkoutsFromSupabase',
+  async (_, { rejectWithValue }) => {
+    try {
+      // Check network connectivity
+      const netInfo = await NetInfo.fetch();
+      const isConnected = netInfo.isConnected && netInfo.isInternetReachable;
+      
+      if (!isConnected) {
+        return { success: false, message: 'No internet connection available' };
+      }
+      
+      // Get user session
+      const { data } = await supabase.auth.getSession();
+      const userId = data.session?.user?.id;
+      
+      if (!userId) {
+        return { success: false, message: 'User not authenticated' };
+      }
+      
+      // Fetch favorite workouts from Supabase
+      const { data: favoriteWorkouts, error } = await supabase
+        .from('user_favorite_workouts')
+        .select('workout_id')
+        .eq('user_id', userId);
+      
+      if (error) {
+        console.error('Error fetching favorite workouts:', error);
+        return rejectWithValue('Failed to fetch favorite workouts');
+      }
+      
+      // Extract workout IDs
+      const favoriteWorkoutIds = favoriteWorkouts.map(fav => fav.workout_id);
+      
+      // Store in AsyncStorage
+      await AsyncStorage.setItem(FAVORITE_WORKOUTS_KEY, JSON.stringify(favoriteWorkoutIds));
+      
+      return { success: true, favoriteWorkoutIds };
+    } catch (error) {
+      console.error('Error in fetchFavoriteWorkoutsFromSupabase:', error);
+      return rejectWithValue('Failed to fetch favorite workouts');
+    }
+  }
+);
+
+const checkAndSyncData = createAsyncThunk(
+  'workoutPrograms/checkAndSyncData',
+  async (_, { dispatch }) => {
+    try {
+      // Check network connectivity
+      const netInfo = await NetInfo.fetch();
+      const isConnected = netInfo.isConnected && netInfo.isInternetReachable;
+      
+      if (!isConnected) {
+        return { synced: false, message: 'No internet connection available', lastSyncedAt: null };
+      }
+      
+      // Check if user is authenticated
+      const { data } = await supabase.auth.getSession();
+      const isAuthenticated = !!data.session?.user?.id;
+      
+      if (!isAuthenticated) {
+        return { synced: false, message: 'User not authenticated', lastSyncedAt: null };
+      }
+      
+      // Check if there's pending data to sync
+      const pendingSyncData = await AsyncStorage.getItem(PENDING_SYNC_KEY);
+      const hasPendingData = pendingSyncData && JSON.parse(pendingSyncData).workoutHistory?.length > 0 || 
+                             pendingSyncData && JSON.parse(pendingSyncData).favoriteWorkouts?.length > 0;
+      
+      if (hasPendingData) {
+        // Sync offline data
+        await dispatch(syncOfflineData());
+      }
+      
+      // Fetch latest workout programs
+      await dispatch(fetchWorkoutPrograms());
+      
+      // Fetch favorite workouts
+      await dispatch(fetchFavoriteWorkoutsFromSupabase());
+      
+      // Fetch workout history
+      await dispatch(fetchWorkoutHistory());
+      
+      const lastSyncedAt = new Date().toISOString();
+      
+      return { synced: true, message: 'Data synchronized successfully', lastSyncedAt };
+    } catch (error) {
+      console.error('Error in checkAndSyncData:', error);
+      return { synced: false, message: 'Failed to sync data', lastSyncedAt: null };
+    }
+  }
+);
+
+const handleNetworkChange = createAsyncThunk(
+  'workoutPrograms/handleNetworkChange',
+  async (netInfo: NetInfoState, { dispatch, getState }) => {
+    try {
+      const isConnected = netInfo.isConnected && netInfo.isInternetReachable;
+      
+      if (isConnected) {
+        // We're online, check if we need to sync data
+        await dispatch(checkAndSyncData());
+      }
+      
+      return { isConnected };
+    } catch (error) {
+      console.error('Error handling network change:', error);
+      return { isConnected: false };
+    }
+  }
+);
+
 // Create slice
 const workoutProgramsSlice = createSlice({
   name: 'workoutPrograms',
@@ -372,9 +828,56 @@ const workoutProgramsSlice = createSlice({
         // Persist only the favorite IDs to storage asynchronously
         AsyncStorage.setItem(FAVORITE_WORKOUTS_KEY, JSON.stringify(favoriteIds))
           .catch(err => console.error('AsyncStorage error:', err));
+        
+        // Add to pending sync for Supabase update when online
+        AsyncStorage.getItem(PENDING_SYNC_KEY)
+          .then(data => {
+            const pendingSync = data ? JSON.parse(data) : { workoutHistory: [], favoriteWorkouts: [] };
+            pendingSync.favoriteWorkouts = favoriteIds;
+            return AsyncStorage.setItem(PENDING_SYNC_KEY, JSON.stringify(pendingSync));
+          })
+          .catch(err => console.error('AsyncStorage error:', err));
+        
+        // Try to update Supabase if possible (fire and forget)
+        supabase.auth.getSession().then(({ data }) => {
+          const userId = data.session?.user?.id;
+          if (userId) {
+            // Check network status
+            NetInfo.fetch().then(netInfo => {
+              const isConnected = netInfo.isConnected && netInfo.isInternetReachable;
+              
+              if (isConnected) {
+                if (newFavoriteStatus) {
+                  // Add to favorites
+                  supabase
+                    .from('user_favorite_workouts')
+                    .upsert({ 
+                      user_id: userId, 
+                      workout_id: id,
+                      created_at: new Date().toISOString()
+                    })
+                    .then(({ error }) => {
+                      if (error) console.error('Error adding favorite to Supabase:', error);
+                    });
+                } else {
+                  // Remove from favorites
+                  supabase
+                    .from('user_favorite_workouts')
+                    .delete()
+                    .eq('user_id', userId)
+                    .eq('workout_id', id)
+                    .then(({ error }) => {
+                      if (error) console.error('Error removing favorite from Supabase:', error);
+                    });
+                }
+              }
+            });
+          }
+        });
       }
     }
   },
+
   extraReducers: (builder) => {
     // Handle fetchWorkoutPrograms
     builder.addCase(fetchWorkoutPrograms.pending, (state) => {
@@ -412,8 +915,6 @@ const workoutProgramsSlice = createSlice({
       // Handle error
     });
     
-    // We removed toggleFavorite handlers and are using directSetFavorite reducer instead
-    
     // Handle addWorkoutSession
     builder.addCase(addWorkoutSession.pending, (state) => {
       // Processing
@@ -448,6 +949,58 @@ const workoutProgramsSlice = createSlice({
     builder.addCase(initializeFavoriteWorkouts.rejected, (state, action) => {
       // Handle error
     });
+    
+    // Handle syncOfflineData
+    builder.addCase(syncOfflineData.pending, (state) => {
+      state.isSyncing = true;
+    });
+    builder.addCase(syncOfflineData.fulfilled, (state, action) => {
+      state.isSyncing = false;
+      state.lastSyncedAt = action.payload.lastSyncedAt;
+    });
+    builder.addCase(syncOfflineData.rejected, (state, action) => {
+      state.isSyncing = false;
+    });
+    
+    // Handle fetchFavoriteWorkoutsFromSupabase
+    builder.addCase(fetchFavoriteWorkoutsFromSupabase.pending, (state) => {
+      // Processing
+    });
+    builder.addCase(fetchFavoriteWorkoutsFromSupabase.fulfilled, (state, action) => {
+      if (action.payload.success) {
+        // Update favorite workouts
+        const favoriteIds = action.payload.favoriteWorkoutIds || [];
+        state.workoutPrograms = state.workoutPrograms.map(workout => ({
+          ...workout,
+          favorite: favoriteIds.includes(workout.id)
+        }));
+      }
+    });
+    builder.addCase(fetchFavoriteWorkoutsFromSupabase.rejected, (state, action) => {
+      // Handle error
+    });
+    
+    // Handle checkAndSyncData
+    builder.addCase(checkAndSyncData.pending, (state) => {
+      // Processing
+    });
+    builder.addCase(checkAndSyncData.fulfilled, (state, action) => {
+      state.lastSyncedAt = action.payload.lastSyncedAt;
+    });
+    builder.addCase(checkAndSyncData.rejected, (state, action) => {
+      // Handle error
+    });
+    
+    // Handle handleNetworkChange
+    builder.addCase(handleNetworkChange.pending, (state) => {
+      // Processing
+    });
+    builder.addCase(handleNetworkChange.fulfilled, (state, action) => {
+      // No state update needed
+    });
+    builder.addCase(handleNetworkChange.rejected, (state, action) => {
+      // Handle error
+    });
   },
 });
 
@@ -460,6 +1013,9 @@ export const selectWorkoutHistory = (state: { workoutPrograms: WorkoutProgramsSt
 export const selectStats = (state: { workoutPrograms: WorkoutProgramsState }) => state.workoutPrograms.stats;
 export const selectIsLoading = (state: { workoutPrograms: WorkoutProgramsState }) => state.workoutPrograms.isLoading;
 export const selectError = (state: { workoutPrograms: WorkoutProgramsState }) => state.workoutPrograms.error;
+export const selectIsSyncing = (state: { workoutPrograms: WorkoutProgramsState }) => state.workoutPrograms.isSyncing;
+export const selectLastSyncedAt = (state: { workoutPrograms: WorkoutProgramsState }) => state.workoutPrograms.lastSyncedAt;
+export const selectPendingSync = (state: { workoutPrograms: WorkoutProgramsState }) => state.workoutPrograms.pendingSync;
 
 // Export reducer
 export default workoutProgramsSlice.reducer;
@@ -471,7 +1027,11 @@ export {
   fetchStats,
   addWorkoutSession,
   updateStats,
-  initializeFavoriteWorkouts
+  initializeFavoriteWorkouts,
+  syncOfflineData,
+  fetchFavoriteWorkoutsFromSupabase,
+  checkAndSyncData,
+  handleNetworkChange
 };
 
 // Helper selectors

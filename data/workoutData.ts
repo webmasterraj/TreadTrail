@@ -1,8 +1,7 @@
-import { WorkoutProgram } from '../types';
-import { generateUniqueId } from '../utils/helpers';
+import { WorkoutProgram } from '../src/types';
 
 // Default workout programs as specified in the PRD
-export const DEFAULT_WORKOUT_PROGRAMS: WorkoutProgram[] = [
+export const WORKOUT_PROGRAMS: WorkoutProgram[] = [
   {
     "id": "baby-steps",
     "name": "Baby Steps",

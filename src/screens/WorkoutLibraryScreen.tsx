@@ -88,7 +88,10 @@ const WorkoutLibraryScreen: React.FC<Props> = ({ navigation, route }) => {
 
   // Initialize data on component mount
   useEffect(() => {
-    dispatch(fetchWorkoutPrograms());
+    // Fetch in background without blocking render
+    if (!isLoading) {
+      dispatch(fetchWorkoutPrograms());
+    }
     dispatch(fetchWorkoutHistory());
     dispatch(fetchStats());
     
@@ -103,7 +106,7 @@ const WorkoutLibraryScreen: React.FC<Props> = ({ navigation, route }) => {
         headerShown: false
       });
     }
-  }, [dispatch, navigation, authState.isAuthenticated]);
+  }, [dispatch, navigation, authState.isAuthenticated, isLoading]);
   
   
   // Convert km/h to mph for display

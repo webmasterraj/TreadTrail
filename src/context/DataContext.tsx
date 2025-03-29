@@ -1,7 +1,6 @@
 import React, { createContext, useState, useEffect, ReactNode } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { WorkoutProgram, WorkoutSession, WorkoutStats, AchievementProgress, Stats } from '../types';
-import { DEFAULT_WORKOUT_PROGRAMS } from '../constants/workoutData';
 
 // Storage keys
 const WORKOUT_PROGRAMS_KEY = '@treadtrail:workout_programs';
@@ -87,12 +86,9 @@ export const DataProvider: React.FC<DataProviderProps> = ({ children }) => {
         if (storedPrograms) {
           setWorkoutPrograms(JSON.parse(storedPrograms));
         } else {
-          // If no programs exist, use default ones
-          await AsyncStorage.setItem(
-            WORKOUT_PROGRAMS_KEY,
-            JSON.stringify(DEFAULT_WORKOUT_PROGRAMS)
-          );
-          setWorkoutPrograms(DEFAULT_WORKOUT_PROGRAMS);
+          // Initialize empty programs
+          await AsyncStorage.setItem(WORKOUT_PROGRAMS_KEY, JSON.stringify([]));
+          setWorkoutPrograms([]);
         }
         
         // Load workout history from storage

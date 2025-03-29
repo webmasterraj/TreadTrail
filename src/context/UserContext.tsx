@@ -6,6 +6,8 @@ import { v4 as uuidv4 } from 'uuid';
 import { Platform, NativeModules } from 'react-native';
 import * as AppleAuthentication from 'expo-apple-authentication';
 import { SubscriptionContext } from './SubscriptionContext';
+import supabase from '../api/supabaseClient';
+import { Session } from '@supabase/supabase-js';
 
 // Debug flag - set to true to enable debug logs
 const DEBUG_USER_CONTEXT = true;
@@ -70,15 +72,12 @@ interface UserContextType {
   signIn: (email: string, password: string) => Promise<boolean>;
   signInWithApple: () => Promise<boolean>;
   signOut: () => Promise<void>;
-  updateProfile: (name: string) => Promise<void>;
+  updateProfile: (name: string, weight: number | null) => Promise<{ success: boolean; error?: string }>;
   updatePaceSetting: (paceType: keyof typeof DEFAULT_PACE_SETTINGS, setting: PaceSetting) => Promise<void>;
-  updatePreference: <K extends keyof UserPreferences>(key: K, value: UserPreferences[K]) => Promise<any>;
+  updatePreference: <K extends keyof UserPreferences>(key: K, value: UserPreferences[K]) => Promise<UserPreferences>;
   resetToDefault: () => Promise<void>;
-  // Add the saveSettings function to allow direct saving
   saveSettings: (settings: UserSettings) => Promise<boolean>;
-  // Add preferences directly to the context
   preferences: UserPreferences;
-  // Add updateWeight function
   updateWeight: (weight: number) => Promise<void>;
 }
 
@@ -92,9 +91,9 @@ export const UserContext = createContext<UserContextType>({
   signIn: async () => false,
   signInWithApple: async () => false,
   signOut: async () => {},
-  updateProfile: async () => {},
+  updateProfile: async () => ({ success: false }),
   updatePaceSetting: async () => {},
-  updatePreference: async () => {},
+  updatePreference: async () => DEFAULT_PREFERENCES,
   resetToDefault: async () => {},
   saveSettings: async () => false,
   preferences: DEFAULT_PREFERENCES,
@@ -110,7 +109,7 @@ export const UserProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const [userSettings, setUserSettings] = useState<UserSettings | null>(null);
   const [authState, setAuthState] = useState<AuthState>(DEFAULT_AUTH_STATE);
   const [isLoading, setIsLoading] = useState<boolean>(true);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>('');
 
   // Get subscription context for trial functionality
   const { startFreeTrial } = useContext(SubscriptionContext);
@@ -125,773 +124,830 @@ export const UserProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         
         setIsLoading(true);
         
-        // Load auth state from storage
-        const storedAuthState = await AsyncStorage.getItem(AUTH_STATE_KEY);
-        let loadedAuthState = DEFAULT_AUTH_STATE;
+        // Check for existing Supabase session
+        const { data: { session }, error: sessionError } = await supabase.auth.getSession();
         
-        if (storedAuthState) {
-          loadedAuthState = JSON.parse(storedAuthState);
-          setAuthState(loadedAuthState);
-          
-          if (DEBUG_USER_CONTEXT) {
-            console.log('[DEBUG-USER-CONTEXT] Loaded auth state, isAuthenticated:', loadedAuthState.isAuthenticated);
-          }
-        } else if (DEBUG_USER_CONTEXT) {
-          console.log('[DEBUG-USER-CONTEXT] No stored auth state found');
+        if (sessionError) {
+          console.error('[DEBUG-USER-CONTEXT] Error getting session:', sessionError);
+          throw sessionError;
         }
         
-        // Try to load user-specific settings if authenticated
-        let settingsToLoad = null;
-        if (loadedAuthState.isAuthenticated && loadedAuthState.user?.id) {
+        if (DEBUG_USER_CONTEXT) {
+          console.log('[DEBUG-USER-CONTEXT] Supabase session check:', session ? 'Found session' : 'No session');
+        }
+        
+        // If we have a Supabase session, use it
+        if (session) {
+          await handleSuccessfulAuth(session);
+        } else {
+          // Otherwise, try to load from AsyncStorage as a fallback
+          const storedAuthState = await AsyncStorage.getItem(AUTH_STATE_KEY);
+          let loadedAuthState = DEFAULT_AUTH_STATE;
+          
+          if (storedAuthState) {
+            loadedAuthState = JSON.parse(storedAuthState);
+            setAuthState(loadedAuthState);
+            
+            if (DEBUG_USER_CONTEXT) {
+              console.log('[DEBUG-USER-CONTEXT] Loaded auth state from storage, isAuthenticated:', loadedAuthState.isAuthenticated);
+            }
+          } else if (DEBUG_USER_CONTEXT) {
+            console.log('[DEBUG-USER-CONTEXT] No stored auth state found');
+          }
+        }
+        
+        // Load user settings based on auth state
+        await loadUserSettings();
+        
+      } catch (err) {
+        console.error('Error initializing user context:', err);
+        setError('Failed to initialize user settings');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    // Subscribe to auth state changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      async (event: string, session: Session | null) => {
+        if (DEBUG_USER_CONTEXT) {
+          console.log(`[DEBUG-USER-CONTEXT] Auth state changed: ${event}`, session ? 'Has session' : 'No session');
+        }
+        
+        if (event === 'SIGNED_IN' && session) {
+          await handleSuccessfulAuth(session);
+        } else if (event === 'SIGNED_OUT') {
+          // Keep pace settings and preferences when signing out
+          const currentSettings = userSettings;
+          
+          // Reset auth state
+          setAuthState(DEFAULT_AUTH_STATE);
+          await AsyncStorage.removeItem(AUTH_STATE_KEY);
+          
+          // Create new settings with preserved pace settings and preferences
+          if (currentSettings) {
+            const newSettings: UserSettings = {
+              profile: { 
+                name: 'Guest',
+                email: '',
+                id: uuidv4() 
+              },
+              paceSettings: currentSettings.paceSettings,
+              preferences: currentSettings.preferences,
+              weight: currentSettings.weight,
+            };
+            
+            setUserSettings(newSettings);
+            await AsyncStorage.setItem(USER_SETTINGS_KEY, JSON.stringify(newSettings));
+            
+            if (DEBUG_USER_CONTEXT) {
+              console.log('[DEBUG-USER-CONTEXT] Preserved pace settings and preferences after sign out');
+            }
+          }
+        }
+      }
+    );
+
+    initialize();
+
+    // Cleanup subscription
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, []);
+
+  // Helper function to handle successful authentication
+  const handleSuccessfulAuth = async (session: Session) => {
+    if (!session.user) {
+      console.error('[DEBUG-USER-CONTEXT] Session has no user');
+      return;
+    }
+    
+    const user: User = {
+      id: session.user.id,
+      email: session.user.email || '',
+      name: session.user.user_metadata?.name || session.user.email?.split('@')[0] || 'User',
+      authMethod: session.user.app_metadata?.provider === 'apple' ? 'apple' : 'email',
+    };
+    
+    const newAuthState: AuthState = {
+      isAuthenticated: true,
+      user,
+      token: session.access_token,
+    };
+    
+    // Update auth state
+    setAuthState(newAuthState);
+    await AsyncStorage.setItem(AUTH_STATE_KEY, JSON.stringify(newAuthState));
+    
+    if (DEBUG_USER_CONTEXT) {
+      console.log('[DEBUG-USER-CONTEXT] Updated auth state with Supabase session');
+    }
+    
+    // Fetch user data from Supabase
+    const { data: userData, error: userError } = await supabase
+      .from('users')
+      .select('*')
+      .eq('id', user.id)
+      .single();
+    
+    if (userError && userError.code !== 'PGRST116') { // PGRST116 is "no rows returned" error
+      console.error('[DEBUG-USER-CONTEXT] Error fetching user data:', userError);
+    }
+    
+    // If user doesn't exist in our database yet, create them
+    if (!userData) {
+      const { error: insertError } = await supabase
+        .from('users')
+        .insert({
+          id: user.id,
+          email: user.email,
+          name: user.name,
+        });
+      
+      if (insertError) {
+        console.error('[DEBUG-USER-CONTEXT] Error creating user record:', insertError);
+      } else if (DEBUG_USER_CONTEXT) {
+        console.log('[DEBUG-USER-CONTEXT] Created new user record in database');
+      }
+    }
+    
+    // Fetch user settings
+    const { data: settingsData, error: settingsError } = await supabase
+      .from('user_settings')
+      .select('*')
+      .eq('id', user.id)
+      .single();
+    
+    if (settingsError && settingsError.code !== 'PGRST116') {
+      console.error('[DEBUG-USER-CONTEXT] Error fetching user settings:', settingsError);
+    }
+    
+    // Load or create user settings
+    await loadUserSettings();
+  };
+
+  // Load user settings based on current auth state
+  const loadUserSettings = async () => {
+    try {
+      let settingsToLoad = null;
+      
+      // Try to load user-specific settings if authenticated
+      if (authState.isAuthenticated && authState.user?.id) {
+        if (DEBUG_USER_CONTEXT) {
+          console.log(`[DEBUG-USER-CONTEXT] Loading settings for authenticated user ${authState.user.id}`);
+        }
+        
+        // First try to get from Supabase
+        const { data: settingsData, error: settingsError } = await supabase
+          .from('user_settings')
+          .select('*')
+          .eq('id', authState.user.id)
+          .single();
+        
+        if (settingsError && settingsError.code !== 'PGRST116') {
+          console.error('[DEBUG-USER-CONTEXT] Error fetching user settings from Supabase:', settingsError);
+        }
+        
+        if (settingsData) {
           if (DEBUG_USER_CONTEXT) {
-            console.log(`[DEBUG-USER-CONTEXT] Checking for user-specific settings for ${loadedAuthState.user.id}`);
+            console.log('[DEBUG-USER-CONTEXT] Found user settings in Supabase');
           }
           
-          const userKey = getUserSettingsKey(loadedAuthState.user.id);
+          // Convert from database format to app format
+          settingsToLoad = {
+            profile: {
+              id: authState.user.id,
+              name: authState.user.name,
+              email: authState.user.email,
+            },
+            paceSettings: settingsData.pace_settings || DEFAULT_PACE_SETTINGS,
+            preferences: settingsData.preferences || DEFAULT_PREFERENCES,
+            weight: settingsData.weight || 0, // Default to 0 instead of null
+          };
+        } else {
+          // If not in Supabase, try local storage as fallback
+          const userKey = getUserSettingsKey(authState.user.id);
           const userSpecificSettings = await AsyncStorage.getItem(userKey);
           
           if (userSpecificSettings) {
             if (DEBUG_USER_CONTEXT) {
-              console.log(`[DEBUG-USER-CONTEXT] Found user-specific settings for ${loadedAuthState.user.id}`);
+              console.log(`[DEBUG-USER-CONTEXT] Found user-specific settings in local storage for ${authState.user.id}`);
             }
             
             settingsToLoad = JSON.parse(userSpecificSettings);
             
-            if (DEBUG_USER_CONTEXT) {
-              console.log('[DEBUG-USER-CONTEXT] User settings structure:', {
-                hasProfile: !!settingsToLoad.profile,
-                hasPaceSettings: !!settingsToLoad.paceSettings,
-                hasPreferences: !!settingsToLoad.preferences,
+            // Sync to Supabase
+            const { error: insertError } = await supabase
+              .from('user_settings')
+              .insert({
+                id: authState.user.id,
+                weight: settingsToLoad.weight,
+                pace_settings: settingsToLoad.paceSettings,
+                preferences: settingsToLoad.preferences,
               });
-              
-              if (settingsToLoad.preferences) {
-                console.log('[DEBUG-USER-CONTEXT] User preferences:', settingsToLoad.preferences);
-              }
-            }
-          } else if (DEBUG_USER_CONTEXT) {
-            console.log(`[DEBUG-USER-CONTEXT] No user-specific settings found for ${loadedAuthState.user.id}`);
-          }
-        }
-        
-        // If no user-specific settings, try global settings
-        if (!settingsToLoad) {
-          if (DEBUG_USER_CONTEXT) {
-            console.log('[DEBUG-USER-CONTEXT] No user-specific settings found, trying global settings');
-          }
-          
-          const storedSettings = await AsyncStorage.getItem(USER_SETTINGS_KEY);
-          
-          if (storedSettings) {
-            settingsToLoad = JSON.parse(storedSettings);
             
-            if (DEBUG_USER_CONTEXT) {
-              console.log('[DEBUG-USER-CONTEXT] Found global settings');
-              console.log('[DEBUG-USER-CONTEXT] Global settings structure:', {
-                hasProfile: !!settingsToLoad.profile,
-                hasPaceSettings: !!settingsToLoad.paceSettings,
-                hasPreferences: !!settingsToLoad.preferences,
-              });
-              
-              if (settingsToLoad.preferences) {
-                console.log('[DEBUG-USER-CONTEXT] Global preferences:', settingsToLoad.preferences);
-              }
+            if (insertError) {
+              console.error('[DEBUG-USER-CONTEXT] Error syncing local settings to Supabase:', insertError);
+            } else if (DEBUG_USER_CONTEXT) {
+              console.log('[DEBUG-USER-CONTEXT] Synced local settings to Supabase');
             }
           } else if (DEBUG_USER_CONTEXT) {
-            console.log('[DEBUG-USER-CONTEXT] No global settings found');
+            console.log(`[DEBUG-USER-CONTEXT] No user-specific settings found for ${authState.user.id}`);
           }
-        }
-        
-        if (settingsToLoad) {
-          // If settings exist, parse and use them
-          if (DEBUG_USER_CONTEXT) {
-            console.log('[DEBUG-USER-CONTEXT] Loading stored settings');
-          }
-          
-          if (settingsToLoad.paceSettings) {
-            if (DEBUG_USER_CONTEXT) {
-              console.log('[DEBUG-USER-CONTEXT] Loaded pace settings:', {
-                recovery: settingsToLoad.paceSettings.recovery?.speed,
-                base: settingsToLoad.paceSettings.base?.speed,
-                run: settingsToLoad.paceSettings.run?.speed,
-                sprint: settingsToLoad.paceSettings.sprint?.speed
-              });
-            }
-          } else if (DEBUG_USER_CONTEXT) {
-            console.log('[DEBUG-USER-CONTEXT] No pace settings found in loaded settings');
-          }
-          
-          setUserSettings(settingsToLoad);
-          
-          if (DEBUG_USER_CONTEXT) {
-            console.log('[DEBUG-USER-CONTEXT] User settings set to state');
-          }
-        } else {
-          // Otherwise create default settings
-          if (DEBUG_USER_CONTEXT) {
-            console.log('[DEBUG-USER-CONTEXT] No settings found, creating defaults');
-          }
-          
-          const now = new Date().toISOString();
-          const defaultSettings: UserSettings = {
-            profile: {
-              name: '',
-              dateCreated: now,
-              lastActive: now,
-            },
-            paceSettings: DEFAULT_PACE_SETTINGS,
-            preferences: DEFAULT_PREFERENCES,
-          };
-          
-          // Save default settings to storage
-          await AsyncStorage.setItem(USER_SETTINGS_KEY, JSON.stringify(defaultSettings));
-          setUserSettings(defaultSettings);
-          
-          if (DEBUG_USER_CONTEXT) {
-            console.log('[DEBUG-USER-CONTEXT] Default settings created and saved');
-          }
-        }
-      } catch (err) {
-        setError('Failed to initialize user settings');
-        console.error('[DEBUG-USER-CONTEXT] Error initializing user settings:', err);
-      } finally {
-        setIsLoading(false);
-        if (DEBUG_USER_CONTEXT) {
-          console.log('[DEBUG-USER-CONTEXT] Initialization complete, isLoading set to false');
         }
       }
-    };
+      
+      // If no user-specific settings, try global settings
+      if (!settingsToLoad) {
+        if (DEBUG_USER_CONTEXT) {
+          console.log('[DEBUG-USER-CONTEXT] No user-specific settings found, trying global settings');
+        }
+        
+        const storedSettings = await AsyncStorage.getItem(USER_SETTINGS_KEY);
+        
+        if (storedSettings) {
+          settingsToLoad = JSON.parse(storedSettings);
+          
+          if (DEBUG_USER_CONTEXT) {
+            console.log('[DEBUG-USER-CONTEXT] Found global settings');
+          }
+        } else if (DEBUG_USER_CONTEXT) {
+          console.log('[DEBUG-USER-CONTEXT] No global settings found');
+        }
+      }
+      
+      // If still no settings, create default
+      if (!settingsToLoad) {
+        if (DEBUG_USER_CONTEXT) {
+          console.log('[DEBUG-USER-CONTEXT] No settings found, creating defaults');
+        }
+        
+        settingsToLoad = getDefaultSettings();
+        
+        // Save default settings
+        await AsyncStorage.setItem(USER_SETTINGS_KEY, JSON.stringify(settingsToLoad));
+        
+        if (DEBUG_USER_CONTEXT) {
+          console.log('[DEBUG-USER-CONTEXT] Saved default settings');
+        }
+      }
+      
+      // Ensure preferences are always defined
+      if (!settingsToLoad.preferences) {
+        settingsToLoad.preferences = DEFAULT_PREFERENCES;
+        
+        if (DEBUG_USER_CONTEXT) {
+          console.log('[DEBUG-USER-CONTEXT] Added missing preferences to settings');
+        }
+      }
+      
+      // Set the loaded settings
+      setUserSettings(settingsToLoad);
+      
+      if (DEBUG_USER_CONTEXT) {
+        console.log('[DEBUG-USER-CONTEXT] User settings loaded successfully');
+      }
+      
+    } catch (err) {
+      console.error('Error loading user settings:', err);
+      setError('Failed to load user settings');
+    }
+  };
 
-    initialize();
-  }, []);
-
-  // Save settings to storage whenever they change
-  const saveSettings = async (settings: UserSettings) => {
+  // Helper function to save settings to both AsyncStorage and Supabase
+  const saveSettingsToStorage = async (settings: UserSettings): Promise<boolean> => {
     try {
       if (DEBUG_USER_CONTEXT) {
-        console.log('[DEBUG-USER-CONTEXT] saveSettings called');
-        console.log('[DEBUG-USER-CONTEXT] Settings to save:', {
-          hasProfile: !!settings.profile,
-          hasPaceSettings: !!settings.paceSettings,
-          hasPreferences: !!settings.preferences,
-        });
-        
-        if (settings.preferences) {
-          console.log('[DEBUG-USER-CONTEXT] Preferences to save:', settings.preferences);
-        } else {
-          console.log('[DEBUG-USER-CONTEXT] WARNING: Trying to save settings without preferences!');
-        }
+        console.log('[DEBUG-USER-CONTEXT] Saving settings');
       }
       
-      // Always save to global settings
+      // Always save to global storage as fallback
       await AsyncStorage.setItem(USER_SETTINGS_KEY, JSON.stringify(settings));
       
-      if (DEBUG_USER_CONTEXT) {
-        console.log('[DEBUG-USER-CONTEXT] Saved to global settings');
-      }
-      
-      // If user is logged in, also save user-specific settings
+      // If authenticated, save to user-specific storage and Supabase
       if (authState.isAuthenticated && authState.user?.id) {
         const userKey = getUserSettingsKey(authState.user.id);
-        if (DEBUG_USER_CONTEXT) {
-          console.log(`[DEBUG-USER-CONTEXT] Saving user-specific settings for ${authState.user.id}`);
-        }
         await AsyncStorage.setItem(userKey, JSON.stringify(settings));
         
+        // Save to Supabase
+        const { error } = await supabase
+          .from('user_settings')
+          .upsert({
+            id: authState.user.id,
+            weight: settings.weight,
+            pace_settings: settings.paceSettings,
+            preferences: settings.preferences,
+            updated_at: new Date().toISOString(),
+          }, { onConflict: 'id' });
+        
+        if (error) {
+          console.error('[DEBUG-USER-CONTEXT] Error saving settings to Supabase:', error);
+          return false;
+        }
+        
         if (DEBUG_USER_CONTEXT) {
-          console.log('[DEBUG-USER-CONTEXT] Saved to user-specific settings');
+          console.log('[DEBUG-USER-CONTEXT] Saved settings to Supabase');
         }
       }
       
-      // Important: Update the React state with the new settings
-      if (DEBUG_USER_CONTEXT) {
-        console.log('[DEBUG-USER-CONTEXT] Updating userSettings state');
-      }
-      setUserSettings({...settings});
-      
-      if (DEBUG_USER_CONTEXT) {
-        console.log('[DEBUG-USER-CONTEXT] Save complete');
-      }
       return true;
     } catch (err) {
-      setError('Failed to save user settings');
-      console.error('[DEBUG-USER-CONTEXT] Error saving user settings:', err);
+      console.error('Error saving settings:', err);
+      setError('Failed to save settings');
       return false;
     }
   };
 
-  // Save auth state to storage
-  const saveAuthState = async (state: AuthState) => {
+  // Update user settings in Supabase
+  const updateUserSettingsInSupabase = async (settings: UserSettings) => {
     try {
-      await AsyncStorage.setItem(AUTH_STATE_KEY, JSON.stringify(state));
-    } catch (err) {
-      setError('Failed to save authentication state');
-      console.error('Error saving authentication state:', err);
+      const { data: { session } } = await supabase.auth.getSession();
+      const userId = session?.user?.id;
+      
+      if (!userId) {
+        console.error('[DEBUG-USER-CONTEXT] Cannot update settings: No authenticated user');
+        return { success: false, error: 'Not authenticated' };
+      }
+      
+      // Check if user settings exist
+      const { data: existingSettings } = await supabase
+        .from('user_settings')
+        .select('*')
+        .eq('user_id', userId)
+        .single();
+      
+      if (existingSettings) {
+        // Update existing settings
+        const { error } = await supabase
+          .from('user_settings')
+          .update({
+            pace_settings: settings.paceSettings,
+            preferences: settings.preferences,
+            weight: settings.weight || 0, // Use 0 as default if weight is null
+            updated_at: new Date().toISOString()
+          })
+          .eq('user_id', userId);
+        
+        if (error) {
+          console.error('[DEBUG-USER-CONTEXT] Error updating settings:', error);
+          return { success: false, error: error.message };
+        }
+      } else {
+        // Insert new settings
+        const { error } = await supabase
+          .from('user_settings')
+          .insert({
+            user_id: userId,
+            pace_settings: settings.paceSettings,
+            preferences: settings.preferences,
+            weight: settings.weight || 0, // Use 0 as default if weight is null
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString()
+          });
+        
+        if (error) {
+          console.error('[DEBUG-USER-CONTEXT] Error inserting settings:', error);
+          return { success: false, error: error.message };
+        }
+      }
+      
+      // Update user profile
+      const { error: profileError } = await supabase.auth.updateUser({
+        data: {
+          name: settings.profile.name || 'User', // Use 'User' as default if name is null
+          weight: settings.weight || 0 // Use 0 as default if weight is null
+        }
+      });
+      
+      if (profileError) {
+        console.error('[DEBUG-USER-CONTEXT] Error updating user profile:', profileError);
+        return { success: false, error: profileError.message };
+      }
+      
+      return { success: true };
+    } catch (error) {
+      console.error('[DEBUG-USER-CONTEXT] Error in updateUserSettingsInSupabase:', error);
+      return { success: false, error: 'Unknown error' };
     }
   };
 
-  // Sign up a new user
-  const signUp = async (name: string, email: string, password: string) => {
+  // Update user profile
+  const updateUserProfile = async (name: string, weight: number | null) => {
     try {
-      // For MVP, we'll store credentials in AsyncStorage
-      // In a real app, this would involve a backend API call
-      const userId = uuidv4();
-      const now = new Date().toISOString();
-      
-      // Create a simple token (in a real app, this would be JWT from server)
-      const token = uuidv4();
-      
-      // Create user object
-      const user: User = {
-        id: userId,
-        name,
-        email,
-        authMethod: 'email',
-      };
-      
-      // Store user credentials (this is simplified for MVP)
-      await AsyncStorage.setItem(`treadtrail_user_${email}`, JSON.stringify({
-        id: userId,
-        email,
-        password, // In a real app, this would be hashed
-        name,
-      }));
-      
-      // Update auth state
-      const newAuthState: AuthState = {
-        isAuthenticated: true,
-        user,
-        token,
-      };
-      
-      setAuthState(newAuthState);
-      await saveAuthState(newAuthState);
-      
-      // Update user settings with the name
+      // Update local settings first
       if (userSettings) {
         const updatedSettings = {
           ...userSettings,
           profile: {
             ...userSettings.profile,
-            name,
-            lastActive: now,
+            name: name || userSettings.profile.name,
           },
+          weight: weight !== null ? weight : userSettings.weight,
         };
         
         setUserSettings(updatedSettings);
-        await saveSettings(updatedSettings);
+        await AsyncStorage.setItem(USER_SETTINGS_KEY, JSON.stringify(updatedSettings));
+        
+        // If authenticated, update in Supabase as well
+        if (authState.isAuthenticated && authState.user) {
+          await updateUserSettingsInSupabase(updatedSettings);
+        }
+        
+        return { success: true };
       }
       
-      // Start free trial for new users
-      await startFreeTrial();
+      return { success: false, error: 'No user settings found' };
+    } catch (error) {
+      console.error('[DEBUG-USER-CONTEXT] Error updating user profile:', error);
+      return { success: false, error: 'Failed to update profile' };
+    }
+  };
+
+  // Sign up function
+  const signUp = async (name: string, email: string, password: string) => {
+    try {
+      setIsLoading(true);
+      setError('');
       
       if (DEBUG_USER_CONTEXT) {
-        console.log(`[DEBUG-USER-CONTEXT] New user signed up: ${name} (${email})`);
-        console.log(`[DEBUG-USER-CONTEXT] Started free trial for new user`);
+        console.log(`[DEBUG-USER-CONTEXT] Signing up user: ${email}`);
       }
-    } catch (err) {
+      
+      // Sign up with Supabase
+      const { data, error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          data: {
+            name
+          }
+        }
+      });
+      
+      if (error) {
+        throw error;
+      }
+      
+      if (!data.user) {
+        throw new Error('Signup successful but no user returned');
+      }
+      
+      if (DEBUG_USER_CONTEXT) {
+        console.log('[DEBUG-USER-CONTEXT] Signup successful');
+      }
+      
+      // Session will be handled by the auth state change listener
+      
+    } catch (err: any) {
       console.error('Error signing up:', err);
-      setError('Failed to sign up. Please try again.');
+      setError(err.message || 'Failed to sign up');
+    } finally {
+      setIsLoading(false);
     }
   };
 
-  // Sign in an existing user
+  // Sign in function
   const signIn = async (email: string, password: string): Promise<boolean> => {
     try {
-      // Retrieve stored user credentials
-      const storedUser = await AsyncStorage.getItem(`treadtrail_user_${email}`);
+      setIsLoading(true);
+      setError('');
       
-      if (!storedUser) {
-        setError('User not found');
-        return false;
+      if (DEBUG_USER_CONTEXT) {
+        console.log(`[DEBUG-USER-CONTEXT] Signing in user: ${email}`);
       }
       
-      const userData = JSON.parse(storedUser);
+      // Sign in with Supabase
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email,
+        password
+      });
       
-      // Check password (in a real app, this would involve proper password verification)
-      if (userData.password !== password) {
-        setError('Invalid password');
-        return false;
+      if (error) {
+        throw error;
       }
       
-      // Create a simple token
-      const token = uuidv4();
-      
-      // Create user object
-      const user: User = {
-        id: userData.id,
-        name: userData.name,
-        email: userData.email,
-        authMethod: 'email',
-      };
-      
-      // Update auth state
-      const newAuthState: AuthState = {
-        isAuthenticated: true,
-        user,
-        token,
-      };
-      
-      setAuthState(newAuthState);
-      await saveAuthState(newAuthState);
-      
-      // Load user-specific settings if they exist
-      const userKey = getUserSettingsKey(userData.id);
-      const userSpecificSettings = await AsyncStorage.getItem(userKey);
-      
-      if (userSpecificSettings) {
-        if (DEBUG_USER_CONTEXT) {
-          console.log(`[DEBUG-SIGNIN] Found user-specific settings for ${userData.id}`);
-        }
-        // Use user's previously saved settings
-        const parsedUserSettings = JSON.parse(userSpecificSettings);
-        setUserSettings(parsedUserSettings);
-      } else if (userSettings) {
-        // Otherwise update current settings with user info
-        if (DEBUG_USER_CONTEXT) {
-          console.log('[DEBUG-SIGNIN] No user-specific settings found, updating current settings with user info');
-        }
-        const now = new Date().toISOString();
-        const updatedSettings = {
-          ...userSettings,
-          profile: {
-            ...userSettings.profile,
-            name: userData.name,
-            lastActive: now,
-          },
-        };
-        
-        // Save settings to both global and user-specific storage
-        setUserSettings(updatedSettings);
-        await saveSettings(updatedSettings);
+      if (!data.user) {
+        throw new Error('Login successful but no user returned');
       }
       
-      // Check if user should get a free trial (only if they haven't used it before)
-      try {
-        await startFreeTrial();
-        if (DEBUG_USER_CONTEXT) {
-          console.log(`[DEBUG-USER-CONTEXT] Checked free trial eligibility for returning user`);
-        }
-      } catch (err) {
-        console.error('Error checking trial eligibility:', err);
+      if (DEBUG_USER_CONTEXT) {
+        console.log('[DEBUG-USER-CONTEXT] Login successful');
       }
+      
+      // Session will be handled by the auth state change listener
       
       return true;
-    } catch (err) {
-      setError('Failed to sign in');
+    } catch (err: any) {
       console.error('Error signing in:', err);
+      setError(err.message || 'Failed to sign in');
       return false;
+    } finally {
+      setIsLoading(false);
     }
   };
 
-  // Sign in with Apple using Expo's Apple Authentication
+  // Sign in with Apple function
   const signInWithApple = async (): Promise<boolean> => {
     try {
-      // Check if we're on iOS
-      if (Platform.OS !== 'ios') {
-        setError('Apple Sign In is only available on iOS devices');
-        return false;
+      setIsLoading(true);
+      setError('');
+      
+      if (DEBUG_USER_CONTEXT) {
+        console.log('[DEBUG-USER-CONTEXT] Starting Apple sign in');
       }
-
+      
       // Check if Apple Authentication is available
       const isAvailable = await AppleAuthentication.isAvailableAsync();
+      
       if (!isAvailable) {
-        setError('Apple Authentication is not available on this device');
-        return false;
+        throw new Error('Apple Authentication is not available on this device');
       }
-
-      // Request Apple authentication
+      
+      // Request sign in with Apple
       const credential = await AppleAuthentication.signInAsync({
         requestedScopes: [
           AppleAuthentication.AppleAuthenticationScope.FULL_NAME,
           AppleAuthentication.AppleAuthenticationScope.EMAIL,
         ],
       });
-
-      // Extract user information
-      const appleUserId = credential.user;
-      const userEmail = credential.email || `apple_${appleUserId}@treadtrail.app`;
-      
-      // Get name information
-      let userName = 'Apple User';
-      if (credential.fullName) {
-        userName = credential.fullName.givenName || '';
-        if (credential.fullName.familyName) {
-          userName += ` ${credential.fullName.familyName}`;
-        }
-        
-        // If no name was provided, use a default
-        if (!userName.trim()) {
-          userName = 'Apple User';
-        }
-      }
-      
-      // Store Apple user in AsyncStorage for future sign-ins
-      const appleUserKey = `treadtrail_apple_user_${appleUserId}`;
-      await AsyncStorage.setItem(appleUserKey, JSON.stringify({
-        id: appleUserId,
-        email: userEmail,
-        name: userName,
-      }));
-      
-      // Create user object
-      const user: User = {
-        id: appleUserId,
-        name: userName,
-        email: userEmail,
-        authMethod: 'apple',
-      };
-      
-      // Use identity token as auth token
-      const token = credential.identityToken || uuidv4();
-      
-      // Update auth state
-      const newAuthState: AuthState = {
-        isAuthenticated: true,
-        user,
-        token,
-      };
-      
-      setAuthState(newAuthState);
-      await saveAuthState(newAuthState);
-      
-      // Load user-specific settings if they exist
-      const userKey = getUserSettingsKey(appleUserId);
-      const userSpecificSettings = await AsyncStorage.getItem(userKey);
-      
-      if (userSpecificSettings) {
-        if (DEBUG_USER_CONTEXT) {
-          console.log(`[DEBUG-APPLE-SIGNIN] Found user-specific settings for ${appleUserId}`);
-        }
-        // Use user's previously saved settings
-        const parsedUserSettings = JSON.parse(userSpecificSettings);
-        setUserSettings(parsedUserSettings);
-      }
-      
-      // Update user settings
-      if (userSettings) {
-        const now = new Date().toISOString();
-        const updatedSettings = {
-          ...userSettings,
-          profile: {
-            ...userSettings.profile,
-            name: userName,
-            lastActive: now,
-          },
-        };
-        
-        if (DEBUG_USER_CONTEXT) {
-          console.log('[DEBUG-APPLE-SIGNIN] Updating user settings with profile info');
-        }
-        
-        setUserSettings(updatedSettings);
-        await saveSettings(updatedSettings);
-      }
-      
-      // Check if user should get a free trial (only if they haven't used it before)
-      try {
-        await startFreeTrial();
-        if (DEBUG_USER_CONTEXT) {
-          console.log(`[DEBUG-USER-CONTEXT] Checked free trial eligibility for Apple sign-in user`);
-        }
-      } catch (err) {
-        console.error('Error checking trial eligibility:', err);
-      }
-      
-      return true;
-    } catch (error: any) {
-      // Handle specific error cases
-      if (error.code === 'ERR_CANCELED') {
-        setError('Apple Sign In was canceled by the user');
-      } else if (error.code === 'ERR_FAILED') {
-        setError('Apple Sign In failed');
-      } else if (error.code === 'ERR_INVALID_RESPONSE') {
-        setError('Apple Sign In response was invalid');
-      } else {
-        setError('Failed to sign in with Apple');
-      }
-      console.error('Error signing in with Apple:', error);
-      return false;
-    }
-  };
-
-  // Sign out
-  const signOut = async () => {
-    try {
-      // Save current user-specific settings before logout
-      if (authState.isAuthenticated && authState.user?.id && userSettings) {
-        const userId = authState.user.id;
-        console.log(`[DEBUG-SIGNOUT] Preserving settings for user ${userId}`);
-        const userKey = getUserSettingsKey(userId);
-        await AsyncStorage.setItem(userKey, JSON.stringify(userSettings));
-      }
-      
-      // Keep the current pace settings and preferences
-      const currentPaceSettings = userSettings?.paceSettings || DEFAULT_PACE_SETTINGS;
-      const currentPreferences = userSettings?.preferences || DEFAULT_PREFERENCES;
-      // Also keep the profile data which includes weight
-      const currentProfile = userSettings?.profile;
       
       if (DEBUG_USER_CONTEXT) {
-        console.log('[DEBUG-SIGNOUT] Preserving user preferences:', currentPreferences);
-        console.log('[DEBUG-SIGNOUT] Preserving pace settings:', currentPaceSettings);
-        console.log('[DEBUG-SIGNOUT] Preserving user profile:', currentProfile);
+        console.log('[DEBUG-USER-CONTEXT] Apple authentication successful, signing in with Supabase');
       }
       
-      // Reset auth state
-      setAuthState(DEFAULT_AUTH_STATE);
-      await saveAuthState(DEFAULT_AUTH_STATE);
+      // Sign in with Supabase using the Apple ID token
+      const { data, error } = await supabase.auth.signInWithIdToken({
+        provider: 'apple',
+        token: credential.identityToken || '',
+      });
       
-      // Create new settings object but preserve pace settings, preferences, and profile
-      if (userSettings) {
-        const defaultSettings = getDefaultSettings();
-        const updatedSettings = {
-          ...defaultSettings,
-          paceSettings: currentPaceSettings, // Keep the current pace settings
-          preferences: currentPreferences, // Keep the current preferences
-          profile: currentProfile, // Keep the current profile with weight
-        };
+      if (error) {
+        throw error;
+      }
+      
+      if (!data.user) {
+        throw new Error('Login successful but no user returned');
+      }
+      
+      // Update user metadata if we have a name from Apple
+      if (credential.fullName?.givenName) {
+        const fullName = `${credential.fullName.givenName} ${credential.fullName.familyName || ''}`.trim();
         
-        if (DEBUG_USER_CONTEXT) {
-          console.log('[DEBUG-SIGNOUT] Setting user settings with preserved values');
-          console.log('[DEBUG-SIGNOUT] Updated settings:', {
-            hasPaceSettings: !!updatedSettings.paceSettings,
-            hasPreferences: !!updatedSettings.preferences,
-            hasProfile: !!updatedSettings.profile,
+        if (fullName) {
+          await supabase.auth.updateUser({
+            data: { name: fullName }
           });
+          
+          if (DEBUG_USER_CONTEXT) {
+            console.log(`[DEBUG-USER-CONTEXT] Updated user name to: ${fullName}`);
+          }
         }
-        
-        setUserSettings(updatedSettings);
-        await AsyncStorage.setItem(USER_SETTINGS_KEY, JSON.stringify(updatedSettings));
       }
-    } catch (err) {
-      setError('Failed to sign out');
-      console.error('[DEBUG-SIGNOUT] Error signing out:', err);
+      
+      if (DEBUG_USER_CONTEXT) {
+        console.log('[DEBUG-USER-CONTEXT] Apple sign in successful');
+      }
+      
+      // Session will be handled by the auth state change listener
+      
+      return true;
+    } catch (err: any) {
+      // Don't treat cancellation as an error
+      if (err.code === 'ERR_CANCELED') {
+        if (DEBUG_USER_CONTEXT) {
+          console.log('[DEBUG-USER-CONTEXT] Apple sign in was cancelled');
+        }
+        return false;
+      }
+      
+      console.error('Error signing in with Apple:', err);
+      setError(err.message || 'Failed to sign in with Apple');
+      return false;
+    } finally {
+      setIsLoading(false);
     }
   };
 
-  // Update user profile
-  const updateProfile = async (name: string) => {
-    if (!userSettings) return;
-
+  // Sign out function
+  const signOut = async () => {
     try {
-      const now = new Date().toISOString();
-      const updatedSettings = {
-        ...userSettings,
-        profile: {
-          ...userSettings.profile,
-          name,
-          lastActive: now,
-        },
-      };
+      setIsLoading(true);
       
-      setUserSettings(updatedSettings);
-      await saveSettings(updatedSettings);
-      
-      // If user is authenticated, update the user object in auth state
-      if (authState.isAuthenticated && authState.user) {
-        const updatedAuthState = {
-          ...authState,
-          user: {
-            ...authState.user,
-            name,
-          },
-        };
-        
-        setAuthState(updatedAuthState);
-        await saveAuthState(updatedAuthState);
+      if (DEBUG_USER_CONTEXT) {
+        console.log('[DEBUG-USER-CONTEXT] Signing out');
       }
-    } catch (err) {
-      setError('Failed to update profile');
-      console.error('Error updating profile:', err);
+      
+      // Keep pace settings and preferences when signing out
+      const currentSettings = userSettings;
+      
+      // Sign out from Supabase
+      const { error } = await supabase.auth.signOut();
+      
+      if (error) {
+        throw error;
+      }
+      
+      // Auth state change listener will handle the rest
+      
+      if (DEBUG_USER_CONTEXT) {
+        console.log('[DEBUG-USER-CONTEXT] Sign out successful');
+      }
+    } catch (err: any) {
+      console.error('Error signing out:', err);
+      setError(err.message || 'Failed to sign out');
+    } finally {
+      setIsLoading(false);
     }
   };
 
-  // Update pace setting
-  const updatePaceSetting = async (
-    paceType: keyof typeof DEFAULT_PACE_SETTINGS,
-    setting: PaceSetting
-  ) => {
-    if (!userSettings) return;
-
+  // Update pace setting function
+  const updatePaceSetting = async (paceType: keyof typeof DEFAULT_PACE_SETTINGS, setting: PaceSetting) => {
     try {
+      if (!userSettings) {
+        throw new Error('No user settings found');
+      }
+      
+      if (DEBUG_USER_CONTEXT) {
+        console.log(`[DEBUG-USER-CONTEXT] Updating pace setting for ${paceType}:`, setting);
+      }
+      
       const updatedSettings = {
         ...userSettings,
         paceSettings: {
           ...userSettings.paceSettings,
-          [paceType]: setting,
-        },
+          [paceType]: setting
+        }
       };
       
       setUserSettings(updatedSettings);
-      await saveSettings(updatedSettings);
-    } catch (err) {
-      setError(`Failed to update ${paceType} pace setting`);
-      console.error(`Error updating ${paceType} pace setting:`, err);
+      await saveSettingsToStorage(updatedSettings);
+      
+      if (DEBUG_USER_CONTEXT) {
+        console.log('[DEBUG-USER-CONTEXT] Pace setting updated successfully');
+      }
+    } catch (err: any) {
+      console.error('Error updating pace setting:', err);
+      setError(err.message || 'Failed to update pace setting');
     }
   };
 
-  // Update a single preference
-  const updatePreference = async <K extends keyof UserPreferences>(
-    key: K,
-    value: UserPreferences[K]
-  ) => {
-    if (DEBUG_USER_CONTEXT) {
-      console.log(`[DEBUG-USER-CONTEXT] updatePreference called for ${String(key)} with value:`, value);
-      console.log('[DEBUG-USER-CONTEXT] Current userSettings:', userSettings ? 'exists' : 'null');
-      if (userSettings) {
-        console.log('[DEBUG-USER-CONTEXT] Current preferences:', userSettings.preferences ? 'exists' : 'undefined');
-      }
-    }
-    
-    if (!userSettings) {
-      if (DEBUG_USER_CONTEXT) {
-        console.log('[DEBUG-USER-CONTEXT] Cannot update preference: userSettings is null');
-      }
-      return;
-    }
-
+  // Update preference function
+  const updatePreference = async <K extends keyof UserPreferences>(key: K, value: UserPreferences[K]) => {
     try {
-      // Create a deep copy of the updated settings to avoid reference issues
+      if (!userSettings) {
+        throw new Error('No user settings found');
+      }
+      
+      if (DEBUG_USER_CONTEXT) {
+        console.log(`[DEBUG-USER-CONTEXT] Updating preference ${String(key)}:`, value);
+      }
+      
+      const updatedPreferences = {
+        ...userSettings.preferences,
+        [key]: value
+      };
+      
       const updatedSettings = {
         ...userSettings,
-        preferences: {
-          ...userSettings.preferences,
-          [key]: value,
-        },
+        preferences: updatedPreferences
       };
       
-      if (DEBUG_USER_CONTEXT) {
-        console.log('[DEBUG-USER-CONTEXT] Created updated settings with new preference value');
-        console.log('[DEBUG-USER-CONTEXT] Updated preferences:', updatedSettings.preferences);
-      }
-      
-      // Save to AsyncStorage first to ensure it persists
-      await saveSettings(updatedSettings);
-      
-      if (DEBUG_USER_CONTEXT) {
-        console.log('[DEBUG-USER-CONTEXT] Saved updated settings to AsyncStorage');
-      }
-      
-      // Then update the state
       setUserSettings(updatedSettings);
+      await saveSettingsToStorage(updatedSettings);
       
       if (DEBUG_USER_CONTEXT) {
-        console.log('[DEBUG-USER-CONTEXT] Updated userSettings state');
+        console.log('[DEBUG-USER-CONTEXT] Preference updated successfully');
       }
       
-      return updatedSettings; // Return the updated settings for immediate use
-    } catch (err) {
-      setError(`Failed to update ${String(key)} preference`);
-      console.error(`[DEBUG-USER-CONTEXT] Error updating ${String(key)} preference:`, err);
-      throw err; // Re-throw to allow caller to handle error
+      return updatedPreferences;
+    } catch (err: any) {
+      console.error('Error updating preference:', err);
+      setError(err.message || 'Failed to update preference');
+      return userSettings?.preferences || DEFAULT_PREFERENCES;
     }
   };
 
-  // Update user weight
+  // Update weight function
   const updateWeight = async (weight: number) => {
-    if (DEBUG_USER_CONTEXT) {
-      console.log('[DEBUG-USER-CONTEXT] updateWeight called with weight:', weight);
-      console.log('[DEBUG-USER-CONTEXT] Current userSettings:', userSettings ? 'exists' : 'null');
-    }
-    
-    if (!userSettings) {
-      if (DEBUG_USER_CONTEXT) {
-        console.log('[DEBUG-USER-CONTEXT] Cannot update weight: userSettings is null');
-      }
-      return;
-    }
-
     try {
+      if (!userSettings) {
+        throw new Error('No user settings found');
+      }
+      
       if (DEBUG_USER_CONTEXT) {
-        console.log('[DEBUG-USER-CONTEXT] Current profile:', userSettings.profile);
+        console.log(`[DEBUG-USER-CONTEXT] Updating weight to: ${weight}`);
       }
       
       const updatedSettings = {
         ...userSettings,
-        profile: {
-          ...userSettings.profile,
-          weight,
-        },
+        weight
       };
       
-      if (DEBUG_USER_CONTEXT) {
-        console.log('[DEBUG-USER-CONTEXT] Updated settings with new weight:', updatedSettings.profile.weight);
-      }
-      
-      // Save to AsyncStorage first to ensure it persists
-      await saveSettings(updatedSettings);
-      
-      if (DEBUG_USER_CONTEXT) {
-        console.log('[DEBUG-USER-CONTEXT] Saved updated settings to AsyncStorage');
-      }
-      
-      // Then update the state
       setUserSettings(updatedSettings);
+      await saveSettingsToStorage(updatedSettings);
       
       if (DEBUG_USER_CONTEXT) {
-        console.log('[DEBUG-USER-CONTEXT] Updated userSettings state with new weight');
+        console.log('[DEBUG-USER-CONTEXT] Weight updated successfully');
       }
-    } catch (err) {
-      setError('Failed to update weight');
+    } catch (err: any) {
       console.error('Error updating weight:', err);
+      setError(err.message || 'Failed to update weight');
     }
   };
 
-  // Reset to default settings
+  // Reset to default function
   const resetToDefault = async () => {
     try {
-      const now = new Date().toISOString();
+      setIsLoading(true);
+      
+      if (DEBUG_USER_CONTEXT) {
+        console.log('[DEBUG-USER-CONTEXT] Resetting to default settings');
+      }
+      
+      // Create default settings
       const defaultSettings: UserSettings = {
         profile: {
-          name: userSettings?.profile.name || '',
-          dateCreated: userSettings?.profile.dateCreated || now,
-          lastActive: now,
+          name: 'Guest',
+          dateCreated: new Date().toISOString(),
+          lastActive: new Date().toISOString(),
         },
         paceSettings: DEFAULT_PACE_SETTINGS,
         preferences: DEFAULT_PREFERENCES,
+        weight: 0, // Default to 0 instead of null
       };
       
+      // If authenticated, keep user info
+      if (authState.isAuthenticated && authState.user) {
+        defaultSettings.profile = {
+          ...defaultSettings.profile,
+          id: authState.user.id,
+          name: authState.user.name,
+          email: authState.user.email
+        };
+      }
+      
       setUserSettings(defaultSettings);
-      await saveSettings(defaultSettings);
-    } catch (err) {
-      setError('Failed to reset settings to default');
-      console.error('Error resetting settings to default:', err);
+      await saveSettingsToStorage(defaultSettings);
+      
+      if (DEBUG_USER_CONTEXT) {
+        console.log('[DEBUG-USER-CONTEXT] Reset to default settings successful');
+      }
+    } catch (err: any) {
+      console.error('Error resetting to default:', err);
+      setError('Failed to reset settings');
+    } finally {
+      setIsLoading(false);
     }
   };
 
-  // Context value
-  const value = {
-    userSettings,
-    isLoading,
-    error,
-    authState,
-    signUp,
-    signIn,
-    signInWithApple,
-    signOut,
-    updateProfile,
-    updatePaceSetting,
-    updatePreference,
-    resetToDefault,
-    saveSettings, // Export the saveSettings function
-    // Add preferences directly to the context value to ensure it's always defined
-    preferences: userSettings?.preferences || DEFAULT_PREFERENCES,
-    updateWeight,
+  // Direct save settings function
+  const saveSettings = async (settings: UserSettings): Promise<boolean> => {
+    try {
+      setUserSettings(settings);
+      return await saveSettingsToStorage(settings);
+    } catch (err: any) {
+      console.error('Error saving settings directly:', err);
+      setError('Failed to save settings');
+      return false;
+    }
   };
 
-  return <UserContext.Provider value={value}>{children}</UserContext.Provider>;
-};
-
-// Helper function to get default settings
-const getDefaultSettings = (): UserSettings => {
-  const now = new Date().toISOString();
-  return {
-    profile: {
-      name: '',
-      dateCreated: now,
-      lastActive: now,
-    },
-    paceSettings: DEFAULT_PACE_SETTINGS,
-    preferences: DEFAULT_PREFERENCES,
+  // Helper function to get default settings
+  const getDefaultSettings = (): UserSettings => {
+    return {
+      profile: {
+        id: uuidv4(),
+        name: 'Guest',
+        email: '',
+      },
+      paceSettings: DEFAULT_PACE_SETTINGS,
+      preferences: DEFAULT_PREFERENCES,
+      weight: 0, // Default to 0 instead of null
+    };
   };
+
+  return (
+    <UserContext.Provider
+      value={{
+        userSettings,
+        isLoading,
+        error,
+        authState,
+        signUp,
+        signIn,
+        signInWithApple,
+        signOut,
+        updateProfile: updateUserProfile,
+        updatePaceSetting,
+        updatePreference,
+        resetToDefault,
+        saveSettings,
+        preferences: userSettings?.preferences || DEFAULT_PREFERENCES,
+        updateWeight,
+      }}
+    >
+      {children}
+    </UserContext.Provider>
+  );
 };
