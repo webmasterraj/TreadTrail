@@ -243,8 +243,8 @@ const ProfileScreen: React.FC<Props> = ({ navigation, route }) => {
               />
               <Text style={styles.statValue}>
                 {isMetric 
-                  ? formatDistance(milesToKm(stats.stats.totalDistance), true)
-                  : formatDistance(stats.stats.totalDistance, false)
+                  ? formatDistance(stats.stats.totalDistance, true)
+                  : formatDistance(kmToMiles(stats.stats.totalDistance), false)
                 }
               </Text>
               <Text style={styles.statLabel}>
