@@ -326,7 +326,25 @@ const ProfileScreen: React.FC<Props> = ({ navigation, route }) => {
                 <Text style={styles.statLabel}>
                   Calories Burned
                 </Text>
-                <Text style={styles.upgradeText}>Tap to unlock</Text>
+                {/* Premium badge for free users */}
+                <View style={{
+                  position: 'absolute',
+                  top: 0,
+                  left: 0,
+                  backgroundColor: COLORS.accent,
+                  paddingHorizontal: 8,
+                  paddingVertical: 4,
+                  borderTopLeftRadius: 11,
+                  borderBottomRightRadius: 11,
+                  zIndex: 20,
+                  elevation: 5,
+                }}>
+                  <Text style={{
+                    color: COLORS.black,
+                    fontSize: 10,
+                    fontWeight: 'bold',
+                  }}>PREMIUM</Text>
+                </View>
               </TouchableOpacity>
             )}
           </View>

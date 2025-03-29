@@ -69,7 +69,7 @@ const WorkoutCompleteScreen: React.FC<Props> = ({ route, navigation }) => {
       }, {} as { [key: string]: { speed: number; incline: number } });
       const totalCalories = calculateTotalCaloriesBurned(
         session.segments,
-        userSettings.profile.weight,
+        userSettings.weight,
         paceSettings
       );
       setCaloriesBurned(totalCalories);

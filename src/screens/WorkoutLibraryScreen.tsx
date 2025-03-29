@@ -597,7 +597,7 @@ const styles = StyleSheet.create({
   },
   // Category filter styles
   categoryFiltersContainer: {
-    paddingBottom: 12,
+    marginBottom: 12,
     flexDirection: 'row',
     height: 45, // Fixed height instead of minHeight to prevent vertical scrolling
     alignItems: 'center', // Center items vertically

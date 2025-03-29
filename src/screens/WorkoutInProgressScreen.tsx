@@ -186,7 +186,7 @@ const WorkoutInProgressScreen: React.FC<Props> = ({ route, navigation }) => {
   // State for calorie tracking
   const [caloriesBurned, setCaloriesBurned] = useState(0);
   const [segmentCalories, setSegmentCalories] = useState(0);
-  const userWeight = userSettings?.profile?.weight;
+  const userWeight = userSettings?.weight;
   const hasWeight = !!userWeight;
 
   // Calculate calories burned in real-time

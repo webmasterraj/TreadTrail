@@ -30,7 +30,6 @@ export interface UserProfile {
   id?: string;
   dateCreated?: string; // ISO date string
   lastActive?: string; // ISO date string
-  weight?: number; // Weight in kg for calorie calculations (optional)
 }
 
 // User settings

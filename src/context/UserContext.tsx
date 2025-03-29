@@ -430,12 +430,15 @@ export const UserProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         const userKey = getUserSettingsKey(authState.user.id);
         await AsyncStorage.setItem(userKey, JSON.stringify(settings));
         
+        // Get the weight value
+        const weightValue = settings.weight || 0;
+        
         // Save to Supabase
         const { error } = await supabase
           .from('user_settings')
           .upsert({
             id: authState.user.id,
-            weight: settings.weight,
+            weight: weightValue,
             pace_settings: settings.paceSettings,
             preferences: settings.preferences,
             updated_at: new Date().toISOString(),

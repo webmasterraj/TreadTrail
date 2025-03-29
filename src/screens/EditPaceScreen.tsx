@@ -130,8 +130,8 @@ const EditPaceScreen: React.FC<Props> = ({ navigation }) => {
       setInputValues(updatedValues);
       
       // Initialize weight input
-      if (userSettings.profile?.weight) {
-        const weight = userSettings.profile.weight;
+      if (userSettings.weight) {
+        const weight = userSettings.weight;
         if (isMetric) {
           setWeightInput(Math.round(weight).toString());
         } else {
@@ -363,20 +363,11 @@ const EditPaceScreen: React.FC<Props> = ({ navigation }) => {
         },
       };
       
-      // Ensure profile and weight are preserved
+      // Ensure profile is preserved
       if (currentSettings.profile) {
         updatedSettings.profile = {
           ...currentSettings.profile,
         };
-        
-        // If we have a weight input, make sure it's included in the updated settings
-        if (weightInput.trim()) {
-          const weightValue = parseInt(weightInput, 10);
-          if (!isNaN(weightValue) && weightValue > 0) {
-            const weightInKg = useMetric ? weightValue : lbsToKg(weightValue);
-            updatedSettings.profile.weight = weightInKg;
-          }
-        }
       }
       
       // Get the units preference from our ref
