@@ -99,12 +99,15 @@ const WorkoutLibraryScreen: React.FC<Props> = ({ navigation, route }) => {
       dispatch(fetchWorkoutPrograms());
     }
     
-    // Fetch workout history and stats
-    dispatch(fetchWorkoutHistory({}));
-    dispatch(fetchStats());
-    
-    // Try to process any pending workouts
-    dispatch(processPendingQueue());
+    // Only fetch workout history and stats if user is authenticated
+    if (authState.isAuthenticated) {
+      // Fetch workout history and stats
+      dispatch(fetchWorkoutHistory({}));
+      dispatch(fetchStats());
+      
+      // Try to process any pending workouts
+      dispatch(processPendingQueue());
+    }
     
     // Check if user is authenticated
     if (!authState.isAuthenticated) {
@@ -121,7 +124,7 @@ const WorkoutLibraryScreen: React.FC<Props> = ({ navigation, route }) => {
     return () => {
       console.log('[LIBRARY] Component unmounting');
     };
-  }, [dispatch, workoutPrograms.length, isLoading]);
+  }, [dispatch, workoutPrograms.length, isLoading, authState.isAuthenticated]);
 
   // Convert km/h to mph for display
   const convertToImperial = (speed: number) => {
