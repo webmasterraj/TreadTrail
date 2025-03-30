@@ -1,4 +1,4 @@
-import React, { useContext, useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { 
   View, 
   Text, 
@@ -15,14 +15,15 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../types';
 import { COLORS, FONT_SIZES, SPACING, BORDER_RADIUS } from '../styles/theme';
-import { UserContext } from '../context';
+import { useAuth, useUserSettings } from '../hooks';
 import Button from '../components/common/Button';
 import * as AppleAuthentication from 'expo-apple-authentication';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Landing'>;
 
 const LandingScreen: React.FC<Props> = ({ navigation }) => {
-  const { userSettings, authState, signInWithApple } = useContext(UserContext);
+  const { userSettings } = useUserSettings();
+  const { authState, signInWithApple } = useAuth();
   const [isLoading, setIsLoading] = useState(true);
   const [appleSignInLoading, setAppleSignInLoading] = useState(false);
   

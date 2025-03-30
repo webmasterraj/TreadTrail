@@ -1,4 +1,4 @@
-import React, { useContext, useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { 
   View, 
   Text, 
@@ -15,7 +15,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList, WorkoutProgram, CategoryType } from '../types';
 import { COLORS, FONT_SIZES, SPACING } from '../styles/theme';
-import { UserContext } from '../context';
+import { useAuth, useUserSettings } from '../hooks';
 import { useSubscription } from '../context/SubscriptionContext';
 import WorkoutCard from '../components/workout/WorkoutCard';
 import BottomTabBar from '../components/common/BottomTabBar';
@@ -36,7 +36,8 @@ const WorkoutLibraryScreen: React.FC<Props> = ({ navigation, route }) => {
   const dispatch = useAppDispatch();
   const workoutPrograms = useAppSelector(selectWorkoutPrograms);
   const isLoading = useAppSelector(selectIsLoading);
-  const { userSettings, authState } = useContext(UserContext);
+  const { userSettings } = useUserSettings();
+  const { authState } = useAuth();
   const { isPremiumWorkout, validateSubscription, subscriptionInfo } = useSubscription();
   const cameFromWelcome = useRef(false);
   

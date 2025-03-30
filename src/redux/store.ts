@@ -4,6 +4,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { TypedUseSelectorHook, useDispatch, useSelector } from 'react-redux';
 import workoutReducer from './slices/workoutSlice';
 import workoutProgramsReducer from './slices/workoutProgramsSlice';
+import userReducer from './slices/userSlice';
 
 // Configure Redux Persist for workout state
 const workoutPersistConfig = {
@@ -17,14 +18,24 @@ const workoutProgramsPersistConfig = {
   storage: AsyncStorage,
 };
 
+// Configure Redux Persist for user state
+const userPersistConfig = {
+  key: 'user',
+  storage: AsyncStorage,
+  // Blacklist specific parts of state that should not be persisted
+  blacklist: ['isLoading', 'error'],
+};
+
 const persistedWorkoutReducer = persistReducer(workoutPersistConfig, workoutReducer);
 const persistedWorkoutProgramsReducer = persistReducer(workoutProgramsPersistConfig, workoutProgramsReducer);
+const persistedUserReducer = persistReducer(userPersistConfig, userReducer);
 
 // Configure store
 export const store = configureStore({
   reducer: {
     workout: persistedWorkoutReducer,
     workoutPrograms: persistedWorkoutProgramsReducer,
+    user: persistedUserReducer,
   },
   middleware: (getDefaultMiddleware) =>
     getDefaultMiddleware({

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useContext, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { 
   View, 
   Text, 
@@ -40,7 +40,7 @@ import {
   resetSkipState,
   formatTime
 } from '../redux/slices/workoutSlice';
-import { UserContext } from '../context';
+import { useUserSettings } from '../hooks';
 import { createWorkoutSession } from '../utils/historyUtils';
 import useWorkoutTimer from '../hooks/useWorkoutTimer';
 import useWorkoutAudio from '../hooks/useWorkoutAudio';
@@ -174,8 +174,8 @@ const WorkoutInProgressScreen: React.FC<Props> = ({ route, navigation }) => {
   // Track if workout has been initialized
   const hasInitializedRef = useRef(false);
 
-  // Get user preferences from context
-  const { userSettings } = useContext(UserContext);
+  // Get user preferences from hook
+  const { userSettings } = useUserSettings();
   const preferences = userSettings?.preferences || { enableAudioCues: true, units: 'imperial', darkMode: false };
   const paceSettings = userSettings?.paceSettings || { recovery: { speed: 3, incline: 1 }, base: { speed: 5, incline: 1 }, run: { speed: 7, incline: 2 }, sprint: { speed: 9, incline: 2 } };
 

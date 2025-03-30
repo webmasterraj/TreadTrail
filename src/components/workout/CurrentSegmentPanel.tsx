@@ -1,9 +1,9 @@
-import React, { useContext } from 'react';
+import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { WorkoutSegment, PaceType } from '../../types';
 import { COLORS, FONT_SIZES, SPACING, BORDER_RADIUS, PACE_COLORS } from '../../styles/theme';
 import { formatTime } from '../../utils/helpers';
-import { UserContext } from '../../context';
+import { useUserSettings } from '../../hooks';
 
 interface CurrentSegmentPanelProps {
   segment: WorkoutSegment;
@@ -14,7 +14,7 @@ const CurrentSegmentPanel: React.FC<CurrentSegmentPanelProps> = ({
   segment, 
   timeRemaining 
 }) => {
-  const { userSettings } = useContext(UserContext);
+  const { userSettings } = useUserSettings();
   
   const { type, incline } = segment;
   

@@ -1,4 +1,4 @@
-import React, { useContext, useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -16,7 +16,7 @@ import {
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList, WorkoutSegment, PaceType } from '../types';
 import { COLORS, FONT_SIZES, SPACING, BORDER_RADIUS, DIFFICULTY_INDICATORS, FOCUS_INDICATORS, PACE_COLORS } from '../styles/theme';
-import { UserContext } from '../context';
+import { useAuth, useUserSettings } from '../hooks';
 import { useSubscription } from '../context/SubscriptionContext';
 import { formatDuration, formatTime } from '../utils/helpers';
 import { Ionicons } from '@expo/vector-icons';
@@ -36,8 +36,9 @@ type Props = NativeStackScreenProps<RootStackParamList, 'WorkoutDetails'>;
 const WorkoutDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
   const { workoutId } = route.params;
   const dispatch = useAppDispatch();
-  // Get user context once at component level
-  const { userSettings, authState } = useContext(UserContext);
+  // Get user context using hooks
+  const { userSettings } = useUserSettings();
+  const { authState } = useAuth();
   const { isPremiumWorkout, subscriptionInfo } = useSubscription();
   
   // Log workout ID only once when component mounts or workoutId changes

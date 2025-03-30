@@ -2,12 +2,11 @@
  * TreadTrail - Treadmill Interval Training App
  */
 
-import React, { useEffect } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { StatusBar } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { Provider } from 'react-redux';
 import { PersistGate } from 'redux-persist/integration/react';
-import { UserProvider, DataProvider } from './src/context';
 import { SubscriptionProvider } from './src/context/SubscriptionContext';
 import { store, persistor } from './src/redux/store';
 import Navigation from './src/navigation/Navigation';
@@ -18,6 +17,7 @@ import {
   initializePendingQueue,
   processPendingQueue
 } from './src/redux/slices/workoutProgramsSlice';
+import { loadUserSettings, syncUserSettings } from './src/redux/slices/userSlice';
 import NetInfo from '@react-native-community/netinfo';
 import { initializeAudioSystem, preFetchWorkoutAudio } from './src/utils/audioUtils';
 
@@ -35,6 +35,9 @@ const App: React.FC = () => {
     
     // Initialize pending queue
     store.dispatch(initializePendingQueue());
+    
+    // Load user settings
+    store.dispatch(loadUserSettings());
     
     // Dispatch fetch in background without awaiting
     store.dispatch(fetchWorkoutPrograms())
@@ -62,7 +65,12 @@ const App: React.FC = () => {
       if (isConnected) {
         // Sync data when connection is restored
         if (DEBUG_NETWORK) console.log('[APP] Network connection restored, syncing pending data');
+        
+        // Sync pending workouts
         store.dispatch(processPendingQueue());
+        
+        // Sync pending user settings
+        store.dispatch(syncUserSettings({}));
       }
     });
     
@@ -74,13 +82,9 @@ const App: React.FC = () => {
       <PersistGate loading={null} persistor={persistor}>
         <SafeAreaProvider>
           <StatusBar barStyle="light-content" backgroundColor={COLORS.black} />
-          <UserProvider>
-            <DataProvider>
-              <SubscriptionProvider>
-                <Navigation />
-              </SubscriptionProvider>
-            </DataProvider>
-          </UserProvider>
+          <SubscriptionProvider>
+            <Navigation />
+          </SubscriptionProvider>
         </SafeAreaProvider>
       </PersistGate>
     </Provider>

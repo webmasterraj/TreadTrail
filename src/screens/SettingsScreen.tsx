@@ -16,7 +16,7 @@ import {
 import {NativeStackScreenProps} from '@react-navigation/native-stack';
 import {RootStackParamList} from '../types';
 import {COLORS, FONT_SIZES, SPACING, BORDER_RADIUS} from '../styles/theme';
-import {UserContext} from '../context';
+import {useAuth, useUserSettings} from '../hooks';
 import {SubscriptionContext} from '../context/SubscriptionContext';
 import BottomTabBar from '../components/common/BottomTabBar';
 
@@ -29,9 +29,11 @@ const APP_VERSION = '1.0.0';
 const BUILD_NUMBER = '42';
 
 const SettingsScreen: React.FC<Props> = ({navigation}) => {
-  const {authState, signOut, preferences, updatePreference, isLoading, userSettings} = useContext(UserContext);
+  const {authState, signOut} = useAuth();
+  const {preferences, userSettings, isLoading, syncUserSettings} = useUserSettings();
   const {subscriptionInfo} = useContext(SubscriptionContext);
   const [isError, setIsError] = useState(false);
+  const [localAudioCues, setLocalAudioCues] = useState<boolean | undefined>(undefined);
 
   // Add debug logging on component mount
   useEffect(() => {
@@ -52,7 +54,12 @@ const SettingsScreen: React.FC<Props> = ({navigation}) => {
         console.log('[DEBUG-SETTINGS] enableAudioCues from userSettings.preferences:', userSettings.preferences.enableAudioCues);
       }
     }
-  }, [isLoading, userSettings, preferences]);
+
+    // Initialize local audio cues state from preferences
+    if (preferences && localAudioCues === undefined) {
+      setLocalAudioCues(preferences.enableAudioCues);
+    }
+  }, [isLoading, userSettings, preferences, localAudioCues]);
 
   // Handle sign out
   const handleSignOut = async () => {
@@ -111,11 +118,19 @@ const SettingsScreen: React.FC<Props> = ({navigation}) => {
       return;
     }
     
-    updatePreference('enableAudioCues', value);
+    // Update local state immediately for responsive UI
+    setLocalAudioCues(value);
+    
+    // Sync with Redux in the background
+    syncUserSettings({
+      preferences: {
+        enableAudioCues: value
+      }
+    });
   };
 
-  // Render the settings screen
-  if (isLoading) {
+  // Render the settings screen - only show loading on initial load, not during updates
+  if (isLoading && localAudioCues === undefined) {
     if (DEBUG_SETTINGS) {
       console.log('[DEBUG-SETTINGS] Rendering loading state');
     }
@@ -202,7 +217,7 @@ const SettingsScreen: React.FC<Props> = ({navigation}) => {
             <View style={styles.settingsItem}>
               <Text style={styles.itemLabel}>Audio Cues</Text>
               <Switch
-                value={preferences?.enableAudioCues || false}
+                value={localAudioCues !== undefined ? localAudioCues : preferences?.enableAudioCues || false}
                 onValueChange={toggleAudioCues}
                 trackColor={{false: COLORS.darkGray, true: COLORS.accent}}
                 thumbColor={COLORS.white}
