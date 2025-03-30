@@ -7,25 +7,22 @@ import {
   TouchableOpacity,
   SafeAreaView,
   StatusBar,
-  Share,
   Alert,
   Dimensions,
   Platform,
   LayoutChangeEvent
 } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { RootStackParamList, WorkoutSegment, PaceType } from '../types';
-import { COLORS, FONT_SIZES, SPACING, BORDER_RADIUS, DIFFICULTY_INDICATORS, FOCUS_INDICATORS, PACE_COLORS } from '../styles/theme';
+import { RootStackParamList, PaceType } from '../types';
+import { COLORS, FONT_SIZES, SPACING, DIFFICULTY_INDICATORS, FOCUS_INDICATORS, PACE_COLORS } from '../styles/theme';
 import { useAuth, useUserSettings } from '../hooks';
 import { useSubscription } from '../context/SubscriptionContext';
 import { formatDuration, formatTime } from '../utils/helpers';
-import { Ionicons } from '@expo/vector-icons';
 import WorkoutVisualization from '../components/workout/WorkoutVisualization';
 import Button from '../components/common/Button';
 import { useAppDispatch, useAppSelector } from '../redux/store';
 import { 
   selectWorkoutById, 
-  selectWorkoutPrograms,
   toggleFavoriteWorkout,
 } from '../redux/slices/workoutProgramsSlice';
 import PremiumCard from '../components/subscription/PremiumCard';
@@ -360,7 +357,7 @@ const styles = StyleSheet.create({
     marginBottom: SPACING.medium,
   },
   title: {
-    color: COLORS.white,
+    color: COLORS.accent,
     fontSize: FONT_SIZES.xl,
     fontWeight: 'bold',
     marginBottom: SPACING.small,

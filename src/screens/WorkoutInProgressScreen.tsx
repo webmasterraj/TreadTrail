@@ -1138,7 +1138,6 @@ const styles = StyleSheet.create({
     marginRight: 10,
   },
   timelineContainerNoGap: {
-    marginTop: 10,
     flex: 1,
     justifyContent: 'center',
     marginBottom: 5,
@@ -1171,7 +1170,6 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.darkGray,
     borderRadius: 12,
     padding: 5,
-    // paddingBottom: 40,
   },
   controlButtonsContainer: {
     position: 'absolute',
