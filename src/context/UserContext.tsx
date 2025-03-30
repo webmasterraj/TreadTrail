@@ -35,7 +35,9 @@ const getDefaultUnitSystem = (): 'imperial' | 'metric' => {
     countryCode = NativeModules.I18nManager.localeIdentifier?.split('_')[1];
   }
   
-  console.log('Detected country code:', countryCode);
+  if (DEBUG_USER_CONTEXT) {
+    console.log(`[DEBUG-USER-CONTEXT] Detected country code: ${countryCode}`);
+  }
   
   // Default to metric unless explicitly in an imperial country
   return imperialCountries.includes(countryCode) ? 'imperial' : 'metric';
@@ -492,7 +494,6 @@ export const UserProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           await AsyncStorage.setItem(userKey, JSON.stringify(settings));
           if (DEBUG_USER_CONTEXT) {
             console.log(`[DEBUG-USER-CONTEXT] Saved user-specific settings to AsyncStorage for user ${authState.user.id}`);
-            console.log(`[DEBUG-USER-CONTEXT] Pace settings: ${JSON.stringify(settings.paceSettings)}`);
           }
         } catch (asyncError) {
           console.error('Error saving user-specific settings to AsyncStorage:', asyncError);
@@ -540,7 +541,6 @@ export const UserProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           // Offline, set the pending changes flag
           if (DEBUG_USER_CONTEXT) {
             console.log('[DEBUG-USER-CONTEXT] Offline - Setting pending changes flag');
-            console.log(`[DEBUG-USER-CONTEXT] Saved pace settings locally: ${JSON.stringify(settings.paceSettings)}`);
           }
           setHasPendingSettingsChanges(true);
         }

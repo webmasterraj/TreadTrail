@@ -21,12 +21,16 @@ import {
 import NetInfo from '@react-native-community/netinfo';
 import { initializeAudioSystem, preFetchWorkoutAudio } from './src/utils/audioUtils';
 
+// Debug flags
+const DEBUG_APP = false;
+const DEBUG_NETWORK = DEBUG_APP;
+
 const App: React.FC = () => {
   // Initialize data and set up network listener
   useEffect(() => {
     // Initialize audio system
     initializeAudioSystem().catch(error => {
-      console.error('Failed to initialize audio system:', error);
+      if (DEBUG_APP) console.error('Failed to initialize audio system:', error);
     });
     
     // Initialize pending queue
@@ -41,7 +45,7 @@ const App: React.FC = () => {
         
         // Pre-fetch audio files regardless of user preferences
         if (workoutPrograms.length > 0) {
-          console.log('[APP] Pre-fetching audio files for workouts');
+          if (DEBUG_APP) console.log('[APP] Pre-fetching audio files for workouts');
           preFetchWorkoutAudio(workoutPrograms);
         }
         
@@ -49,7 +53,7 @@ const App: React.FC = () => {
         store.dispatch(processPendingQueue());
       })
       .catch(error => {
-        console.error('Failed to fetch workout programs:', error);
+        if (DEBUG_APP) console.error('Failed to fetch workout programs:', error);
       });
     
     // Set up network listener for sync when connection is restored
@@ -57,6 +61,7 @@ const App: React.FC = () => {
       const isConnected = state.isConnected && state.isInternetReachable;
       if (isConnected) {
         // Sync data when connection is restored
+        if (DEBUG_NETWORK) console.log('[APP] Network connection restored, syncing pending data');
         store.dispatch(processPendingQueue());
       }
     });
