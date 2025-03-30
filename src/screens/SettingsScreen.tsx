@@ -80,14 +80,41 @@ const SettingsScreen: React.FC<Props> = ({navigation}) => {
   };
 
   // Handle legal links
-  const handleLegalLink = (_url: string) => {
-    // In a real app, we would open the appropriate screen or web link
-    Alert.alert('Coming Soon', 'This feature is not yet implemented.');
+  const handleLegalLink = (type: string) => {
+    let url = '';
+    
+    switch (type) {
+      case 'terms':
+        url = 'https://www.treadtrail.run/terms';
+        break;
+      case 'privacy':
+        url = 'https://www.treadtrail.run/privacy';
+        break;
+      case 'licenses':
+        // Keep the alert for licenses as it might require a different implementation
+        Alert.alert('Coming Soon', 'This feature is not yet implemented.');
+        return;
+      default:
+        return;
+    }
+    
+    // Check if the URL can be opened
+    Linking.canOpenURL(url).then(supported => {
+      if (supported) {
+        Linking.openURL(url);
+      } else {
+        console.log(`Cannot open URL: ${url}`);
+        Alert.alert('Error', 'Cannot open the link. Please visit our website directly.');
+      }
+    }).catch(err => {
+      console.error('An error occurred', err);
+      Alert.alert('Error', 'Something went wrong. Please try again later.');
+    });
   };
 
   // Handle support link
   const handleSupportPress = () => {
-    Linking.openURL('mailto:support@treadtrail.com');
+    Linking.openURL('mailto:hello@treadtrail.run');
   };
 
   // Handle navigation to workouts screen
@@ -248,13 +275,6 @@ const SettingsScreen: React.FC<Props> = ({navigation}) => {
               style={styles.settingsItem}
               onPress={() => handleLegalLink('privacy')}>
               <Text style={styles.itemLabel}>Privacy Policy</Text>
-              <Text style={styles.chevron}>→</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.settingsItem}
-              onPress={() => handleLegalLink('licenses')}>
-              <Text style={styles.itemLabel}>Licenses</Text>
               <Text style={styles.chevron}>→</Text>
             </TouchableOpacity>
           </View>
