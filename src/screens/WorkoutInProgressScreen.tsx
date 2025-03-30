@@ -50,71 +50,11 @@ import { useSubscription } from '../context/SubscriptionContext';
 import { calculateSegmentCalories } from '../utils/calorieUtils';
 import { calculateTotalDistance, calculateWorkoutInProgressDistance } from '../utils/distanceUtils';
 import { Ionicons } from '@expo/vector-icons';
-import Svg, { Circle } from 'react-native-svg';
 import { loadSegmentAudio } from '../utils/audioUtils';
 import { AppDispatch } from '../redux/store';
 import { v4 as uuidv4 } from 'uuid';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'WorkoutInProgress'>;
-
-// Define types for the CircularProgress component
-interface CircularProgressProps {
-  progress: number;
-  size?: number;
-  strokeWidth?: number;
-  circleColor?: string;
-  progressColor?: string;
-  elapsedTime: number;
-  totalDuration: number;
-}
-
-// Circular progress component for workout progress
-const CircularProgress: React.FC<CircularProgressProps> = ({ 
-  progress, 
-  size = 80, 
-  strokeWidth = 8, 
-  circleColor = 'rgba(255, 255, 255, 0.1)', 
-  progressColor = COLORS.lightGray,
-  elapsedTime,
-  totalDuration
-}) => {
-  const radius = (size - strokeWidth) / 2;
-  const circumference = radius * 2 * Math.PI;
-  const progressOffset = circumference - (progress / 100) * circumference;
-
-  return (
-    <View style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center' }}>
-      <Svg width={size} height={size}>
-        {/* Background Circle */}
-        <Circle
-          stroke={circleColor}
-          fill="transparent"
-          strokeWidth={strokeWidth}
-          cx={size / 2}
-          cy={size / 2}
-          r={radius}
-        />
-        {/* Progress Circle */}
-        <Circle
-          stroke={progressColor}
-          fill="transparent"
-          strokeWidth={strokeWidth}
-          strokeDasharray={circumference}
-          strokeDashoffset={progressOffset}
-          strokeLinecap="round"
-          cx={size / 2}
-          cy={size / 2}
-          r={radius}
-          transform={`rotate(-90, ${size / 2}, ${size / 2})`}
-        />
-      </Svg>
-      <View style={styles.progressTextContainer}>
-        <Text style={styles.progressTime}>{formatTime(elapsedTime)}</Text>
-        <Text style={styles.totalTime}>/ {formatTime(totalDuration)}</Text>
-      </View>
-    </View>
-  );
-};
 
 const formatSegmentDuration = (seconds: number) => {
   const minutes = Math.floor(seconds / 60);
@@ -890,20 +830,7 @@ const WorkoutInProgressScreen: React.FC<Props> = ({ route, navigation }) => {
             </View>
           </View>
 
-          {/* Split Info Cards */}
-          <View style={styles.splitCardsContainer}>
-            {/* Workout Progress Card with Circular Progress */}
-            {/* <View style={styles.workoutProgressCard}>
-              <Text style={styles.cardLabel}>Total</Text>
-              <CircularProgress 
-                progress={progressPercentage}
-                size={80}
-                strokeWidth={8}
-                elapsedTime={elapsedTime}
-                totalDuration={totalDuration}
-              />
-            </View> */}
-            
+          <View>
             {/* Next Segment Info with Static Value */}
             <View style={[styles.nextSegment, styles.noBottomMargin]}>
               <Text style={styles.nextLabel}>Next:</Text>
@@ -933,9 +860,7 @@ const WorkoutInProgressScreen: React.FC<Props> = ({ route, navigation }) => {
           </View>
 
           {/* Timeline */}
-          <View style={[styles.timelineContainerNoGap, { maxHeight: '45%' }]}>
-            <Text style={styles.timelineTitle}>Workout Timeline</Text>
-
+          <View style={styles.timelineContainerNoGap}>
             <View style={styles.timelineLegend}>
               <View style={styles.legendItem}>
                 <View style={[styles.legendColor, { backgroundColor: PACE_COLORS.recovery }]} />
@@ -956,12 +881,7 @@ const WorkoutInProgressScreen: React.FC<Props> = ({ route, navigation }) => {
             </View>
 
             {/* Use the shared WorkoutVisualization component with dynamic height */}
-            <View 
-              style={[
-                styles.visualizationWrapper,
-                { height: visualizationHeight, maxHeight: '100%' }
-              ]}
-            >
+            <View style={styles.visualizationWrapper}>
               <WorkoutVisualization 
                 segments={activeWorkout.segments} 
                 currentSegmentIndex={currentSegmentIndex}
@@ -1154,28 +1074,14 @@ const styles = StyleSheet.create({
   inclineInfo: {
     fontSize: 16,
     color: 'rgba(255, 255, 255, 0.6)',
-    // marginTop: 5,
-  },
-  splitCardsContainer: {
-    flexDirection: 'row',
-    marginBottom: 20,
-    gap: 10,
-  },
-  workoutProgressCard: {
-    flex: 1,
-    backgroundColor: COLORS.darkGray,
-    borderRadius: 10,
-    padding: 15,
-    alignItems: 'center',
   },
   nextSegment: {
     backgroundColor: COLORS.darkGray,
     borderRadius: 10,
-    padding: 15,
-    marginBottom: 10,
     flexDirection: 'row',
     alignItems: 'center',
     width: '100%',
+    padding: 15,
   },
   nextLabel: {
     fontSize: FONT_SIZES.small,
@@ -1232,12 +1138,10 @@ const styles = StyleSheet.create({
     marginRight: 10,
   },
   timelineContainerNoGap: {
-    marginTop: 0,
-    paddingTop: 10,
+    marginTop: 10,
     flex: 1,
-    justifyContent: 'flex-start',
-    marginBottom: 20,
-    maxHeight: '45%',
+    justifyContent: 'center',
+    marginBottom: 5,
   },
   timelineTitle: {
     fontSize: 16,
@@ -1249,7 +1153,7 @@ const styles = StyleSheet.create({
   timelineLegend: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginBottom: 8,
+    marginBottom: 12,
     fontSize: 12,
     color: 'rgba(255, 255, 255, 0.7)',
   },
@@ -1269,13 +1173,12 @@ const styles = StyleSheet.create({
   },
   visualizationWrapper: {
     width: '100%',
-    marginVertical: 10,
+    marginVertical: 0,
     minHeight: 120,
-    maxHeight: '100%',
     backgroundColor: COLORS.darkGray,
     borderRadius: 12,
-    padding: 16,
-    paddingBottom: 40,
+    padding: 5,
+    // paddingBottom: 40,
   },
   controlButtonsContainer: {
     position: 'absolute',
@@ -1469,23 +1372,6 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     fontSize: 16,
   },
-  progressTextContainer: {
-    position: 'absolute',
-    alignItems: 'center',
-    justifyContent: 'center',
-    width: '100%',
-    height: '100%',
-  },
-  progressTime: {
-    fontSize: FONT_SIZES.medium,
-    fontWeight: 'bold',
-    color: COLORS.white,
-  },
-  totalTime: {
-    fontSize: FONT_SIZES.xs,
-    color: COLORS.white,
-    opacity: 0.5,
-  },
   cardLabel: {
     fontSize: FONT_SIZES.small,
     color: COLORS.white,
@@ -1527,9 +1413,11 @@ const styles = StyleSheet.create({
   caloriesContainer: {
     alignItems: 'center',
     justifyContent: 'center',
-    marginVertical: 15,
+    marginTop: 5,
+    marginBottom: 10,
     paddingVertical: 5,
     width: '100%',
+    zIndex: 10,
   },
   caloriesBadge: {
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
