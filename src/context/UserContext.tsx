@@ -478,6 +478,9 @@ export const UserProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       // Always save to global storage as fallback
       try {
         await AsyncStorage.setItem(USER_SETTINGS_KEY, JSON.stringify(settings));
+        if (DEBUG_USER_CONTEXT) {
+          console.log('[DEBUG-USER-CONTEXT] Saved settings to global storage');
+        }
       } catch (asyncError) {
         console.error('Error saving settings to AsyncStorage:', asyncError);
       }
@@ -487,6 +490,10 @@ export const UserProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         const userKey = getUserSettingsKey(authState.user.id);
         try {
           await AsyncStorage.setItem(userKey, JSON.stringify(settings));
+          if (DEBUG_USER_CONTEXT) {
+            console.log(`[DEBUG-USER-CONTEXT] Saved user-specific settings to AsyncStorage for user ${authState.user.id}`);
+            console.log(`[DEBUG-USER-CONTEXT] Pace settings: ${JSON.stringify(settings.paceSettings)}`);
+          }
         } catch (asyncError) {
           console.error('Error saving user-specific settings to AsyncStorage:', asyncError);
         }
@@ -500,7 +507,9 @@ export const UserProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           const weightValue = settings.weight;
           
           if (DEBUG_USER_CONTEXT) {
-            console.log(`[DEBUG-USER-CONTEXT] Saving weight to Supabase: ${weightValue}`);
+            console.log(`[DEBUG-USER-CONTEXT] Online - Saving settings to Supabase`);
+            console.log(`[DEBUG-USER-CONTEXT] Weight: ${weightValue}`);
+            console.log(`[DEBUG-USER-CONTEXT] Pace settings: ${JSON.stringify(settings.paceSettings)}`);
             console.log(`[DEBUG-USER-CONTEXT] User ID: ${authState.user.id}`);
           }
           
@@ -530,7 +539,8 @@ export const UserProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         } else {
           // Offline, set the pending changes flag
           if (DEBUG_USER_CONTEXT) {
-            console.log('[DEBUG-USER-CONTEXT] Offline, setting pending changes flag');
+            console.log('[DEBUG-USER-CONTEXT] Offline - Setting pending changes flag');
+            console.log(`[DEBUG-USER-CONTEXT] Saved pace settings locally: ${JSON.stringify(settings.paceSettings)}`);
           }
           setHasPendingSettingsChanges(true);
         }
@@ -682,13 +692,36 @@ export const UserProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       
       // Update pace settings if provided
       if (updates.paceSettings) {
-        updatedSettings.paceSettings = {
-          ...userSettings.paceSettings,
-          ...updates.paceSettings
-        };
-        if (DEBUG_USER_CONTEXT) {
-          console.log(`[DEBUG-USER-CONTEXT] Updating pace settings:`, JSON.stringify(updates.paceSettings));
+        // Check if we have any pace settings with undefined or NaN values
+        let hasInvalidValues = false;
+        Object.entries(updates.paceSettings).forEach(([paceType, settings]) => {
+          if (settings.speed === undefined || isNaN(settings.speed)) {
+            console.error(`[DEBUG-USER-CONTEXT] Invalid speed value for ${paceType}: ${settings.speed}`);
+            hasInvalidValues = true;
+          }
+        });
+        
+        if (hasInvalidValues) {
+          console.error('[DEBUG-USER-CONTEXT] Found invalid pace settings values, using current values as fallback');
+          // Don't update pace settings if there are invalid values
+        } else {
+          updatedSettings.paceSettings = {
+            ...userSettings.paceSettings,
+            ...updates.paceSettings
+          };
+          
+          if (DEBUG_USER_CONTEXT) {
+            console.log(`[DEBUG-USER-CONTEXT] Updating pace settings:`, JSON.stringify(updatedSettings.paceSettings));
+          }
         }
+      }
+      
+      // Check network connectivity
+      const netInfo = await NetInfo.fetch();
+      const isConnected = netInfo.isConnected && netInfo.isInternetReachable;
+      
+      if (!isConnected && DEBUG_USER_CONTEXT) {
+        console.log('[DEBUG-USER-CONTEXT] Device is offline, will save settings locally');
       }
       
       // Update state and save to storage

@@ -20,6 +20,9 @@ import { UserContext } from '../context';
 import Button from '../components/common/Button';
 import { kgToLbs, lbsToKg } from '../utils/calorieUtils';
 
+// Debug flags
+const DEBUG_PACE_SETTINGS = false;
+
 type Props = NativeStackScreenProps<RootStackParamList, 'EditPace'>;
 
 const PaceTypeInfo = {
@@ -239,7 +242,12 @@ const EditPaceScreen: React.FC<Props> = ({ navigation }) => {
     setUseMetric(useMetricUnits);
     
     // Update the displayed values based on the new unit system
-    const updatedValues: Record<PaceType, string> = {};
+    const updatedValues: Record<PaceType, string> = {
+      recovery: '',
+      base: '',
+      run: '',
+      sprint: ''
+    };
     
     (['recovery', 'base', 'run', 'sprint'] as PaceType[]).forEach(paceType => {
       const currentSpeed = paceSettings[paceType].speed;
@@ -290,12 +298,30 @@ const EditPaceScreen: React.FC<Props> = ({ navigation }) => {
       } = {};
       
       // Add pace settings to updates
-      updates.paceSettings = {
-        recovery: { speed: parseFloat(inputValues.recovery), incline: paceSettings.recovery.incline },
-        base: { speed: parseFloat(inputValues.base), incline: paceSettings.base.incline },
-        run: { speed: parseFloat(inputValues.run), incline: paceSettings.run.incline },
-        sprint: { speed: parseFloat(inputValues.sprint), incline: paceSettings.sprint.incline },
+      const updatedPaceSettings = {
+        recovery: { 
+          speed: useMetric ? parseFloat(inputValues.recovery) : mphToKmh(parseFloat(inputValues.recovery)), 
+          incline: paceSettings.recovery.incline 
+        },
+        base: { 
+          speed: useMetric ? parseFloat(inputValues.base) : mphToKmh(parseFloat(inputValues.base)), 
+          incline: paceSettings.base.incline 
+        },
+        run: { 
+          speed: useMetric ? parseFloat(inputValues.run) : mphToKmh(parseFloat(inputValues.run)), 
+          incline: paceSettings.run.incline 
+        },
+        sprint: { 
+          speed: useMetric ? parseFloat(inputValues.sprint) : mphToKmh(parseFloat(inputValues.sprint)), 
+          incline: paceSettings.sprint.incline 
+        },
       };
+      
+      updates.paceSettings = updatedPaceSettings;
+      
+      if (DEBUG_PACE_SETTINGS) {
+        console.log('[DEBUG-PACE-SETTINGS] Saving pace settings:', JSON.stringify(updatedPaceSettings));
+      }
       
       // Add weight to updates if provided
       const weightValue = parseFloat(weightInput);
