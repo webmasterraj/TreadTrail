@@ -238,8 +238,12 @@ const WorkoutLibraryScreen: React.FC<Props> = ({ navigation, route }) => {
     
     // If it's a premium workout, check subscription status
     if (workout.premium) {
+      // If user is not authenticated, go to regular details screen
+      if (!authState.isAuthenticated) {
+        navigation.navigate('WorkoutDetails', { workoutId });
+      }
       // If user has active subscription, go to regular details screen
-      if (isPremiumWorkout(workout.premium)) {
+      else if (isPremiumWorkout(workout.premium)) {
         navigation.navigate('WorkoutDetails', { workoutId });
       } else {
         // Otherwise, go to premium preview screen
