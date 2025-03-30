@@ -55,10 +55,9 @@ const EditPaceScreen: React.FC<Props> = ({ navigation }) => {
   // Get all the context functions we need
   const { 
     userSettings, 
-    updatePaceSetting, 
+    updateUserSettings,
     updatePreference, 
     authState,
-    updateWeight,
     saveSettings
   } = useContext(UserContext);
   
@@ -284,142 +283,39 @@ const EditPaceScreen: React.FC<Props> = ({ navigation }) => {
     setIsSubmitting(true);
     
     try {
-      // If there's a currently focused input, process its value before saving
-      if (focusedInput) {
-        handleInputBlur(focusedInput);
-        // Small delay to ensure state updates before proceeding
-        await new Promise(resolve => setTimeout(resolve, 100));
-      }
+      // Create an object to hold all the updates
+      const updates: {
+        paceSettings?: Partial<typeof paceSettings>;
+        weight?: number;
+      } = {};
       
-      // Validate weight input - required field
-      if (!weightInput.trim()) {
-        Alert.alert(
-          'Weight Required',
-          'Please enter your weight to continue. This is needed for calorie calculations.',
-          [{ text: 'OK' }]
-        );
-        setIsSubmitting(false);
-        return;
-      }
-      
-      const weightValue = parseInt(weightInput, 10);
-      if (isNaN(weightValue) || weightValue <= 0) {
-        Alert.alert(
-          'Invalid Weight',
-          'Please enter a valid weight value greater than 0.',
-          [{ text: 'OK' }]
-        );
-        setIsSubmitting(false);
-        return;
-      }
-      
-      // Create a fresh pace settings object directly from input values
-      const freshInputPaceSettings: PaceSettings = {
-        recovery: { 
-          speed: parseFloat(inputValues.recovery) || 0,
-          incline: paceSettings.recovery.incline
-        },
-        base: { 
-          speed: parseFloat(inputValues.base) || 0,
-          incline: paceSettings.base.incline
-        },
-        run: { 
-          speed: parseFloat(inputValues.run) || 0,
-          incline: paceSettings.run.incline
-        },
-        sprint: { 
-          speed: parseFloat(inputValues.sprint) || 0,
-          incline: paceSettings.sprint.incline
-        }
+      // Add pace settings to updates
+      updates.paceSettings = {
+        recovery: { speed: parseFloat(inputValues.recovery), incline: paceSettings.recovery.incline },
+        base: { speed: parseFloat(inputValues.base), incline: paceSettings.base.incline },
+        run: { speed: parseFloat(inputValues.run), incline: paceSettings.run.incline },
+        sprint: { speed: parseFloat(inputValues.sprint), incline: paceSettings.sprint.incline },
       };
       
-      // Convert to km/h if in imperial mode
-      if (!useMetric) {
-        freshInputPaceSettings.recovery.speed = mphToKmh(freshInputPaceSettings.recovery.speed);
-        freshInputPaceSettings.base.speed = mphToKmh(freshInputPaceSettings.base.speed);
-        freshInputPaceSettings.run.speed = mphToKmh(freshInputPaceSettings.run.speed);
-        freshInputPaceSettings.sprint.speed = mphToKmh(freshInputPaceSettings.sprint.speed);
+      // Add weight to updates if provided
+      const weightValue = parseFloat(weightInput);
+      if (!isNaN(weightValue) && weightValue > 0) {
+        // Convert to kg if in imperial
+        updates.weight = useMetric ? weightValue : lbsToKg(weightValue);
       }
       
-      // Update pace settings state with fresh values
-      setPaceSettings(freshInputPaceSettings);
+      // Save all updates at once
+      await updateUserSettings(updates);
       
-      // Get the current user settings after unit preference and weight update
-      const currentSettings = userSettings;
-      if (!currentSettings) {
-        Alert.alert('Error', 'Could not access user settings');
-        setIsSubmitting(false);
-        return;
-      }
-      
-      // Create updated settings object with all pace settings updated at once
-      const updatedSettings = {
-        ...currentSettings,
-        paceSettings: freshInputPaceSettings,
-        // Explicitly set the preferences to ensure they don't get overwritten
-        preferences: {
-          ...currentSettings.preferences,
-          units: unitPreferenceRef.current,
-        },
-      };
-      
-      // Ensure profile is preserved
-      if (currentSettings.profile) {
-        updatedSettings.profile = {
-          ...currentSettings.profile,
-        };
-      }
-      
-      // Get the units preference from our ref
-      const unitPref = unitPreferenceRef.current;
-      
-      // Navigate back immediately after validation
+      // Navigate back
       navigation.goBack();
-      
-      // Continue saving in the background
-      try {
-        // Save the preference first
-        await updatePreference('units', unitPref);
-      } catch (prefError) {
-        console.error('Error saving units preference:', prefError);
-        // Don't show alert since we've already navigated away
-      }
-      
-      // Process weight input
-      if (weightInput.trim()) {
-        const weightValue = parseInt(weightInput, 10);
-        if (!isNaN(weightValue) && weightValue > 0) {
-          // Convert to kg if in imperial
-          const weightInKg = useMetric ? weightValue : lbsToKg(weightValue);
-          
-          try {
-            // Save weight directly
-            await updateWeight(weightInKg);
-          } catch (weightError) {
-            console.error('Error saving weight:', weightError);
-            // Don't show alert since we've already navigated away
-          }
-        }
-      }
-      
-      // Save the updated settings to AsyncStorage
-      try {
-        // Use the saveSettings function from context to persist to AsyncStorage
-        if (saveSettings) {
-          const saved = await saveSettings(updatedSettings);
-          if (!saved) {
-            console.error('Save operation returned false');
-          }
-        }
-      } catch (saveError) {
-        console.error('Error saving settings:', saveError);
-      }
-      
     } catch (error) {
-      console.error('Error in handleSaveSettings:', error);
-      if (navigation.isFocused()) {
-        Alert.alert('Error', 'An unexpected error occurred. Please try again.');
-      }
+      console.error('Error saving pace settings:', error);
+      Alert.alert(
+        'Error',
+        'Failed to save pace settings. Please try again.',
+        [{ text: 'OK' }]
+      );
     } finally {
       setIsSubmitting(false);
     }

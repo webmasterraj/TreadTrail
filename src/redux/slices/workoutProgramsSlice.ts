@@ -10,6 +10,8 @@ import { queueWorkoutAudioDownloads } from '../../utils/audioUtils';
 // Debug flags
 const DEBUG_STATS = false;
 const DEBUG_SYNC = false;
+const DEBUG_REDUX = false;
+const DEBUG_QUEUE = false;
 
 // Helper functions for date handling
 const getMonthKey = (date: string): string => {
@@ -910,8 +912,8 @@ const addWorkoutSessionToPendingQueue = createAsyncThunk(
   'workoutPrograms/addWorkoutSessionToPendingQueue',
   async (session: WorkoutSession, { getState, dispatch }) => {
     try {
-      console.log('[QUEUE] Adding workout session to pending queue:', session.id);
-      console.log('[QUEUE] Workout details:', JSON.stringify({
+      if (DEBUG_QUEUE) console.log('[QUEUE DEBUG] Adding workout session to pending queue:', session.id);
+      if (DEBUG_QUEUE) console.log('[QUEUE DEBUG] Workout details:', JSON.stringify({
         id: session.id,
         workoutId: session.workoutId,
         workoutName: session.workoutName,
@@ -925,19 +927,19 @@ const addWorkoutSessionToPendingQueue = createAsyncThunk(
       // Ensure workout name is set
       let workoutToAdd = session;
       if (!session.workoutName) {
-        console.log('[QUEUE] Workout name missing, retrieving from workout programs');
+        if (DEBUG_QUEUE) console.log('[QUEUE DEBUG] Workout name missing, retrieving from workout programs');
         const workoutName = getWorkoutNameFromPrograms(session.workoutId, state.workoutPrograms.workoutPrograms);
         workoutToAdd = {
           ...session,
           workoutName
         };
-        console.log('[QUEUE] Added workout name:', workoutName);
+        if (DEBUG_QUEUE) console.log('[QUEUE DEBUG] Added workout name:', workoutName);
       }
       
       // Add to pending queue
       const updatedPendingQueue = [...state.workoutPrograms.pendingSync.workoutHistory, workoutToAdd];
-      console.log(`[QUEUE] Updated pending queue size: ${updatedPendingQueue.length}`);
-      console.log('[QUEUE DEBUG] Current pending queue state:', {
+      if (DEBUG_QUEUE) console.log(`[QUEUE DEBUG] Updated pending queue size: ${updatedPendingQueue.length}`);
+      if (DEBUG_QUEUE) console.log('[QUEUE DEBUG] Current pending queue state:', {
         previousQueueSize: state.workoutPrograms.pendingSync.workoutHistory.length,
         newQueueSize: updatedPendingQueue.length,
         newWorkoutAdded: {
@@ -952,14 +954,14 @@ const addWorkoutSessionToPendingQueue = createAsyncThunk(
       });
       
       // Save to AsyncStorage
-      console.log('[QUEUE] Saving pending queue to AsyncStorage');
+      if (DEBUG_QUEUE) console.log('[QUEUE DEBUG] Saving pending queue to AsyncStorage');
       await AsyncStorage.setItem(PENDING_SYNC_KEY, JSON.stringify({
         ...state.workoutPrograms.pendingSync,
         workoutHistory: updatedPendingQueue
       }));
       
       // Update workout's lastUsed in memory
-      console.log('[QUEUE] Updating workout lastUsed timestamp');
+      if (DEBUG_QUEUE) console.log('[QUEUE DEBUG] Updating workout lastUsed timestamp');
       const updatedPrograms = state.workoutPrograms.workoutPrograms.map(workout => {
         if (workout.id === session.workoutId) {
           return { ...workout, lastUsed: session.date };
@@ -968,7 +970,7 @@ const addWorkoutSessionToPendingQueue = createAsyncThunk(
       });
       
       // Persist updated programs to local storage
-      console.log('[QUEUE] Saving updated workout programs to AsyncStorage');
+      if (DEBUG_QUEUE) console.log('[QUEUE DEBUG] Saving updated workout programs to AsyncStorage');
       await AsyncStorage.setItem(WORKOUT_PROGRAMS_KEY, JSON.stringify(updatedPrograms));
       
       // Return the data first to update Redux state
@@ -978,26 +980,26 @@ const addWorkoutSessionToPendingQueue = createAsyncThunk(
       };
       
       // Refresh stats to include the new workout immediately (even when offline)
-      console.log('[QUEUE] Refreshing stats to include new workout');
-      console.log('[QUEUE DEBUG] Calling fetchStats to update stats with new workout in pending queue');
-      console.log('[QUEUE DEBUG] Current pending queue size before stats refresh:', updatedPendingQueue.length);
+      if (DEBUG_QUEUE) console.log('[QUEUE DEBUG] Refreshing stats to include new workout');
+      if (DEBUG_QUEUE) console.log('[QUEUE DEBUG] Calling fetchStats to update stats with new workout in pending queue');
+      if (DEBUG_QUEUE) console.log('[QUEUE DEBUG] Current pending queue size before stats refresh:', updatedPendingQueue.length);
       
       // Dispatch fetchStats and wait for it to complete to ensure stats are updated
       try {
         await dispatch(fetchStats()).unwrap();
-        console.log('[QUEUE DEBUG] Stats successfully refreshed with pending workout');
+        if (DEBUG_QUEUE) console.log('[QUEUE DEBUG] Stats successfully refreshed with pending workout');
       } catch (error) {
         console.error('[QUEUE DEBUG] Error refreshing stats:', error);
       }
       
       // Wait a moment to ensure state is updated before processing queue
       setTimeout(() => {
-        console.log('[QUEUE] Attempting to process pending queue after delay');
-        console.log('[QUEUE DEBUG] Attempting to sync workout in offline mode - this should fail and keep workout in queue');
+        if (DEBUG_QUEUE) console.log('[QUEUE DEBUG] Attempting to process pending queue after delay');
+        if (DEBUG_QUEUE) console.log('[QUEUE DEBUG] Attempting to sync workout in offline mode - this should fail and keep workout in queue');
         dispatch(processPendingQueue());
       }, 1000);
       
-      console.log('[QUEUE] Successfully added workout to pending queue');
+      if (DEBUG_QUEUE) console.log('[QUEUE DEBUG] Successfully added workout to pending queue');
       return result;
     } catch (error: any) {
       console.error('[QUEUE] Error in addWorkoutSessionToPendingQueue:', error);
@@ -1021,12 +1023,12 @@ const processPendingQueue = createAsyncThunk(
           const pendingQueue = JSON.parse(pendingQueueJson);
           pendingWorkouts = pendingQueue.workoutHistory || [];
         }
-        console.log(`[SYNC] Found ${pendingWorkouts.length} pending workouts in AsyncStorage`);
+        if (DEBUG_QUEUE) console.log(`[QUEUE DEBUG] Found ${pendingWorkouts.length} pending workouts in AsyncStorage`);
       } catch (error) {
-        console.error('[SYNC] Error reading pending queue from AsyncStorage:', error);
+        console.error('[QUEUE] Error reading pending queue from AsyncStorage:', error);
         // Fall back to Redux state
         pendingWorkouts = state.workoutPrograms.pendingSync.workoutHistory;
-        console.log(`[SYNC] Falling back to Redux state, found ${pendingWorkouts.length} pending workouts`);
+        if (DEBUG_QUEUE) console.log(`[QUEUE DEBUG] Falling back to Redux state, found ${pendingWorkouts.length} pending workouts`);
       }
       
       // If nothing to process, return early
@@ -1079,21 +1081,40 @@ const processPendingQueue = createAsyncThunk(
           // Get user settings for weight if not provided in workout
           let userWeight = workout.weight;
           if (!userWeight) {
-            console.log('[SYNC] Workout missing weight, retrieving from user settings');
+            if (DEBUG_SYNC) {
+              console.log('[SYNC] Workout missing weight, retrieving from user settings');
+              console.log('[SYNC] User ID for weight lookup:', userId);
+            }
+            
             try {
-              const { data: userSettings } = await supabase
+              const { data: userSettings, error: settingsError } = await supabase
                 .from('user_settings')
                 .select('weight')
                 .eq('id', userId)
                 .single();
                 
+              if (DEBUG_SYNC) {
+                console.log('[SYNC] User settings retrieved:', JSON.stringify(userSettings));
+                if (settingsError) {
+                  console.error('[SYNC] Error retrieving user settings:', settingsError);
+                }
+              }
+                
               if (userSettings?.weight) {
                 userWeight = userSettings.weight;
-                console.log('[SYNC] Retrieved user weight:', userWeight);
+                if (DEBUG_SYNC) {
+                  console.log('[SYNC] Retrieved user weight:', userWeight);
+                }
+              } else {
+                if (DEBUG_SYNC) {
+                  console.log('[SYNC] No weight found in user settings');
+                }
               }
             } catch (error) {
               console.error('[SYNC] Error fetching user weight:', error);
             }
+          } else if (DEBUG_SYNC) {
+            console.log('[SYNC] Using workout weight:', userWeight);
           }
           
           // Prepare workout data for Supabase
@@ -1112,6 +1133,11 @@ const processPendingQueue = createAsyncThunk(
             pauses: workout.pauses,
             pace_settings: workout.paceSettings
           };
+          
+          if (DEBUG_SYNC) {
+            console.log('[SYNC] Preparing to save workout with weight:', userWeight);
+            console.log('[SYNC] Workout data:', JSON.stringify(workoutData));
+          }
           
           // Insert workout to Supabase          
           const { data, error } = await supabase
@@ -1136,7 +1162,7 @@ const processPendingQueue = createAsyncThunk(
         }
       }
       
-      console.log(`[SYNC] Processed ${successCount} out of ${pendingWorkouts.length} workouts successfully, ${failureCount} failures`);
+      if (DEBUG_SYNC) console.log(`[SYNC DEBUG] Processed ${successCount} out of ${pendingWorkouts.length} workouts successfully, ${failureCount} failures`);
       
       // Update user's last_active timestamp
       try {
@@ -1259,13 +1285,13 @@ const checkAndProcessPendingQueue = createAsyncThunk(
           const pendingQueue = JSON.parse(pendingQueueJson);
           pendingCount = pendingQueue.workoutHistory?.length || 0;
         }
-        console.log(`[SYNC-CHECK] Found ${pendingCount} pending workouts in AsyncStorage`);
+        if (DEBUG_QUEUE) console.log(`[QUEUE DEBUG] Found ${pendingCount} pending workouts in AsyncStorage`);
       } catch (error) {
-        console.error('[SYNC-CHECK] Error reading from AsyncStorage:', error);
+        console.error('[QUEUE] Error reading from AsyncStorage:', error);
         // Fall back to Redux state
         const state = getState() as { workoutPrograms: WorkoutProgramsState };
         pendingCount = state.workoutPrograms.pendingSync.workoutHistory.length;
-        console.log(`[SYNC-CHECK] Falling back to Redux state, found ${pendingCount} pending workouts`);
+        if (DEBUG_QUEUE) console.log(`[QUEUE DEBUG] Falling back to Redux state, found ${pendingCount} pending workouts`);
       }
       
       if (pendingCount > 0) {
@@ -1275,7 +1301,7 @@ const checkAndProcessPendingQueue = createAsyncThunk(
         return { triggered: false, pendingCount: 0 };
       }
     } catch (error) {
-      console.error('[SYNC-CHECK] Error checking pending queue:', error);
+      console.error('[QUEUE] Error checking pending queue:', error);
       return { triggered: false, error: true };
     }
   }
@@ -1342,27 +1368,27 @@ const workoutProgramsSlice = createSlice({
   extraReducers: (builder) => {
     // Handle fetchWorkoutPrograms
     builder.addCase(fetchWorkoutPrograms.pending, (state) => {
-      console.log('[DEBUG-REDUX] fetchWorkoutPrograms.pending - Setting isLoading to true');
+      if (DEBUG_REDUX) console.log('[REDUX] fetchWorkoutPrograms.pending - Setting isLoading to true');
       // Only set isLoading to true if we don't already have workout programs
       if (state.workoutPrograms.length === 0) {
         state.isLoading = true;
       } else {
-        console.log('[DEBUG-REDUX] fetchWorkoutPrograms.pending - Already have data, not setting loading state');
+        if (DEBUG_REDUX) console.log('[REDUX] fetchWorkoutPrograms.pending - Already have data, not setting loading state');
       }
       state.error = null;
     });
     builder.addCase(fetchWorkoutPrograms.fulfilled, (state, action) => {
       // Safe logging that handles both array and object return types
-      if (Array.isArray(action.payload)) {
-        console.log(`[DEBUG-REDUX] fetchWorkoutPrograms.fulfilled - Received ${action.payload.length} workouts`);
+      if (action.payload && Array.isArray(action.payload)) {
+        if (DEBUG_REDUX) console.log(`[REDUX] fetchWorkoutPrograms.fulfilled - Received ${action.payload.length} workouts`);
       } else if (action.payload && 'workouts' in action.payload) {
-        console.log(`[DEBUG-REDUX] fetchWorkoutPrograms.fulfilled - Received ${action.payload.workouts.length} workouts`);
+        if (DEBUG_REDUX) console.log(`[REDUX] fetchWorkoutPrograms.fulfilled - Received ${action.payload.workouts.length} workouts`);
       }
       
       state.isLoading = false;
       
       // Handle both array and object return types
-      if (Array.isArray(action.payload)) {
+      if (action.payload && Array.isArray(action.payload)) {
         state.workoutPrograms = action.payload;
       } else if (action.payload && 'workouts' in action.payload) {
         state.workoutPrograms = action.payload.workouts;
@@ -1370,38 +1396,42 @@ const workoutProgramsSlice = createSlice({
       }
     });
     builder.addCase(fetchWorkoutPrograms.rejected, (state, action) => {
-      console.log(`[DEBUG-REDUX] fetchWorkoutPrograms.rejected - Error: ${action.payload}`);
+      if (DEBUG_REDUX) console.log(`[REDUX] fetchWorkoutPrograms.rejected - Error: ${action.payload}`);
       state.error = action.payload as string;
       state.isLoading = false;
-      console.log('[DEBUG-REDUX] fetchWorkoutPrograms.rejected - Set isLoading to false');
+      if (DEBUG_REDUX) console.log('[REDUX] fetchWorkoutPrograms.rejected - Set isLoading to false');
     });
     
     // Handle fetchWorkoutHistory
     builder.addCase(fetchWorkoutHistory.pending, (state) => {
-      console.log('[DEBUG-REDUX] fetchWorkoutHistory.pending');
+      if (DEBUG_REDUX) console.log('[REDUX] fetchWorkoutHistory.pending');
       state.error = null;
       // Don't set isLoading to true here to avoid blocking UI
     });
     builder.addCase(fetchWorkoutHistory.fulfilled, (state, action) => {
-      if (Array.isArray(action.payload)) {
-        console.log(`[DEBUG-REDUX] fetchWorkoutHistory.fulfilled - Received ${action.payload.length} history items`);
-        state.workoutHistory = action.payload;
+      if (action.payload && Array.isArray(action.payload)) {
+        if (DEBUG_REDUX) console.log(`[REDUX] fetchWorkoutHistory.fulfilled - Received ${action.payload.length} history items`);
       } else {
-        console.log(`[DEBUG-REDUX] fetchWorkoutHistory.fulfilled - Received ${action.payload.sessions.length} history items`);
-        state.workoutHistory = action.payload.sessions;
-        state.cachedMonths = action.payload.cachedMonths;
+        if (DEBUG_REDUX) console.log(`[REDUX] fetchWorkoutHistory.fulfilled - Received ${action.payload.sessions.length} history items`);
       }
+      
+      // Handle both array and object with sessions property
+      const sessions = action.payload && Array.isArray(action.payload) 
+        ? action.payload 
+        : action.payload.sessions || [];
+      
+      state.workoutHistory = sessions;
       // Don't modify isLoading here
     });
     builder.addCase(fetchWorkoutHistory.rejected, (state, action) => {
-      console.log(`[DEBUG-REDUX] fetchWorkoutHistory.rejected - Error: ${action.payload}`);
+      if (DEBUG_REDUX) console.log(`[REDUX] fetchWorkoutHistory.rejected - Error: ${action.payload}`);
       state.error = action.payload as string;
       // Don't modify isLoading here
     });
     
     // Handle fetchStats
     builder.addCase(fetchStats.pending, (state) => {
-      console.log('[DEBUG-REDUX] fetchStats.pending');
+      if (DEBUG_REDUX) console.log('[REDUX] fetchStats.pending');
       state.error = null;
       // Don't set isLoading to true here to avoid blocking UI
     });
@@ -1433,7 +1463,7 @@ const workoutProgramsSlice = createSlice({
       // Don't modify isLoading here
     });
     builder.addCase(fetchStats.rejected, (state, action) => {
-      console.log(`[DEBUG-REDUX] fetchStats.rejected - Error: ${action.payload}`);
+      if (DEBUG_REDUX) console.log(`[REDUX] fetchStats.rejected - Error: ${action.payload}`);
       state.error = action.payload as string;
       // Don't modify isLoading here
     });
@@ -1453,10 +1483,10 @@ const workoutProgramsSlice = createSlice({
     
     // Handle addWorkoutSessionToPendingQueue
     builder.addCase(addWorkoutSessionToPendingQueue.pending, (state) => {
-      console.log('[QUEUE DEBUG] addWorkoutSessionToPendingQueue.pending - Adding workout to queue');
+      if (DEBUG_REDUX) console.log('[REDUX] addWorkoutSessionToPendingQueue.pending - Adding workout to queue');
     });
     builder.addCase(addWorkoutSessionToPendingQueue.fulfilled, (state, action) => {
-      console.log('[QUEUE DEBUG] addWorkoutSessionToPendingQueue.fulfilled - Adding workout to history and pending queue');
+      if (DEBUG_REDUX) console.log('[REDUX] addWorkoutSessionToPendingQueue.fulfilled - Adding workout to history and pending queue');
       
       // Add to workout history
       state.workoutHistory = [action.payload.session, ...state.workoutHistory];
@@ -1467,7 +1497,7 @@ const workoutProgramsSlice = createSlice({
       // Update workout programs with lastUsed date
       state.workoutPrograms = action.payload.updatedPrograms;
       
-      console.log('[QUEUE DEBUG] Updated state:', {
+      if (DEBUG_REDUX) console.log('[REDUX] Updated state:', {
         workoutHistorySize: state.workoutHistory.length,
         pendingQueueSize: state.pendingSync.workoutHistory.length,
         lastAddedWorkout: {
@@ -1480,41 +1510,40 @@ const workoutProgramsSlice = createSlice({
         }
       });
       
-      console.log('[QUEUE DEBUG] addWorkoutSessionToPendingQueue.fulfilled - Added workout to history and pending queue');
+      if (DEBUG_REDUX) console.log('[REDUX] addWorkoutSessionToPendingQueue.fulfilled - Added workout to history and pending queue');
     });
     builder.addCase(addWorkoutSessionToPendingQueue.rejected, (state, action) => {
-      console.log('[QUEUE DEBUG] addWorkoutSessionToPendingQueue.rejected - Failed to add workout to queue');
-      console.log('[QUEUE DEBUG] Error:', action.error);
+      if (DEBUG_REDUX) console.log('[REDUX] addWorkoutSessionToPendingQueue.rejected - Failed to add workout to queue');
+      if (DEBUG_REDUX) console.log('[REDUX] Error:', action.error);
     });
     
     // Handle processPendingQueue
     builder.addCase(processPendingQueue.pending, (state) => {
+      if (DEBUG_REDUX) console.log('[REDUX] processPendingQueue.pending - Setting isSyncing to true');
       state.isSyncing = true;
-      if (DEBUG_SYNC) console.log('[SYNC DEBUG] processPendingQueue.pending - Setting isSyncing to true');
     });
     builder.addCase(processPendingQueue.fulfilled, (state, action) => {
+      if (DEBUG_REDUX) console.log('[REDUX] processPendingQueue.fulfilled - Queue processed successfully, cleared pendingSync.workoutHistory');
       state.isSyncing = false;
       state.pendingSync.workoutHistory = [];
-      if (DEBUG_SYNC) console.log('[SYNC DEBUG] processPendingQueue.fulfilled - Queue processed successfully, cleared pendingSync.workoutHistory');
     });
     builder.addCase(processPendingQueue.rejected, (state, action) => {
-      state.isSyncing = false;
-      if (DEBUG_SYNC) console.log('[SYNC DEBUG] processPendingQueue.rejected - Sync failed, preserving pending workouts');
-      if (DEBUG_SYNC) console.log('[SYNC DEBUG] Error reason:', action.payload);
-      if (DEBUG_SYNC) console.log('[SYNC DEBUG] Current pending queue size:', state.pendingSync.workoutHistory.length);
+      if (DEBUG_REDUX) console.log('[REDUX] processPendingQueue.rejected - Sync failed, preserving pending workouts');
+      if (DEBUG_REDUX) console.log('[REDUX] Error reason:', action.payload);
+      if (DEBUG_REDUX) console.log('[REDUX] Current pending queue size:', state.pendingSync.workoutHistory.length);
       
       // If we're offline, make sure to keep the workouts in the queue
       if (action.payload === 'No internet connection available to process pending queue') {
-        if (DEBUG_SYNC) console.log('[SYNC DEBUG] Offline mode detected in reducer, ensuring workouts remain in queue');
+        if (DEBUG_REDUX) console.log('[REDUX] Offline mode detected in reducer, ensuring workouts remain in queue');
         // No need to modify state.pendingSync.workoutHistory as it should already contain the pending workouts
       }
     });
     
     // Handle initializePendingQueue
     builder.addCase(initializePendingQueue.fulfilled, (state, action) => {
+      if (DEBUG_REDUX) console.log('[REDUX] initializePendingQueue.fulfilled - Updated pendingSync state');
+      if (DEBUG_REDUX) console.log('[REDUX] Pending workouts count:', action.payload.workoutHistory?.length || 0);
       state.pendingSync = action.payload;
-      if (DEBUG_SYNC) console.log('[SYNC DEBUG] initializePendingQueue.fulfilled - Updated pendingSync state');
-      if (DEBUG_SYNC) console.log('[SYNC DEBUG] Pending workouts count:', action.payload.workoutHistory?.length || 0);
     });
   },
 });

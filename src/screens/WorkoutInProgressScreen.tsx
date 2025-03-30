@@ -888,22 +888,6 @@ const WorkoutInProgressScreen: React.FC<Props> = ({ route, navigation }) => {
                 <Text style={styles.inclineInfo}>Incline: {currentSegment.incline}%</Text>
               )}
             </View>
-
-            {/* Weight prompt for premium users without weight */}
-            {hasWeight && (
-              <TouchableOpacity 
-                style={styles.weightPromptBanner}
-                onPress={() => {
-                  if (isRunning) {
-                    dispatch(pauseWorkoutAction());
-                  }
-                  navigation.navigate('Settings');
-                }}
-              >
-                <Ionicons name="information-circle" size={16} color={COLORS.white} style={styles.weightPromptIcon} />
-                <Text style={styles.weightPromptText}>Set weight in Settings to track calories</Text>
-              </TouchableOpacity>
-            )}
           </View>
 
           {/* Split Info Cards */}

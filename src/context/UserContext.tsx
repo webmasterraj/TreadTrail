@@ -10,8 +10,8 @@ import supabase from '../api/supabaseClient';
 import { Session } from '@supabase/supabase-js';
 import NetInfo from '@react-native-community/netinfo';
 
-// Debug flag - set to true to enable debug logs
-const DEBUG_USER_CONTEXT = true;
+// Debug flags
+const DEBUG_USER_CONTEXT = false;
 
 // Default pace settings
 const DEFAULT_PACE_SETTINGS = {
@@ -75,12 +75,14 @@ interface UserContextType {
   signInWithApple: () => Promise<boolean>;
   signOut: () => Promise<void>;
   updateProfile: (name: string, weight: number | null) => Promise<{ success: boolean; error?: string }>;
-  updatePaceSetting: (paceType: keyof typeof DEFAULT_PACE_SETTINGS, setting: PaceSetting) => Promise<void>;
+  updateUserSettings: (updates: {
+    weight?: number;
+    paceSettings?: Partial<typeof DEFAULT_PACE_SETTINGS>;
+  }) => Promise<void>;
   updatePreference: <K extends keyof UserPreferences>(key: K, value: UserPreferences[K]) => Promise<UserPreferences>;
   resetToDefault: () => Promise<void>;
   saveSettings: (settings: UserSettings) => Promise<boolean>;
   preferences: UserPreferences;
-  updateWeight: (weight: number) => Promise<void>;
 }
 
 // Create the context
@@ -95,12 +97,11 @@ export const UserContext = createContext<UserContextType>({
   signInWithApple: async () => false,
   signOut: async () => {},
   updateProfile: async () => ({ success: false }),
-  updatePaceSetting: async () => {},
+  updateUserSettings: async () => {},
   updatePreference: async () => DEFAULT_PREFERENCES,
   resetToDefault: async () => {},
   saveSettings: async () => false,
   preferences: DEFAULT_PREFERENCES,
-  updateWeight: async () => {},
 });
 
 // Provider component
@@ -475,12 +476,20 @@ export const UserProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       }
       
       // Always save to global storage as fallback
-      await AsyncStorage.setItem(USER_SETTINGS_KEY, JSON.stringify(settings));
+      try {
+        await AsyncStorage.setItem(USER_SETTINGS_KEY, JSON.stringify(settings));
+      } catch (asyncError) {
+        console.error('Error saving settings to AsyncStorage:', asyncError);
+      }
       
       // If authenticated, save to user-specific storage and Supabase
       if (authState.isAuthenticated && authState.user?.id) {
         const userKey = getUserSettingsKey(authState.user.id);
-        await AsyncStorage.setItem(userKey, JSON.stringify(settings));
+        try {
+          await AsyncStorage.setItem(userKey, JSON.stringify(settings));
+        } catch (asyncError) {
+          console.error('Error saving user-specific settings to AsyncStorage:', asyncError);
+        }
         
         // Check network connectivity
         const netInfo = await NetInfo.fetch();
@@ -490,12 +499,17 @@ export const UserProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           // Get the weight value
           const weightValue = settings.weight;
           
+          if (DEBUG_USER_CONTEXT) {
+            console.log(`[DEBUG-USER-CONTEXT] Saving weight to Supabase: ${weightValue}`);
+            console.log(`[DEBUG-USER-CONTEXT] User ID: ${authState.user.id}`);
+          }
+          
           // Save to Supabase
           const { error } = await supabase
             .from('user_settings')
             .upsert({
               id: authState.user.id,
-              weight: weightValue,
+              weight: weightValue, // Ensure this is a number, not null or undefined
               pace_settings: settings.paceSettings,
               preferences: settings.preferences,
               updated_at: new Date().toISOString(),
@@ -503,16 +517,15 @@ export const UserProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           
           if (error) {
             console.error('[DEBUG-USER-CONTEXT] Error saving settings to Supabase:', error);
-            // Set the pending changes flag even if there's an error with the API
+            // Mark that we have pending changes to sync later
             setHasPendingSettingsChanges(true);
             return false;
-          }
-          
-          // Successfully saved to Supabase, reset the pending changes flag
-          setHasPendingSettingsChanges(false);
-          
-          if (DEBUG_USER_CONTEXT) {
-            console.log('[DEBUG-USER-CONTEXT] Saved settings to Supabase');
+          } else {
+            if (DEBUG_USER_CONTEXT) {
+              console.log('[DEBUG-USER-CONTEXT] Successfully saved settings to Supabase');
+            }
+            // Reset the pending changes flag
+            setHasPendingSettingsChanges(false);
           }
         } else {
           // Offline, set the pending changes flag
@@ -619,7 +632,11 @@ export const UserProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         };
         
         setUserSettings(updatedSettings);
-        await AsyncStorage.setItem(USER_SETTINGS_KEY, JSON.stringify(updatedSettings));
+        try {
+          await AsyncStorage.setItem(USER_SETTINGS_KEY, JSON.stringify(updatedSettings));
+        } catch (asyncError) {
+          console.error('Error saving profile to AsyncStorage:', asyncError);
+        }
         
         // If authenticated, update in Supabase as well
         if (authState.isAuthenticated && authState.user) {
@@ -633,6 +650,103 @@ export const UserProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     } catch (error) {
       console.error('[DEBUG-USER-CONTEXT] Error updating user profile:', error);
       return { success: false, error: 'Failed to update profile' };
+    }
+  };
+
+  // Update user settings function (replaces separate updatePaceSetting and updateWeight functions)
+  const updateUserSettings = async (updates: {
+    weight?: number;
+    paceSettings?: Partial<typeof DEFAULT_PACE_SETTINGS>;
+  }) => {
+    try {
+      if (!userSettings) {
+        throw new Error('No user settings found');
+      }
+      
+      if (DEBUG_USER_CONTEXT) {
+        console.log(`[DEBUG-USER-CONTEXT] Updating user settings:`, JSON.stringify(updates));
+      }
+      
+      // Create updated settings object
+      const updatedSettings = {
+        ...userSettings,
+      };
+      
+      // Update weight if provided
+      if (updates.weight !== undefined) {
+        updatedSettings.weight = updates.weight;
+        if (DEBUG_USER_CONTEXT) {
+          console.log(`[DEBUG-USER-CONTEXT] Updating weight to: ${updates.weight}`);
+        }
+      }
+      
+      // Update pace settings if provided
+      if (updates.paceSettings) {
+        updatedSettings.paceSettings = {
+          ...userSettings.paceSettings,
+          ...updates.paceSettings
+        };
+        if (DEBUG_USER_CONTEXT) {
+          console.log(`[DEBUG-USER-CONTEXT] Updating pace settings:`, JSON.stringify(updates.paceSettings));
+        }
+      }
+      
+      // Update state and save to storage
+      setUserSettings(updatedSettings);
+      try {
+        await saveSettingsToStorage(updatedSettings);
+        
+        if (DEBUG_USER_CONTEXT) {
+          console.log('[DEBUG-USER-CONTEXT] User settings updated successfully');
+        }
+      } catch (storageError) {
+        console.error('Error saving settings to storage:', storageError);
+        throw storageError;
+      }
+    } catch (err: any) {
+      console.error('Error updating user settings:', err);
+      setError(err.message || 'Failed to update user settings');
+    }
+  };
+
+  // Update preference function
+  const updatePreference = async <K extends keyof UserPreferences>(key: K, value: UserPreferences[K]) => {
+    try {
+      if (!userSettings) {
+        throw new Error('No user settings found');
+      }
+      
+      if (DEBUG_USER_CONTEXT) {
+        console.log(`[DEBUG-USER-CONTEXT] Updating preference ${String(key)}:`, value);
+      }
+      
+      const updatedPreferences = {
+        ...userSettings.preferences,
+        [key]: value
+      };
+      
+      const updatedSettings = {
+        ...userSettings,
+        preferences: updatedPreferences
+      };
+      
+      setUserSettings(updatedSettings);
+      try {
+        await saveSettingsToStorage(updatedSettings);
+        
+        if (DEBUG_USER_CONTEXT) {
+          console.log('[DEBUG-USER-CONTEXT] Preference updated successfully');
+        }
+      } catch (storageError) {
+        console.error('Error saving preferences to storage:', storageError);
+        throw storageError;
+      }
+      
+      return updatedPreferences;
+    } catch (err: any) {
+      console.error('Error updating preference:', err);
+      setError(err.message || 'Failed to update preference');
+      return userSettings?.preferences || DEFAULT_PREFERENCES;
     }
   };
 
@@ -833,101 +947,6 @@ export const UserProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
   };
 
-  // Update pace setting function
-  const updatePaceSetting = async (paceType: keyof typeof DEFAULT_PACE_SETTINGS, setting: PaceSetting) => {
-    try {
-      if (!userSettings) {
-        throw new Error('No user settings found');
-      }
-      
-      if (DEBUG_USER_CONTEXT) {
-        console.log(`[DEBUG-USER-CONTEXT] Updating pace setting for ${paceType}:`, setting);
-      }
-      
-      const updatedSettings = {
-        ...userSettings,
-        paceSettings: {
-          ...userSettings.paceSettings,
-          [paceType]: setting
-        }
-      };
-      
-      setUserSettings(updatedSettings);
-      await saveSettingsToStorage(updatedSettings);
-      
-      if (DEBUG_USER_CONTEXT) {
-        console.log('[DEBUG-USER-CONTEXT] Pace setting updated successfully');
-      }
-    } catch (err: any) {
-      console.error('Error updating pace setting:', err);
-      setError(err.message || 'Failed to update pace setting');
-    }
-  };
-
-  // Update preference function
-  const updatePreference = async <K extends keyof UserPreferences>(key: K, value: UserPreferences[K]) => {
-    try {
-      if (!userSettings) {
-        throw new Error('No user settings found');
-      }
-      
-      if (DEBUG_USER_CONTEXT) {
-        console.log(`[DEBUG-USER-CONTEXT] Updating preference ${String(key)}:`, value);
-      }
-      
-      const updatedPreferences = {
-        ...userSettings.preferences,
-        [key]: value
-      };
-      
-      const updatedSettings = {
-        ...userSettings,
-        preferences: updatedPreferences
-      };
-      
-      setUserSettings(updatedSettings);
-      await saveSettingsToStorage(updatedSettings);
-      
-      if (DEBUG_USER_CONTEXT) {
-        console.log('[DEBUG-USER-CONTEXT] Preference updated successfully');
-      }
-      
-      return updatedPreferences;
-    } catch (err: any) {
-      console.error('Error updating preference:', err);
-      setError(err.message || 'Failed to update preference');
-      return userSettings?.preferences || DEFAULT_PREFERENCES;
-    }
-  };
-
-  // Update weight function
-  const updateWeight = async (weight: number) => {
-    try {
-      if (!userSettings) {
-        throw new Error('No user settings found');
-      }
-      
-      if (DEBUG_USER_CONTEXT) {
-        console.log(`[DEBUG-USER-CONTEXT] Updating weight to: ${weight}`);
-      }
-      
-      const updatedSettings = {
-        ...userSettings,
-        weight
-      };
-      
-      setUserSettings(updatedSettings);
-      await saveSettingsToStorage(updatedSettings);
-      
-      if (DEBUG_USER_CONTEXT) {
-        console.log('[DEBUG-USER-CONTEXT] Weight updated successfully');
-      }
-    } catch (err: any) {
-      console.error('Error updating weight:', err);
-      setError(err.message || 'Failed to update weight');
-    }
-  };
-
   // Reset to default function
   const resetToDefault = async () => {
     try {
@@ -1013,11 +1032,10 @@ export const UserProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         signInWithApple,
         signOut,
         updateProfile: updateUserProfile,
-        updatePaceSetting,
+        updateUserSettings,
         updatePreference,
         resetToDefault,
-        saveSettings: saveSettingsToStorage,
-        updateWeight,
+        saveSettings: saveSettings,
       }}
     >
       {children}

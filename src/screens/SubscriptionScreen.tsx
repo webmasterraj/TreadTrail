@@ -24,7 +24,7 @@ import { kgToLbs, lbsToKg } from '../utils/calorieUtils';
 type Props = NativeStackScreenProps<RootStackParamList, 'Subscription'>;
 
 const SubscriptionScreen: React.FC<Props> = ({ navigation }) => {
-  const { authState, preferences, updateWeight, userSettings } = useContext(UserContext);
+  const { authState, preferences, updateUserSettings, userSettings } = useContext(UserContext);
   const {
     subscriptionInfo,
     isLoading: isSubscriptionLoading,
@@ -235,7 +235,7 @@ const SubscriptionScreen: React.FC<Props> = ({ navigation }) => {
       if (!isNaN(weightValue) && weightValue > 0) {
         // Convert to kg if user is using imperial units
         const weightInKg = unitPreference === 'imperial' ? lbsToKg(weightValue) : weightValue;
-        updateWeight(weightInKg);
+        updateUserSettings({ weight: weightInKg });
         
         Alert.alert(
           'Weight Saved',

@@ -21,6 +21,9 @@ import { useSubscription } from '../context/SubscriptionContext';
 import { calculateTotalCaloriesBurned } from '../utils/calorieUtils';
 import { Ionicons } from '@expo/vector-icons';
 
+// Debug flags
+const DEBUG_CALORIES = false;
+
 type Props = NativeStackScreenProps<RootStackParamList, 'WorkoutComplete'>;
 
 const WorkoutCompleteScreen: React.FC<Props> = ({ route, navigation }) => {
@@ -67,7 +70,7 @@ const WorkoutCompleteScreen: React.FC<Props> = ({ route, navigation }) => {
   // Only calculate calories if not already provided in the session
   useEffect(() => {
     if (isPremium && session && userSettings?.profile?.weight && caloriesBurned === undefined) {
-      console.log('[CALORIES] Session does not have calories burned, calculating now');
+      if (DEBUG_CALORIES) console.log('[CALORIES] Session does not have calories burned, calculating now');
       // Calculate calories burned based on workout segments
       const paceSettings = Object.entries(userSettings.paceSettings).reduce((acc, [key, value]) => {
         acc[key] = { speed: value.speed, incline: value.incline };
@@ -79,9 +82,9 @@ const WorkoutCompleteScreen: React.FC<Props> = ({ route, navigation }) => {
         paceSettings
       );
       setCaloriesBurned(totalCalories);
-      console.log('[CALORIES] Calculated calories burned:', totalCalories);
+      if (DEBUG_CALORIES) console.log('[CALORIES] Calculated calories burned:', totalCalories);
     } else if (session?.caloriesBurned !== undefined) {
-      console.log('[CALORIES] Using calories burned from session:', session.caloriesBurned);
+      if (DEBUG_CALORIES) console.log('[CALORIES] Using calories burned from session:', session.caloriesBurned);
     }
   }, [isPremium, session, userSettings, caloriesBurned]);
   

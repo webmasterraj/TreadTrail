@@ -23,7 +23,7 @@ type Props = NativeStackScreenProps<RootStackParamList, 'Welcome'>;
 
 const WelcomeScreen: React.FC<Props> = ({ route, navigation }) => {
   const { name } = route.params;
-  const { authState, preferences, updateWeight } = useContext(UserContext);
+  const { authState, preferences, updateUserSettings } = useContext(UserContext);
   const { subscriptionInfo, startFreeTrial } = useContext(SubscriptionContext);
   
   // Get user's unit preference
