@@ -895,18 +895,18 @@ const WorkoutInProgressScreen: React.FC<Props> = ({ route, navigation }) => {
                 showTicks={true}
               />
             </View>
-          </View>
-
-          {/* Calories counter - only shown if user weight is provided */}
-          {hasWeight && (
-            <View style={styles.caloriesContainer}>
-              <View style={styles.caloriesBadge}>
-                <Text style={styles.caloriesText}>
-                  Calories: <Text style={styles.caloriesValue}>{Math.round(caloriesBurned)}</Text>
-                </Text>
+            
+            {/* Calories counter - only shown if user weight is provided */}
+            {hasWeight && (
+              <View style={styles.caloriesContainer}>
+                <View style={styles.caloriesBadge}>
+                  <Text style={styles.caloriesText}>
+                    Calories: <Text style={styles.caloriesValue}>{Math.round(caloriesBurned)}</Text>
+                  </Text>
+                </View>
               </View>
-            </View>
-          )}
+            )}
+          </View>
 
           {/* Control Buttons */}
           <View 
@@ -1143,13 +1143,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginBottom: 5,
   },
-  timelineTitle: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    marginBottom: 10,
-    color: COLORS.white,
-    opacity: 0.9,
-  },
   timelineLegend: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -1189,7 +1182,7 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.black,
     borderTopWidth: 1,
     borderTopColor: COLORS.darkGray,
-    paddingBottom: Platform.OS === 'ios' ? 30 : 20,
+    paddingBottom: 20,
   },
   controlButtonsRow: {
     flexDirection: 'row',
@@ -1413,9 +1406,7 @@ const styles = StyleSheet.create({
   caloriesContainer: {
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: 5,
-    marginBottom: 10,
-    paddingVertical: 5,
+    marginTop: 10,
     width: '100%',
     zIndex: 10,
   },

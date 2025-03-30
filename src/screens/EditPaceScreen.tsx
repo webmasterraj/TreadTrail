@@ -21,7 +21,7 @@ import Button from '../components/common/Button';
 import { kgToLbs, lbsToKg } from '../utils/calorieUtils';
 
 // Debug flags
-const DEBUG_PACE_SETTINGS = true;
+const DEBUG_PACE_SETTINGS = false;
 const DEBUG_PREFIX = '[DEBUG-PACE-SETTINGS]';
 
 // Debug logging helper

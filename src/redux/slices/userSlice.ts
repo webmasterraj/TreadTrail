@@ -13,7 +13,7 @@ import {
 } from '../../types';
 
 // Debug flags
-const DEBUG_USER_SLICE = true;
+const DEBUG_USER_SLICE = false;
 const DEBUG_PREFIX = '[DEBUG-USER-SLICE]';
 
 // Debug logging helper
