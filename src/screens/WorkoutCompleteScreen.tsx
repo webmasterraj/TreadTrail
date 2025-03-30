@@ -13,7 +13,7 @@ import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList, WorkoutSession } from '../types';
 import { COLORS, FONT_SIZES, SPACING, BORDER_RADIUS } from '../styles/theme';
 import { DataContext, UserContext } from '../context';
-import { formatDuration, formatDate, calculateTotalDistance, milesToKm } from '../utils/helpers';
+import { formatDuration, formatDate, calculateTotalDistance, kmToMiles } from '../utils/helpers';
 import Button from '../components/common/Button';
 import WorkoutCalendar from '../components/common/WorkoutCalendar';
 import { getWorkoutSessionById } from '../utils/historyUtils';
@@ -46,6 +46,10 @@ const WorkoutCompleteScreen: React.FC<Props> = ({ route, navigation }) => {
         const sessionData = await getWorkoutSessionById(sessionId);
         if (sessionData) {
           setSession(sessionData);
+          // If the session has calories burned, use that value directly
+          if (sessionData.caloriesBurned !== undefined) {
+            setCaloriesBurned(sessionData.caloriesBurned);
+          }
         } else {
           setError('Session not found');
         }
@@ -60,8 +64,10 @@ const WorkoutCompleteScreen: React.FC<Props> = ({ route, navigation }) => {
     fetchSession();
   }, [sessionId]);
   
+  // Only calculate calories if not already provided in the session
   useEffect(() => {
-    if (isPremium && session && userSettings?.profile?.weight) {
+    if (isPremium && session && userSettings?.profile?.weight && caloriesBurned === undefined) {
+      console.log('[CALORIES] Session does not have calories burned, calculating now');
       // Calculate calories burned based on workout segments
       const paceSettings = Object.entries(userSettings.paceSettings).reduce((acc, [key, value]) => {
         acc[key] = { speed: value.speed, incline: value.incline };
@@ -73,8 +79,11 @@ const WorkoutCompleteScreen: React.FC<Props> = ({ route, navigation }) => {
         paceSettings
       );
       setCaloriesBurned(totalCalories);
+      console.log('[CALORIES] Calculated calories burned:', totalCalories);
+    } else if (session?.caloriesBurned !== undefined) {
+      console.log('[CALORIES] Using calories burned from session:', session.caloriesBurned);
     }
-  }, [isPremium, session, userSettings]);
+  }, [isPremium, session, userSettings, caloriesBurned]);
   
   // Handle loading state
   if (isLoading) {
@@ -124,23 +133,23 @@ const WorkoutCompleteScreen: React.FC<Props> = ({ route, navigation }) => {
     : 100;
     
   // Calculate distance based on session data and pace settings
-  let distanceMiles = sessionDistance || 0;
+  let distanceKm = sessionDistance || 0;
   
   // If distance is not already calculated, calculate it now
-  if (!distanceMiles && segments && paceSettings) {
+  if (!distanceKm && segments && paceSettings) {
     // Cast paceSettings to the expected type for calculateTotalDistance
     const paceSettingsMap = paceSettings as unknown as { [key: string]: { speed: number } };
-    distanceMiles = calculateTotalDistance(segments, paceSettingsMap);
-  } else if (!distanceMiles && segments && userSettings?.paceSettings) {
+    distanceKm = calculateTotalDistance(segments, paceSettingsMap);
+  } else if (!distanceKm && segments && userSettings?.paceSettings) {
     // Try using current user pace settings if session doesn't have them
     const paceSettingsMap = userSettings.paceSettings as unknown as { [key: string]: { speed: number } };
-    distanceMiles = calculateTotalDistance(segments, paceSettingsMap);
+    distanceKm = calculateTotalDistance(segments, paceSettingsMap);
   }
   
   // Format distance based on user preference
   const distance = unitPreference === 'imperial' 
-    ? distanceMiles.toFixed(1) 
-    : milesToKm(distanceMiles).toFixed(1); // Convert miles to kilometers
+    ? kmToMiles(distanceKm).toFixed(1) 
+    : distanceKm.toFixed(1); // No conversion needed for kilometers
   
   // Handle share result
   const handleShare = async () => {

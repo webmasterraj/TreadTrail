@@ -134,6 +134,9 @@ export interface Stats {
   lastUpdated: string; // ISO date string
   stats: WorkoutStats;
   achievements: AchievementProgress[];
+  // Debug properties
+  source?: 'server' | 'cache' | 'local'; // Where the stats came from
+  pendingWorkoutsIncluded?: boolean; // Whether pending workouts are included in these stats
 }
 
 // Authentication types

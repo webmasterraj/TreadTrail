@@ -191,7 +191,7 @@ const WorkoutInProgressScreen: React.FC<Props> = ({ route, navigation }) => {
 
   // Calculate calories burned in real-time
   useEffect(() => {
-    if (isPremium && hasWeight && currentSegment && isRunning) {
+    if (hasWeight && currentSegment && isRunning) {
       // Get pace settings for the current segment type
       const paceType = currentSegment.type as PaceType;
       const pace = paceSettings[paceType];
@@ -231,7 +231,6 @@ const WorkoutInProgressScreen: React.FC<Props> = ({ route, navigation }) => {
       }
     }
   }, [
-    isPremium, 
     hasWeight, 
     currentSegment, 
     segmentElapsedTime, 
@@ -662,7 +661,7 @@ const WorkoutInProgressScreen: React.FC<Props> = ({ route, navigation }) => {
           paceSettings: paceSettings, // Add pace settings to allow distance calculation
           distance: distanceValue, // Add calculated distance
           weight: userSettings?.weight, // Add user's weight from settings
-          caloriesBurned: isPremium && hasWeight ? Math.round(caloriesBurned) : undefined,
+          caloriesBurned: hasWeight ? Math.round(caloriesBurned) : undefined,
         };
 
         console.log('Creating workout session:', JSON.stringify({
@@ -777,7 +776,7 @@ const WorkoutInProgressScreen: React.FC<Props> = ({ route, navigation }) => {
         paceSettings: paceSettings, // Add pace settings to allow distance calculation
         distance: distanceValue, // Add calculated distance
         weight: userSettings?.weight, // Add user's weight from settings
-        caloriesBurned: isPremium && hasWeight ? Math.round(caloriesBurned) : undefined,
+        caloriesBurned: hasWeight ? Math.round(caloriesBurned) : undefined,
       };
 
       // Stop any playing audio
@@ -891,7 +890,7 @@ const WorkoutInProgressScreen: React.FC<Props> = ({ route, navigation }) => {
             </View>
 
             {/* Weight prompt for premium users without weight */}
-            {isPremium && !hasWeight && (
+            {hasWeight && (
               <TouchableOpacity 
                 style={styles.weightPromptBanner}
                 onPress={() => {
@@ -995,7 +994,7 @@ const WorkoutInProgressScreen: React.FC<Props> = ({ route, navigation }) => {
           </View>
 
           {/* Calories counter - only shown if user weight is provided */}
-          {isPremium && hasWeight && (
+          {hasWeight && (
             <View style={styles.caloriesContainer}>
               <View style={styles.caloriesBadge}>
                 <Text style={styles.caloriesText}>

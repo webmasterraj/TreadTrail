@@ -2,11 +2,14 @@
 import { createSlice, createAsyncThunk, PayloadAction } from '@reduxjs/toolkit';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { WorkoutProgram, WorkoutSession, Stats } from '../../types';
-import { calculateTotalDistance } from '../../utils/helpers';
 import { fetchUserFavorites, addFavoriteWorkout, removeFavoriteWorkout } from '../../api/favoritesApi';
 import supabase from '../../api/supabaseClient';
 import NetInfo from '@react-native-community/netinfo';
 import { queueWorkoutAudioDownloads } from '../../utils/audioUtils';
+
+// Debug flags
+const DEBUG_STATS = false;
+const DEBUG_SYNC = false;
 
 // Helper functions for date handling
 const getMonthKey = (date: string): string => {
@@ -468,6 +471,8 @@ const fetchStats = createAsyncThunk(
       const state = getState() as { workoutPrograms: WorkoutProgramsState };
       const { pendingSync } = state.workoutPrograms;
       
+      if (DEBUG_STATS) console.log('[STATS DEBUG] Starting fetchStats, pendingSync workouts:', pendingSync.workoutHistory.length);
+      
       // Check network connectivity
       const netInfo = await NetInfo.fetch();
       const isConnected = netInfo.isConnected && netInfo.isInternetReachable;
@@ -495,33 +500,108 @@ const fetchStats = createAsyncThunk(
           stats = {
             stats: data,
             lastUpdated: new Date().toISOString(),
-            achievements: []
+            achievements: [],
+            source: 'server',
+            pendingWorkoutsIncluded: false
           };
           
-          // Add any pending workouts to the stats
-          if (pendingSync.workoutHistory.length > 0) {
-            // Add pending workout stats to the server stats
-            stats = addPendingWorkoutStats(stats, pendingSync.workoutHistory);
-          }
+          if (DEBUG_STATS) console.log('[STATS DEBUG] Received stats from server:', {
+            totalWorkouts: stats.stats.totalWorkouts,
+            totalDistance: stats.stats.totalDistance,
+            totalDuration: stats.stats.totalDuration,
+            totalCaloriesBurned: stats.stats.totalCaloriesBurned
+          });
           
-          // Cache the stats
-          await AsyncStorage.setItem(STATS_KEY, JSON.stringify(stats));
+          // Get the latest pendingSync state from Redux
+          const latestState = getState() as { workoutPrograms: WorkoutProgramsState };
+          const latestPendingWorkouts = latestState.workoutPrograms.pendingSync.workoutHistory;
+          
+          // If there are pending workouts, add them to the stats
+          if (latestPendingWorkouts.length > 0) {
+            if (DEBUG_STATS) console.log(`[STATS DEBUG] Adding ${latestPendingWorkouts.length} pending workouts to server stats`);
+            stats = addPendingWorkoutStats(stats, latestPendingWorkouts);
+            stats.pendingWorkoutsIncluded = true;
+            
+            if (DEBUG_STATS) console.log('[STATS DEBUG] Stats after adding pending workouts:', {
+              totalWorkouts: stats.stats.totalWorkouts,
+              totalDistance: stats.stats.totalDistance,
+              totalDuration: stats.stats.totalDuration,
+              totalCaloriesBurned: stats.stats.totalCaloriesBurned
+            });
+            
+            // Cache the updated stats
+            await AsyncStorage.setItem(STATS_KEY, JSON.stringify(stats));
+            if (DEBUG_STATS) console.log('[STATS DEBUG] Updated server stats saved to AsyncStorage');
+          }
         } catch (error) {
           console.error('Error fetching stats from server:', error);
           // Fall back to cached stats
           const cachedStatsJson = await AsyncStorage.getItem(STATS_KEY);
           stats = cachedStatsJson ? JSON.parse(cachedStatsJson) : createEmptyStats();
+          stats.source = 'cache';
+          if (DEBUG_STATS) console.log('[STATS DEBUG] Falling back to cached stats due to server error');
         }
       } else {
         // Offline mode: use cached stats
+        if (DEBUG_STATS) console.log('[STATS DEBUG] Offline mode: Using cached stats');
         const cachedStatsJson = await AsyncStorage.getItem(STATS_KEY);
-        stats = cachedStatsJson ? JSON.parse(cachedStatsJson) : createEmptyStats();
+        
+        if (cachedStatsJson) {
+          if (DEBUG_STATS) console.log('[STATS DEBUG] Found cached stats in AsyncStorage');
+          stats = JSON.parse(cachedStatsJson);
+          stats.source = 'cache';
+          stats.pendingWorkoutsIncluded = false; // Will be set to true after adding pending workouts
+          
+          if (DEBUG_STATS) console.log('[STATS DEBUG] Cached stats before adding pending workouts:', {
+            totalWorkouts: stats.stats.totalWorkouts,
+            totalDistance: stats.stats.totalDistance,
+            totalDuration: stats.stats.totalDuration,
+            totalCaloriesBurned: stats.stats.totalCaloriesBurned
+          });
+        } else {
+          if (DEBUG_STATS) console.log('[STATS DEBUG] No cached stats found, creating empty stats');
+          stats = createEmptyStats();
+          stats.source = 'local';
+        }
         
         // Add pending workouts to cached stats
         if (pendingSync.workoutHistory.length > 0) {
+          if (DEBUG_STATS) console.log(`[STATS DEBUG] Adding ${pendingSync.workoutHistory.length} pending workouts to stats`);
+          if (DEBUG_STATS) console.log('[STATS DEBUG] Pending workouts details:', pendingSync.workoutHistory.map(w => ({
+            id: w.id,
+            workoutId: w.workoutId,
+            duration: w.duration,
+            distance: w.distance,
+            caloriesBurned: w.caloriesBurned
+          })));
+          
           stats = addPendingWorkoutStats(stats, pendingSync.workoutHistory);
+          stats.pendingWorkoutsIncluded = true;
+          
+          if (DEBUG_STATS) console.log('[STATS DEBUG] Stats after adding pending workouts:', {
+            totalWorkouts: stats.stats.totalWorkouts,
+            totalDistance: stats.stats.totalDistance,
+            totalDuration: stats.stats.totalDuration,
+            totalCaloriesBurned: stats.stats.totalCaloriesBurned,
+            lastUpdated: stats.lastUpdated
+          });
+          
+          // Cache the updated stats
+          await AsyncStorage.setItem(STATS_KEY, JSON.stringify(stats));
+          if (DEBUG_STATS) console.log('[STATS DEBUG] Updated stats saved to AsyncStorage');
+        } else {
+          if (DEBUG_STATS) console.log('[STATS DEBUG] No pending workouts to add to stats');
         }
       }
+      
+      if (DEBUG_STATS) console.log('[STATS DEBUG] Final stats being returned:', {
+        totalWorkouts: stats.stats.totalWorkouts,
+        totalDistance: stats.stats.totalDistance,
+        totalDuration: stats.stats.totalDuration,
+        totalCaloriesBurned: stats.stats.totalCaloriesBurned,
+        source: stats.source,
+        pendingWorkoutsIncluded: stats.pendingWorkoutsIncluded
+      });
       
       return stats;
     } catch (error: any) {
@@ -546,12 +626,22 @@ function createEmptyStats(): Stats {
       }
     },
     lastUpdated: new Date().toISOString(),
-    achievements: []
+    achievements: [],
+    source: 'local',
+    pendingWorkoutsIncluded: false
   };
 }
 
 // Helper function to add pending workout stats to server stats
 function addPendingWorkoutStats(serverStats: Stats, pendingWorkouts: WorkoutSession[]): Stats {
+  if (DEBUG_STATS) console.log('[STATS DEBUG] addPendingWorkoutStats called with', pendingWorkouts.length, 'pending workouts');
+  if (DEBUG_STATS) console.log('[STATS DEBUG] Initial stats:', {
+    totalWorkouts: serverStats.stats.totalWorkouts,
+    totalDistance: serverStats.stats.totalDistance,
+    totalDuration: serverStats.stats.totalDuration,
+    totalCaloriesBurned: serverStats.stats.totalCaloriesBurned
+  });
+
   // Create a copy of the server stats
   const updatedStats = {
     ...serverStats,
@@ -559,7 +649,16 @@ function addPendingWorkoutStats(serverStats: Stats, pendingWorkouts: WorkoutSess
   };
   
   // Add pending workout stats to the server stats
-  pendingWorkouts.forEach(workout => {
+  pendingWorkouts.forEach((workout, index) => {
+    if (DEBUG_STATS) console.log(`[STATS DEBUG] Processing pending workout ${index + 1}/${pendingWorkouts.length}:`, {
+      id: workout.id,
+      workoutId: workout.workoutId,
+      duration: workout.duration,
+      distance: workout.distance,
+      caloriesBurned: workout.caloriesBurned,
+      date: workout.date
+    });
+    
     // Update total workouts count
     updatedStats.stats.totalWorkouts += 1;
     
@@ -573,6 +672,10 @@ function addPendingWorkoutStats(serverStats: Stats, pendingWorkouts: WorkoutSess
           duration: workout.duration,
           date: workout.date || ''
         };
+        if (DEBUG_STATS) console.log('[STATS DEBUG] New longest workout:', {
+          duration: workout.duration,
+          date: workout.date
+        });
       }
     }
     
@@ -590,11 +693,27 @@ function addPendingWorkoutStats(serverStats: Stats, pendingWorkouts: WorkoutSess
     if (workout.date && (!updatedStats.stats.lastWorkoutDate || 
         new Date(workout.date) > new Date(updatedStats.stats.lastWorkoutDate))) {
       updatedStats.stats.lastWorkoutDate = workout.date;
+      if (DEBUG_STATS) console.log('[STATS DEBUG] Updated last workout date to:', workout.date);
     }
+    
+    if (DEBUG_STATS) console.log(`[STATS DEBUG] Stats after processing workout ${index + 1}:`, {
+      totalWorkouts: updatedStats.stats.totalWorkouts,
+      totalDistance: updatedStats.stats.totalDistance,
+      totalDuration: updatedStats.stats.totalDuration,
+      totalCaloriesBurned: updatedStats.stats.totalCaloriesBurned
+    });
   });
   
   // Update the last updated timestamp
   updatedStats.lastUpdated = new Date().toISOString();
+  
+  if (DEBUG_STATS) console.log('[STATS DEBUG] Final updated stats:', {
+    totalWorkouts: updatedStats.stats.totalWorkouts,
+    totalDistance: updatedStats.stats.totalDistance,
+    totalDuration: updatedStats.stats.totalDuration,
+    totalCaloriesBurned: updatedStats.stats.totalCaloriesBurned,
+    lastUpdated: updatedStats.lastUpdated
+  });
   
   return updatedStats;
 }
@@ -752,12 +871,11 @@ const toggleFavoriteWorkout = createAsyncThunk(
       
       // Check network connectivity
       const netInfo = await NetInfo.fetch();
-      const isConnected = netInfo.isConnected && netInfo.isInternetReachable;
       
       // Check if user is authenticated
       const { data: session } = await supabase.auth.getSession();
       
-      if (session?.session?.user && isConnected) {
+      if (session?.session?.user && netInfo.isConnected && netInfo.isInternetReachable) {
         // User is authenticated and online, update in Supabase
         if (newFavoriteStatus) {
           await addFavoriteWorkout(workoutId);
@@ -819,6 +937,19 @@ const addWorkoutSessionToPendingQueue = createAsyncThunk(
       // Add to pending queue
       const updatedPendingQueue = [...state.workoutPrograms.pendingSync.workoutHistory, workoutToAdd];
       console.log(`[QUEUE] Updated pending queue size: ${updatedPendingQueue.length}`);
+      console.log('[QUEUE DEBUG] Current pending queue state:', {
+        previousQueueSize: state.workoutPrograms.pendingSync.workoutHistory.length,
+        newQueueSize: updatedPendingQueue.length,
+        newWorkoutAdded: {
+          id: workoutToAdd.id,
+          workoutId: workoutToAdd.workoutId,
+          workoutName: workoutToAdd.workoutName,
+          date: workoutToAdd.date,
+          duration: workoutToAdd.duration,
+          distance: workoutToAdd.distance,
+          caloriesBurned: workoutToAdd.caloriesBurned
+        }
+      });
       
       // Save to AsyncStorage
       console.log('[QUEUE] Saving pending queue to AsyncStorage');
@@ -848,11 +979,21 @@ const addWorkoutSessionToPendingQueue = createAsyncThunk(
       
       // Refresh stats to include the new workout immediately (even when offline)
       console.log('[QUEUE] Refreshing stats to include new workout');
-      dispatch(fetchStats());
+      console.log('[QUEUE DEBUG] Calling fetchStats to update stats with new workout in pending queue');
+      console.log('[QUEUE DEBUG] Current pending queue size before stats refresh:', updatedPendingQueue.length);
+      
+      // Dispatch fetchStats and wait for it to complete to ensure stats are updated
+      try {
+        await dispatch(fetchStats()).unwrap();
+        console.log('[QUEUE DEBUG] Stats successfully refreshed with pending workout');
+      } catch (error) {
+        console.error('[QUEUE DEBUG] Error refreshing stats:', error);
+      }
       
       // Wait a moment to ensure state is updated before processing queue
       setTimeout(() => {
         console.log('[QUEUE] Attempting to process pending queue after delay');
+        console.log('[QUEUE DEBUG] Attempting to sync workout in offline mode - this should fail and keep workout in queue');
         dispatch(processPendingQueue());
       }, 1000);
       
@@ -897,8 +1038,21 @@ const processPendingQueue = createAsyncThunk(
       const netInfo = await NetInfo.fetch();
       const isConnected = netInfo.isConnected && netInfo.isInternetReachable;
       
+      if (DEBUG_SYNC) console.log('[SYNC DEBUG] Network status:', { 
+        isConnected: netInfo.isConnected,
+        isInternetReachable: netInfo.isInternetReachable,
+        type: netInfo.type
+      });
+      
       if (!isConnected) {
-        console.log('[SYNC] No internet connection available, skipping sync');
+        if (DEBUG_SYNC) console.log('[SYNC DEBUG] Offline mode detected - workout will be kept in pending queue');
+        if (DEBUG_SYNC) console.log('[SYNC DEBUG] Pending queue size:', pendingWorkouts.length);
+        if (DEBUG_SYNC) console.log('[SYNC DEBUG] First pending workout:', pendingWorkouts.length > 0 ? {
+          id: pendingWorkouts[0].id,
+          workoutId: pendingWorkouts[0].workoutId,
+          date: pendingWorkouts[0].date,
+          completed: pendingWorkouts[0].completed
+        } : 'None');
         return rejectWithValue('No internet connection available to process pending queue');
       }
       
@@ -925,6 +1079,7 @@ const processPendingQueue = createAsyncThunk(
           // Get user settings for weight if not provided in workout
           let userWeight = workout.weight;
           if (!userWeight) {
+            console.log('[SYNC] Workout missing weight, retrieving from user settings');
             try {
               const { data: userSettings } = await supabase
                 .from('user_settings')
@@ -934,29 +1089,34 @@ const processPendingQueue = createAsyncThunk(
                 
               if (userSettings?.weight) {
                 userWeight = userSettings.weight;
+                console.log('[SYNC] Retrieved user weight:', userWeight);
               }
             } catch (error) {
               console.error('[SYNC] Error fetching user weight:', error);
             }
           }
+          
+          // Prepare workout data for Supabase
+          const workoutData = {
+            id: workout.id,
+            user_id: userId,
+            workout_id: workout.workoutId,
+            date: workout.date,
+            start_time: workout.startTime,
+            end_time: workout.endTime,
+            duration: workout.duration,
+            completed: workout.completed,
+            distance: workout.distance,
+            calories_burned: workout.caloriesBurned,
+            user_weight: userWeight,
+            pauses: workout.pauses,
+            pace_settings: workout.paceSettings
+          };
+          
           // Insert workout to Supabase          
           const { data, error } = await supabase
             .from('workout_history')
-            .upsert({
-              id: workout.id,
-              user_id: userId,
-              workout_id: workout.workoutId,
-              date: workout.date,
-              start_time: workout.startTime,
-              end_time: workout.endTime,
-              duration: workout.duration,
-              user_weight: userWeight, // Use fetched user weight if available
-              calories_burned: workout.caloriesBurned,
-              distance: workout.distance,
-              completed: workout.completed,
-              pauses: workout.pauses,
-              pace_settings: workout.paceSettings || {} // Include pace settings
-            })
+            .upsert(workoutData)
             .select();
           
           if (error) {
@@ -1000,15 +1160,50 @@ const processPendingQueue = createAsyncThunk(
           return index >= successCount;
         });
         
+        if (DEBUG_SYNC) console.log(`[SYNC DEBUG] Removing ${successCount} successfully processed workouts from queue`);
+        if (DEBUG_SYNC) console.log(`[SYNC DEBUG] ${remainingWorkouts.length} workouts remain in queue`);
+        
         // Clear the pending queue
         await AsyncStorage.setItem(PENDING_SYNC_KEY, JSON.stringify({
           ...state.workoutPrograms.pendingSync,
           workoutHistory: remainingWorkouts
         }));
         
+        // Update the Redux state to clear the successfully synced workouts
+        dispatch({
+          type: 'workoutPrograms/updatePendingQueue',
+          payload: {
+            workoutHistory: remainingWorkouts
+          }
+        });
+        
         // Refresh workout history and stats
+        if (DEBUG_SYNC) console.log('[SYNC DEBUG] Refreshing workout history after successful sync');
         await dispatch(fetchWorkoutHistory({ forceRefresh: true })).unwrap();
-        await dispatch(fetchStats()).unwrap();
+        
+        if (DEBUG_SYNC) console.log('[SYNC DEBUG] Refreshing stats after successful sync');
+        try {
+          const statsBeforeRefresh = state.workoutPrograms.stats;
+          if (DEBUG_SYNC) console.log('[SYNC DEBUG] Stats before refresh:', {
+            totalWorkouts: statsBeforeRefresh?.stats?.totalWorkouts || 0,
+            totalDistance: statsBeforeRefresh?.stats?.totalDistance || 0,
+            totalDuration: statsBeforeRefresh?.stats?.totalDuration || 0,
+            totalCaloriesBurned: statsBeforeRefresh?.stats?.totalCaloriesBurned || 0
+          });
+          
+          const refreshedStats = await dispatch(fetchStats()).unwrap();
+          
+          if (DEBUG_SYNC) console.log('[SYNC DEBUG] Stats after refresh:', {
+            totalWorkouts: refreshedStats?.stats?.totalWorkouts || 0,
+            totalDistance: refreshedStats?.stats?.totalDistance || 0,
+            totalDuration: refreshedStats?.stats?.totalDuration || 0,
+            totalCaloriesBurned: refreshedStats?.stats?.totalCaloriesBurned || 0,
+            source: refreshedStats?.source || 'unknown',
+            pendingWorkoutsIncluded: refreshedStats?.pendingWorkoutsIncluded || false
+          });
+        } catch (error) {
+          console.error('[SYNC DEBUG] Error refreshing stats after sync:', error);
+        }
       } else {
         console.log('[SYNC] No workouts were processed successfully, keeping queue intact');
       }
@@ -1086,6 +1281,22 @@ const checkAndProcessPendingQueue = createAsyncThunk(
   }
 );
 
+// Helper function to simulate offline mode for testing
+const simulateOfflineMode = createAsyncThunk(
+  'workoutPrograms/simulateOfflineMode',
+  async (shouldBeOffline: boolean, { dispatch }) => {
+    console.log(`[DEBUG] Simulating ${shouldBeOffline ? 'offline' : 'online'} mode for testing`);
+    
+    // Store the offline simulation flag in AsyncStorage for persistence
+    await AsyncStorage.setItem('DEBUG_FORCE_OFFLINE', JSON.stringify(shouldBeOffline));
+    
+    // Refresh stats to test offline behavior
+    await dispatch(fetchStats());
+    
+    return { offlineSimulated: shouldBeOffline };
+  }
+);
+
 // Create slice
 const workoutProgramsSlice = createSlice({
   name: 'workoutPrograms',
@@ -1122,6 +1333,9 @@ const workoutProgramsSlice = createSlice({
     },
     setPendingFavoriteChanges: (state, action: PayloadAction<boolean>) => {
       state.hasPendingFavoriteChanges = action.payload;
+    },
+    updatePendingQueue: (state, action: PayloadAction<{ workoutHistory: WorkoutSession[] }>) => {
+      state.pendingSync.workoutHistory = action.payload.workoutHistory;
     }
   },
 
@@ -1192,8 +1406,30 @@ const workoutProgramsSlice = createSlice({
       // Don't set isLoading to true here to avoid blocking UI
     });
     builder.addCase(fetchStats.fulfilled, (state, action) => {
-      console.log('[DEBUG-REDUX] fetchStats.fulfilled - Received stats data');
+      if (DEBUG_STATS) console.log('[STATS DEBUG] Stats before update:', {
+        totalWorkouts: state.stats?.stats?.totalWorkouts || 0,
+        totalDistance: state.stats?.stats?.totalDistance || 0,
+        totalDuration: state.stats?.stats?.totalDuration || 0,
+        totalCaloriesBurned: state.stats?.stats?.totalCaloriesBurned || 0
+      });
+      
+      if (DEBUG_STATS) console.log('[STATS DEBUG] New stats from action:', {
+        totalWorkouts: action.payload?.stats?.totalWorkouts || 0,
+        totalDistance: action.payload?.stats?.totalDistance || 0,
+        totalDuration: action.payload?.stats?.totalDuration || 0,
+        totalCaloriesBurned: action.payload?.stats?.totalCaloriesBurned || 0,
+        source: action.payload?.source,
+        pendingWorkoutsIncluded: action.payload?.pendingWorkoutsIncluded
+      });
+      
       state.stats = action.payload;
+      
+      if (DEBUG_STATS) console.log('[STATS DEBUG] Stats after update in Redux store:', {
+        totalWorkouts: state.stats?.stats?.totalWorkouts || 0,
+        totalDistance: state.stats?.stats?.totalDistance || 0,
+        totalDuration: state.stats?.stats?.totalDuration || 0,
+        totalCaloriesBurned: state.stats?.stats?.totalCaloriesBurned || 0
+      });
       // Don't modify isLoading here
     });
     builder.addCase(fetchStats.rejected, (state, action) => {
@@ -1217,33 +1453,68 @@ const workoutProgramsSlice = createSlice({
     
     // Handle addWorkoutSessionToPendingQueue
     builder.addCase(addWorkoutSessionToPendingQueue.pending, (state) => {
-      // Processing
+      console.log('[QUEUE DEBUG] addWorkoutSessionToPendingQueue.pending - Adding workout to queue');
     });
     builder.addCase(addWorkoutSessionToPendingQueue.fulfilled, (state, action) => {
-      const { session, updatedPrograms } = action.payload;
-      state.workoutHistory = [session, ...state.workoutHistory];
-      state.workoutPrograms = updatedPrograms;
+      console.log('[QUEUE DEBUG] addWorkoutSessionToPendingQueue.fulfilled - Adding workout to history and pending queue');
+      
+      // Add to workout history
+      state.workoutHistory = [action.payload.session, ...state.workoutHistory];
+      
+      // Add to pending queue
+      state.pendingSync.workoutHistory = [...state.pendingSync.workoutHistory, action.payload.session];
+      
+      // Update workout programs with lastUsed date
+      state.workoutPrograms = action.payload.updatedPrograms;
+      
+      console.log('[QUEUE DEBUG] Updated state:', {
+        workoutHistorySize: state.workoutHistory.length,
+        pendingQueueSize: state.pendingSync.workoutHistory.length,
+        lastAddedWorkout: {
+          id: action.payload.session.id,
+          workoutId: action.payload.session.workoutId,
+          date: action.payload.session.date,
+          duration: action.payload.session.duration,
+          distance: action.payload.session.distance,
+          caloriesBurned: action.payload.session.caloriesBurned
+        }
+      });
+      
+      console.log('[QUEUE DEBUG] addWorkoutSessionToPendingQueue.fulfilled - Added workout to history and pending queue');
     });
     builder.addCase(addWorkoutSessionToPendingQueue.rejected, (state, action) => {
-      // Handle error
+      console.log('[QUEUE DEBUG] addWorkoutSessionToPendingQueue.rejected - Failed to add workout to queue');
+      console.log('[QUEUE DEBUG] Error:', action.error);
     });
     
     // Handle processPendingQueue
     builder.addCase(processPendingQueue.pending, (state) => {
       state.isSyncing = true;
+      if (DEBUG_SYNC) console.log('[SYNC DEBUG] processPendingQueue.pending - Setting isSyncing to true');
     });
     builder.addCase(processPendingQueue.fulfilled, (state, action) => {
       state.isSyncing = false;
       state.pendingSync.workoutHistory = [];
+      if (DEBUG_SYNC) console.log('[SYNC DEBUG] processPendingQueue.fulfilled - Queue processed successfully, cleared pendingSync.workoutHistory');
     });
     builder.addCase(processPendingQueue.rejected, (state, action) => {
       state.isSyncing = false;
-      state.error = action.payload as string;
+      if (DEBUG_SYNC) console.log('[SYNC DEBUG] processPendingQueue.rejected - Sync failed, preserving pending workouts');
+      if (DEBUG_SYNC) console.log('[SYNC DEBUG] Error reason:', action.payload);
+      if (DEBUG_SYNC) console.log('[SYNC DEBUG] Current pending queue size:', state.pendingSync.workoutHistory.length);
+      
+      // If we're offline, make sure to keep the workouts in the queue
+      if (action.payload === 'No internet connection available to process pending queue') {
+        if (DEBUG_SYNC) console.log('[SYNC DEBUG] Offline mode detected in reducer, ensuring workouts remain in queue');
+        // No need to modify state.pendingSync.workoutHistory as it should already contain the pending workouts
+      }
     });
     
     // Handle initializePendingQueue
     builder.addCase(initializePendingQueue.fulfilled, (state, action) => {
       state.pendingSync = action.payload;
+      if (DEBUG_SYNC) console.log('[SYNC DEBUG] initializePendingQueue.fulfilled - Updated pendingSync state');
+      if (DEBUG_SYNC) console.log('[SYNC DEBUG] Pending workouts count:', action.payload.workoutHistory?.length || 0);
     });
   },
 });
@@ -1283,5 +1554,6 @@ export {
   addWorkoutSessionToPendingQueue,
   processPendingQueue,
   initializePendingQueue,
-  checkAndProcessPendingQueue
+  checkAndProcessPendingQueue,
+  simulateOfflineMode
 };
