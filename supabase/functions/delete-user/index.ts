@@ -92,15 +92,24 @@ serve(async (req) => {
       console.error('Error deleting premium subscriptions:', premiumError)
     }
 
-    // Delete the user from auth.users using the admin.deleteUser method
-    // const { error: deleteError } = await supabaseAdmin.auth.admin.deleteUser(userId)
-    // if (deleteError) {
-    //   console.error('Error deleting user:', deleteError)
-    //   return new Response(
-    //     JSON.stringify({ error: 'Failed to delete user' }),
-    //     { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    //   )
-    // }
+    // Delete from the users table
+    const { error: userTableError } = await supabaseAdmin
+      .from('users')
+      .delete()
+      .eq('user_id', userId)
+    if (userTableError) {
+      console.error('Error deleting users table:', userTableError)
+    }
+
+    // Delete the user from Supabase auth using admin call
+    const { error: deleteError } = await supabaseAdmin.auth.admin.deleteUser(userId)
+    if (deleteError) {
+      console.error('Error deleting user:', deleteError)
+      return new Response(
+        JSON.stringify({ error: 'Failed to delete user' }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
 
     return new Response(
       JSON.stringify({ success: true }),
