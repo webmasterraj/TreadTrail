@@ -17,17 +17,17 @@ import NetInfo from '@react-native-community/netinfo';
 import { Platform, NativeModules } from 'react-native';
 
 // Storage keys
-const USER_SETTINGS_KEY_PREFIX = 'treadtrail_user_settings_';
-const USER_SETTINGS_KEY = 'treadtrail_user_settings';
-const WORKOUT_HISTORY_KEY = 'treadtrail_workout_history';
-const FAVORITE_WORKOUTS_KEY = 'treadtrail_favorite_workouts';
-const STATS_KEY = 'treadtrail_stats';
-const PENDING_SYNC_KEY = 'treadtrail_pending_sync';
-const AUTH_STATE_KEY = 'treadtrail_auth_state';
-const SUBSCRIPTION_KEY = 'treadtrail_subscription';
+export const USER_SETTINGS_KEY_PREFIX = 'treadtrail_user_settings_';
+export const USER_SETTINGS_KEY = 'treadtrail_user_settings';
+export const WORKOUT_HISTORY_KEY = 'treadtrail_workout_history';
+export const FAVORITE_WORKOUTS_KEY = 'treadtrail_favorite_workouts';
+export const STATS_KEY = 'treadtrail_stats';
+export const PENDING_SYNC_KEY = 'treadtrail_pending_sync';
+export const AUTH_STATE_KEY = 'treadtrail_auth_state';
+export const SUBSCRIPTION_KEY = 'treadtrail_subscription';
 
 // Helper to get user-specific storage key
-const getUserSettingsKey = (userId: string) => `${USER_SETTINGS_KEY_PREFIX}${userId}`;
+export const getUserSettingsKey = (userId: string) => `${USER_SETTINGS_KEY_PREFIX}${userId}`;
 
 // Debug flags
 const DEBUG_AUTH = false;

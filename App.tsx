@@ -17,9 +17,15 @@ import {
   initializePendingQueue,
   processPendingQueue
 } from './src/redux/slices/workoutProgramsSlice';
-import { loadUserSettings, syncUserSettings } from './src/redux/slices/userSlice';
+import { 
+  loadUserSettings, 
+  syncUserSettings, 
+  setAuthState 
+} from './src/redux/slices/userSlice';
 import NetInfo from '@react-native-community/netinfo';
 import { initializeAudioSystem, preFetchWorkoutAudio } from './src/utils/audioUtils';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { AUTH_STATE_KEY } from './src/hooks/useAuth';
 
 // Debug flags
 const DEBUG_APP = false;
@@ -28,20 +34,47 @@ const DEBUG_NETWORK = DEBUG_APP;
 const App: React.FC = () => {
   // Initialize data and set up network listener
   useEffect(() => {
-    // Initialize audio system
-    initializeAudioSystem().catch(error => {
-      if (DEBUG_APP) console.error('Failed to initialize audio system:', error);
-    });
-    
-    // Initialize pending queue
-    store.dispatch(initializePendingQueue());
-    
-    // Load user settings
-    store.dispatch(loadUserSettings());
-    
-    // Dispatch fetch in background without awaiting
-    store.dispatch(fetchWorkoutPrograms())
-      .then(() => {
+    const initializeApp = async () => {
+      if (DEBUG_APP) console.log('[APP] Initializing app...');
+      
+      // Initialize audio system
+      try {
+        await initializeAudioSystem();
+      } catch (error) {
+        if (DEBUG_APP) console.error('Failed to initialize audio system:', error);
+      }
+      
+      // Initialize pending queue
+      store.dispatch(initializePendingQueue());
+      
+      // First restore auth state from AsyncStorage
+      try {
+        if (DEBUG_APP) console.log('[APP] Restoring auth state...');
+        const authStateJson = await AsyncStorage.getItem(AUTH_STATE_KEY);
+        
+        if (authStateJson) {
+          if (DEBUG_APP) console.log('[APP] Found saved auth state');
+          const authState = JSON.parse(authStateJson);
+          
+          // Set the auth state in Redux
+          await store.dispatch(setAuthState(authState));
+          if (DEBUG_APP) console.log('[APP] Auth state restored successfully');
+        } else {
+          if (DEBUG_APP) console.log('[APP] No saved auth state found');
+        }
+      } catch (error) {
+        if (DEBUG_APP) console.error('Failed to restore auth state:', error);
+      }
+      
+      // Now load user settings (this will use the restored auth state)
+      if (DEBUG_APP) console.log('[APP] Loading user settings...');
+      await store.dispatch(loadUserSettings());
+      
+      // Fetch workout programs
+      if (DEBUG_APP) console.log('[APP] Fetching workout programs...');
+      try {
+        await store.dispatch(fetchWorkoutPrograms());
+        
         // After workout programs are loaded, pre-fetch audio files
         const state = store.getState();
         const workoutPrograms = selectWorkoutPrograms(state);
@@ -54,29 +87,36 @@ const App: React.FC = () => {
         
         // Try to process any pending workouts
         store.dispatch(processPendingQueue());
-      })
-      .catch(error => {
+      } catch (error) {
         if (DEBUG_APP) console.error('Failed to fetch workout programs:', error);
-      });
+      }
+    };
     
-    // Set up network listener for sync when connection is restored
+    // Start the initialization process
+    initializeApp();
+    
+    // Set up network listener
     const unsubscribe = NetInfo.addEventListener(state => {
-      const isConnected = state.isConnected && state.isInternetReachable;
-      if (isConnected) {
-        // Sync data when connection is restored
-        if (DEBUG_NETWORK) console.log('[APP] Network connection restored, syncing pending data');
-        
-        // Sync pending workouts
+      if (DEBUG_NETWORK) {
+        console.log('[NETWORK] Connection type:', state.type);
+        console.log('[NETWORK] Is connected?', state.isConnected);
+      }
+      
+      if (state.isConnected) {
+        // When connection is restored, try to process any pending workouts
         store.dispatch(processPendingQueue());
         
-        // Sync pending user settings
+        // Also sync user settings if they've changed
         store.dispatch(syncUserSettings({}));
       }
     });
     
-    return () => unsubscribe();
+    // Clean up
+    return () => {
+      unsubscribe();
+    };
   }, []);
-
+  
   return (
     <Provider store={store}>
       <PersistGate loading={null} persistor={persistor}>

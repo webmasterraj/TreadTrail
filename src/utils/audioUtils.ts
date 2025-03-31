@@ -1,6 +1,6 @@
-import { Audio, InterruptionModeAndroid, InterruptionModeIOS, AVPlaybackStatus } from 'expo-av';
+import { Audio, InterruptionModeAndroid, InterruptionModeIOS } from 'expo-av';
 import * as FileSystem from 'expo-file-system';
-import { loadCachedAudio, queueAudioDownloads, initAudioCache, getCachedFileUri } from './audioCaching';
+import { queueAudioDownloads, initAudioCache, getCachedFileUri, isAudioCached, updateAudioCacheMetadata } from './audioCaching';
 import { WorkoutProgram, WorkoutSegment } from '../types';
 
 // Bundled countdown sound
@@ -157,7 +157,7 @@ export const preFetchWorkoutAudio = async (
     logDebug(`Starting background pre-fetch for ${workoutPrograms.length} workout programs`);
     
     // Create a queue of audio files to download
-    const audioUrlsToDownload: string[] = [];
+    const audioFilesToCheck: Array<{ url: string, filename: string }> = [];
     
     // Collect all unique audio URLs from all workout programs
     workoutPrograms.forEach(workout => {
@@ -165,29 +165,49 @@ export const preFetchWorkoutAudio = async (
         workout.segments.forEach(segment => {
           if (segment.audio && segment.audio.file) {
             const audioUrl = segment.audio.file;
+            const filename = getAudioFilenameFromUrl(audioUrl);
             
-            // Add to download queue if not already included
-            if (!audioUrlsToDownload.includes(audioUrl)) {
-              audioUrlsToDownload.push(audioUrl);
+            // Add to check queue if not already included
+            if (!audioFilesToCheck.find(item => item.url === audioUrl)) {
+              audioFilesToCheck.push({ url: audioUrl, filename });
             }
           }
         });
       }
     });
     
-    logDebug(`Found ${audioUrlsToDownload.length} unique audio files to pre-fetch`);
+    logDebug(`Found ${audioFilesToCheck.length} unique audio files to check for pre-fetch`);
+    
+    // Check which files need to be downloaded
+    const filesToDownload: Array<{ url: string, filename: string }> = [];
+    
+    for (const audioFile of audioFilesToCheck) {
+      const isCached = await isAudioCached(audioFile.filename);
+      if (!isCached) {
+        filesToDownload.push(audioFile);
+      }
+    }
+    
+    logDebug(`${filesToDownload.length} audio files need downloading, ${audioFilesToCheck.length - filesToDownload.length} already cached`);
+    
+    // If no files need downloading, we're done
+    if (filesToDownload.length === 0) {
+      logDebug('All audio files already cached, skipping downloads');
+      return;
+    }
     
     // Process downloads in the background
     let downloadedCount = 0;
     let errorCount = 0;
     
     // Use Promise.all to track overall progress
-    await Promise.all(audioUrlsToDownload.map(async (audioUrl) => {
+    await Promise.all(filesToDownload.map(async (audioFile) => {
       try {
-        const filename = getAudioFilenameFromUrl(audioUrl);
-        const fileUri = getCachedFileUri(filename);
+        const fileUri = getCachedFileUri(audioFile.filename);
         
-        await FileSystem.downloadAsync(audioUrl, fileUri);
+        await FileSystem.downloadAsync(audioFile.url, fileUri);
+        // Update metadata to track this file
+        await updateAudioCacheMetadata(audioFile.filename, audioFile.url);
         downloadedCount++;        
       } catch (error) {
         // Don't throw errors for background downloads, just count them

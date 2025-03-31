@@ -13,7 +13,7 @@ const DEBUG_SYNC = false;
 const DEBUG_REDUX = false;
 const DEBUG_QUEUE = false;
 const DEBUG_FAVORITES = false; 
-const DEBUG_PREMIUM = true;
+const DEBUG_PREMIUM = false;
 
 // Helper functions for date handling
 const getMonthKey = (date: string): string => {
@@ -117,36 +117,23 @@ const fetchWorkoutPrograms = createAsyncThunk(
       const netInfo = await NetInfo.fetch();
       const isConnected = netInfo.isConnected && netInfo.isInternetReachable;
       
-      // First check if we have cached workout programs
-      const cachedWorkoutsJson = await AsyncStorage.getItem(WORKOUT_PROGRAMS_KEY);
-      let workouts: WorkoutProgram[] = cachedWorkoutsJson ? JSON.parse(cachedWorkoutsJson) : [];
+      // Variables to store our data
+      let workouts: WorkoutProgram[] = [];
+      let favoriteIds: string[] = [];
       
-      // Get favorite workout IDs from AsyncStorage
-      const favoriteWorkoutIdsJson = await AsyncStorage.getItem(FAVORITE_WORKOUTS_KEY);
-      const localFavoriteIds: string[] = favoriteWorkoutIdsJson 
-        ? JSON.parse(favoriteWorkoutIdsJson) 
-        : [];
+      // Try to load favorite IDs from local storage first
+      const localFavoriteIdsJson = await AsyncStorage.getItem(FAVORITE_WORKOUTS_KEY);
+      const localFavoriteIds = localFavoriteIdsJson ? JSON.parse(localFavoriteIdsJson) : [];
       
-      // Initialize favoriteIds with local favorites
-      let favoriteIds = [...localFavoriteIds];
-      
-      if (!isConnected) {
-        console.log('No internet connection, using cached workouts and local favorites');
-        
-        // Apply favorite status to cached workouts
-        workouts = workouts.map(workout => ({
-          ...workout,
-          favorite: localFavoriteIds.includes(workout.id)
-        }));
-        
-        return { workouts, favoriteIds: localFavoriteIds };
-      }
-      
-      // Get the current state to check if we have pending favorite changes
+      // Get the current state
       const state = getState() as { workoutPrograms: WorkoutProgramsState };
       const hasPendingFavoriteChanges = state.workoutPrograms.hasPendingFavoriteChanges;
       
-      // Get user session
+      // Check if we have cached workout programs
+      const cachedProgramsJson = await AsyncStorage.getItem('workoutPrograms');
+      const hasCachedPrograms = !!cachedProgramsJson;
+      
+      // Get Supabase session for user ID
       const { data: { session } } = await supabase.auth.getSession();
       const userId = session?.user?.id;
       
@@ -196,12 +183,41 @@ const fetchWorkoutPrograms = createAsyncThunk(
         }
       }
       
-      // If offline, try to load from cache
+      // First try to load from cache regardless of connection status
+      if (hasCachedPrograms) {
+        console.log('Loading workouts from cache');
+        workouts = JSON.parse(cachedProgramsJson!);
+        console.log(`Loaded ${workouts.length} workouts from cache`);
+        
+        // Only fetch from Supabase if we're online AND it's been more than 24 hours since last fetch
+        // or if we don't have any workouts in cache
+        const lastFetchTimeJson = await AsyncStorage.getItem('lastWorkoutFetchTime');
+        const lastFetchTime = lastFetchTimeJson ? parseInt(lastFetchTimeJson) : 0;
+        const currentTime = Date.now();
+        const hoursSinceLastFetch = (currentTime - lastFetchTime) / (1000 * 60 * 60);
+        
+        if (!isConnected || (hoursSinceLastFetch < 24 && workouts.length > 0)) {
+          console.log('Using cached workouts, skipping Supabase fetch');
+          
+          // Apply favorite status to workout programs
+          workouts = workouts.map(workout => ({
+            ...workout,
+            favorite: favoriteIds.includes(workout.id)
+          }));
+          
+          return { workouts, favoriteIds };
+        }
+      }
+      
+      // If we're here, either:
+      // 1. We don't have cached data
+      // 2. We're online and it's been more than 24 hours since last fetch
+      // 3. We're online and have no workouts in cache
+      
       if (!isConnected) {
         console.log('Offline, trying to load workouts from cache');
-        const cachedPrograms = await AsyncStorage.getItem('workoutPrograms');
-        if (cachedPrograms) {
-          workouts = JSON.parse(cachedPrograms);
+        if (hasCachedPrograms) {
+          workouts = JSON.parse(cachedProgramsJson!);
           console.log(`Loaded ${workouts.length} workouts from cache`);
         } else {
           console.log('No cached workout programs found');
@@ -285,6 +301,9 @@ const fetchWorkoutPrograms = createAsyncThunk(
           
           // Cache the results for offline use
           await AsyncStorage.setItem('workoutPrograms', JSON.stringify(workouts));
+          
+          // Store the fetch time
+          await AsyncStorage.setItem('lastWorkoutFetchTime', Date.now().toString());
           
           // Queue audio downloads for all workouts in the background
           workouts.forEach(workout => {
@@ -470,8 +489,8 @@ const fetchWorkoutHistory = createAsyncThunk(
 
 // Helper function to get workout name by ID
 const getWorkoutNameFromPrograms = (workoutId: string, workoutPrograms: WorkoutProgram[]): string => {
-  const workout = workoutPrograms.find(program => program.id === workoutId);
-  return workout?.name || "Unknown Workout";
+  const workout = workoutPrograms.find(p => p.id === workoutId);
+  return workout ? workout.name : 'Unknown Workout';
 };
 
 // Add fetchStats thunk

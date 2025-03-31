@@ -11,6 +11,13 @@ import {
   User,
   PaceSettings
 } from '../../types';
+// Import storage keys from useAuth to ensure consistency
+import { 
+  USER_SETTINGS_KEY, 
+  USER_SETTINGS_KEY_PREFIX, 
+  getUserSettingsKey,
+  AUTH_STATE_KEY // Import AUTH_STATE_KEY
+} from '../../hooks/useAuth';
 
 // Debug flags
 const DEBUG_USER_SLICE = false;
@@ -61,14 +68,6 @@ const DEFAULT_PREFERENCES: UserPreferences = {
   darkMode: true,
   enableAudioCues: true, // Enable audio cues by default
 };
-
-// Storage keys
-const USER_SETTINGS_KEY = 'treadtrail_user_settings';
-const AUTH_STATE_KEY = 'treadtrail_auth_state';
-const USER_SETTINGS_KEY_PREFIX = 'treadtrail_user_settings_';
-
-// Helper to get user-specific storage key
-const getUserSettingsKey = (userId: string) => `${USER_SETTINGS_KEY_PREFIX}${userId}`;
 
 // Default auth state
 const DEFAULT_AUTH_STATE: AuthState = {
