@@ -1,4 +1,4 @@
-import React, { useContext, useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { 
   View, 
   Text, 
@@ -8,78 +8,208 @@ import {
   Share,
   TouchableOpacity,
   ActivityIndicator,
-  Alert,
 } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList, WorkoutSession } from '../types';
 import { COLORS, FONT_SIZES, SPACING, BORDER_RADIUS } from '../styles/theme';
-import { DataContext, UserContext } from '../context';
-import { formatTime, formatDuration, formatDate, mphToKph, calculateTotalDistance, milesToKm } from '../utils/helpers';
+import { useUserSettings } from '../hooks';
+import { formatDuration, formatDate, calculateTotalDistance, kmToMiles } from '../utils/helpers';
 import Button from '../components/common/Button';
-import WorkoutTimeline from '../components/workout/WorkoutTimeline';
 import WorkoutCalendar from '../components/common/WorkoutCalendar';
 import { getWorkoutSessionById } from '../utils/historyUtils';
 import { useSubscription } from '../context/SubscriptionContext';
 import { calculateTotalCaloriesBurned } from '../utils/calorieUtils';
 import { Ionicons } from '@expo/vector-icons';
+import { useAppSelector } from '../redux/store';
+import { selectWorkoutById } from '../redux/slices/workoutProgramsSlice';
+
+// Debug flags
+const DEBUG_WORKOUT_COMPLETE = false;
+const DEBUG_HOOKS = false;
+
+// Debug logging helper
+const logDebug = (message: string, ...args: any[]) => {
+  if (DEBUG_WORKOUT_COMPLETE) {
+    if (args.length > 0) {
+      console.log(`[DEBUG-WORKOUT-COMPLETE] ${message}`, ...args);
+    } else {
+      console.log(`[DEBUG-WORKOUT-COMPLETE] ${message}`);
+    }
+  }
+};
+
+// Debug hook execution
+const logHook = (hookName: string, ...args: any[]) => {
+  if (DEBUG_HOOKS) {
+    if (args.length > 0) {
+      console.log(`[DEBUG-HOOKS] Executing ${hookName}`, ...args);
+    } else {
+      console.log(`[DEBUG-HOOKS] Executing ${hookName}`);
+    }
+  }
+};
 
 type Props = NativeStackScreenProps<RootStackParamList, 'WorkoutComplete'>;
 
 const WorkoutCompleteScreen: React.FC<Props> = ({ route, navigation }) => {
-  const { sessionId } = route.params;
-  const { getWorkoutById } = useContext(DataContext);
-  const { authState, userSettings, preferences } = useContext(UserContext);
-  const { subscriptionInfo } = useSubscription();
-  const isPremium = subscriptionInfo.isActive || subscriptionInfo.trialActive;
+  logDebug('Component rendering START');
   
+  // Extract route params first
+  const { sessionId } = route.params;
+  logDebug('Route params extracted', { sessionId });
+  
+  // Define all state hooks at the top level
+  logHook('useState - isLoading');
   const [isLoading, setIsLoading] = useState(true);
+  
+  logHook('useState - session');
   const [session, setSession] = useState<WorkoutSession | null>(null);
+  
+  logHook('useState - error');
   const [error, setError] = useState<string | null>(null);
+  
+  logHook('useState - caloriesBurned');
   const [caloriesBurned, setCaloriesBurned] = useState<number | null>(null);
   
-  // Get user's unit preference
-  const unitPreference = userSettings?.preferences?.units || 'imperial';
+  // Use hooks for external data
+  logHook('useUserSettings');
+  const userSettingsResult = useUserSettings();
+  const { authState, userSettings, isLoading: isSettingsLoading } = userSettingsResult;
+  logDebug('useUserSettings result', { 
+    hasUserSettings: !!userSettings, 
+    isSettingsLoading,
+    authStateAuthenticated: authState?.isAuthenticated
+  });
+  
+  logHook('useSubscription');
+  const { subscriptionInfo } = useSubscription();
+  logDebug('useSubscription result', { 
+    isActive: subscriptionInfo?.isActive,
+    trialActive: subscriptionInfo?.trialActive
+  });
+  
+  // Derived values
+  const isPremium = subscriptionInfo?.isActive || subscriptionInfo?.trialActive || false;
+  const preferences = userSettings?.preferences || { units: 'imperial', enableAudioCues: true };
+  const unitPreference = preferences.units || 'imperial';
+  
+  // Get workout data from Redux - define the function outside of any conditional blocks
+  logHook('useAppSelector for getWorkoutById');
+  const workoutSelector = useAppSelector((state) => state);
+  const getWorkoutById = (id: string) => selectWorkoutById(id)(workoutSelector);
+  
+  // Log component state
+  logDebug('Component state initialized', { 
+    hasUserSettings: !!userSettings,
+    preferences,
+    unitPreference,
+    isSettingsLoading,
+    isLoading,
+    sessionId,
+    hasSession: !!session
+  });
   
   // Fetch session data when component mounts
+  logHook('useEffect - fetch session');
   useEffect(() => {
+    logDebug('Fetch session useEffect running', { sessionId });
+    
     const fetchSession = async () => {
+      logDebug('fetchSession function called');
       try {
-        setIsLoading(true);
+        logDebug('Getting workout session by ID', { sessionId });
         const sessionData = await getWorkoutSessionById(sessionId);
+        logDebug('Session data retrieved', { 
+          hasData: !!sessionData,
+          id: sessionData?.id,
+          workoutId: sessionData?.workoutId
+        });
+        
         if (sessionData) {
+          logDebug('Setting session data');
           setSession(sessionData);
+          
+          // If the session has calories burned, use that value directly
+          if (sessionData.caloriesBurned !== undefined) {
+            logDebug('Setting calories from session', { calories: sessionData.caloriesBurned });
+            setCaloriesBurned(sessionData.caloriesBurned);
+          }
         } else {
+          logDebug('Session not found, setting error');
           setError('Session not found');
         }
       } catch (err) {
         console.error('Error fetching session:', err);
+        logDebug('Error in fetchSession', { error: err });
         setError('Failed to load workout data');
       } finally {
+        logDebug('Setting isLoading to false');
         setIsLoading(false);
       }
     };
     
+    logDebug('Calling fetchSession');
     fetchSession();
+    
+    return () => {
+      logDebug('Fetch session useEffect cleanup');
+    };
   }, [sessionId]);
   
+  // Only calculate calories if not already provided in the session
+  logHook('useEffect - calculate calories');
   useEffect(() => {
-    if (isPremium && session && userSettings?.profile?.weight) {
-      // Calculate calories burned based on workout segments
-      const paceSettings = Object.entries(userSettings.paceSettings).reduce((acc, [key, value]) => {
-        acc[key] = { speed: value.speed, incline: value.incline };
-        return acc;
-      }, {} as { [key: string]: { speed: number; incline: number } });
-      const totalCalories = calculateTotalCaloriesBurned(
-        session.segments,
-        userSettings.profile.weight,
-        paceSettings
-      );
-      setCaloriesBurned(totalCalories);
+    logDebug('Calculate calories useEffect running', {
+      isPremium,
+      hasSession: !!session,
+      hasWeight: !!userSettings?.weight,
+      caloriesBurned
+    });
+    
+    if (!userSettings || !session) {
+      logDebug('Missing userSettings or session, skipping calorie calculation');
+      return;
     }
-  }, [isPremium, session, userSettings]);
+    
+    if (isPremium && userSettings.weight && caloriesBurned === undefined) {
+      logDebug('Calculating calories burned');
+      
+      // Safely access pace settings
+      const paceSettings = userSettings.paceSettings ? 
+        Object.entries(userSettings.paceSettings).reduce((acc, [key, value]) => {
+          acc[key] = { speed: value.speed, incline: value.incline };
+          return acc;
+        }, {} as { [key: string]: { speed: number; incline: number } }) : 
+        {};
+      
+      logDebug('Using pace settings for calorie calculation', { paceSettings });
+      
+      try {
+        const totalCalories = calculateTotalCaloriesBurned(
+          session.segments,
+          userSettings.weight,
+          paceSettings
+        );
+        logDebug('Setting calculated calories', { totalCalories });
+        setCaloriesBurned(totalCalories);
+      } catch (error) {
+        console.error('Error calculating calories:', error);
+        logDebug('Error calculating calories', { error });
+      }
+    } else if (session.caloriesBurned !== undefined) {
+      logDebug('Using calories from session', { calories: session.caloriesBurned });
+    }
+    
+    return () => {
+      logDebug('Calculate calories useEffect cleanup');
+    };
+  }, [isPremium, session, userSettings, caloriesBurned]);
+  
+  logDebug('Component rendering decision point', { isLoading, hasError: !!error });
   
   // Handle loading state
   if (isLoading) {
+    logDebug('Rendering loading state');
     return (
       <SafeAreaView style={styles.container}>
         <View style={styles.loadingContainer}>
@@ -90,27 +220,50 @@ const WorkoutCompleteScreen: React.FC<Props> = ({ route, navigation }) => {
     );
   }
   
-  // Handle case where session is not found
-  if (!session || error) {
+  // Handle error state
+  if (error) {
+    logDebug('Rendering error state', { error });
     return (
       <SafeAreaView style={styles.container}>
-        <Text style={styles.errorText}>{error || 'Workout session not found'}</Text>
-        <Button 
-          title="Back to Workouts" 
-          onPress={() => navigation.navigate('WorkoutLibrary')}
-          type="secondary"
-          style={{ marginTop: SPACING.large }}
-        />
+        <View style={styles.errorContainer}>
+          <Text style={styles.errorText}>{error}</Text>
+          <Button 
+            title="Go Back" 
+            onPress={() => navigation.goBack()} 
+            style={styles.errorButton}
+          />
+        </View>
       </SafeAreaView>
     );
   }
+  
+  // Handle null session (should be caught by error state, but just in case)
+  if (!session) {
+    logDebug('Rendering null session state');
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.errorContainer}>
+          <Text style={styles.errorText}>Workout session not found</Text>
+          <Button 
+            title="Go Back" 
+            onPress={() => navigation.goBack()} 
+            style={styles.errorButton}
+          />
+        </View>
+      </SafeAreaView>
+    );
+  }
+  
+  logDebug('Rendering full workout complete screen', { 
+    workoutId: session.workoutId,
+    date: session.date
+  });
   
   const { 
     workoutId, 
     workoutName, 
     date, 
     duration, 
-    completed, 
     segments,
     paceSettings,
     distance: sessionDistance
@@ -121,39 +274,27 @@ const WorkoutCompleteScreen: React.FC<Props> = ({ route, navigation }) => {
   
   // Calculate stats
   const skippedSegments = segments.filter(segment => segment.skipped).length;
-  const completionRate = originalWorkout 
-    ? Math.round((segments.length - skippedSegments) / originalWorkout.segments.length * 100) 
-    : 100;
     
   // Calculate distance based on session data and pace settings
-  let distanceMiles = sessionDistance || 0;
+  let distanceKm = sessionDistance || 0;
   
   // If distance is not already calculated, calculate it now
-  if (!distanceMiles && segments && paceSettings) {
+  if (!distanceKm && segments && paceSettings) {
     // Cast paceSettings to the expected type for calculateTotalDistance
     const paceSettingsMap = paceSettings as unknown as { [key: string]: { speed: number } };
-    distanceMiles = calculateTotalDistance(segments, paceSettingsMap);
-  } else if (!distanceMiles && segments && userSettings?.paceSettings) {
+    distanceKm = calculateTotalDistance(segments, paceSettingsMap);
+  } else if (!distanceKm && segments && userSettings?.paceSettings) {
     // Try using current user pace settings if session doesn't have them
     const paceSettingsMap = userSettings.paceSettings as unknown as { [key: string]: { speed: number } };
-    distanceMiles = calculateTotalDistance(segments, paceSettingsMap);
+    distanceKm = calculateTotalDistance(segments, paceSettingsMap);
   }
   
   // Format distance based on user preference
   const distance = unitPreference === 'imperial' 
-    ? distanceMiles.toFixed(1) 
-    : milesToKm(distanceMiles).toFixed(1); // Convert miles to kilometers
+    ? kmToMiles(distanceKm).toFixed(1) 
+    : distanceKm.toFixed(1); // No conversion needed for kilometers
   
   // Handle share result
-  const handleShare = async () => {
-    try {
-      await Share.share({
-        message: `I just completed the "${workoutName}" workout on TreadTrail! ${formatDuration(duration)} of treadmill training done! 💪`,
-      });
-    } catch (error) {
-      console.error('Error sharing:', error);
-    }
-  };
   
   // Handle done button press
   const handleDone = () => {
@@ -233,7 +374,7 @@ const WorkoutCompleteScreen: React.FC<Props> = ({ route, navigation }) => {
           </View>
         )}
         
-        {isPremium && !userSettings?.profile?.weight && (
+        {isPremium && !userSettings?.weight && (
           <View style={styles.weightPromptContainer}>
             <View style={styles.weightPromptIcon}>
               <Ionicons name="information-circle" size={24} color={COLORS.accent} />
@@ -485,6 +626,14 @@ const styles = StyleSheet.create({
     fontSize: FONT_SIZES.medium,
     color: COLORS.error,
     textAlign: 'center',
+    marginTop: SPACING.xl,
+  },
+  errorContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  errorButton: {
     marginTop: SPACING.xl,
   },
 });

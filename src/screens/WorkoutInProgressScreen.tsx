@@ -1,21 +1,17 @@
-import React, { useState, useEffect, useRef, useContext, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { 
   View, 
   Text, 
   StyleSheet, 
   TouchableOpacity, 
   Alert, 
-  ScrollView, 
   Dimensions, 
   Platform, 
-  ActivityIndicator, 
   SafeAreaView, 
   StatusBar, 
-  Image, 
   Animated, 
   LayoutChangeEvent, 
   Modal, 
-  Easing, 
   BackHandler 
 } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -28,9 +24,7 @@ import {
   selectCurrentSegment, 
   selectCurrentSegmentIndex, 
   selectElapsedTime, 
-  selectHasStarted, 
   selectIsRunning, 
-  selectIsPaused, 
   selectIsSkipping,
   selectIsCompleted,
   formatCountdownTime,
@@ -40,84 +34,27 @@ import {
   resumeWorkout as resumeWorkoutAction,
   skipSegment as skipSegmentAction,
   endWorkout as endWorkoutAction,
-  completeWorkout as completeWorkoutAction,
   selectSegmentElapsedTime,
   selectSegmentRemaining,
   selectTotalDuration,
   resetSkipState,
   formatTime
 } from '../redux/slices/workoutSlice';
-import { UserContext } from '../context';
+import { useUserSettings } from '../hooks';
 import { createWorkoutSession } from '../utils/historyUtils';
 import useWorkoutTimer from '../hooks/useWorkoutTimer';
 import useWorkoutAudio from '../hooks/useWorkoutAudio';
-import { addWorkoutSession } from '../redux/slices/workoutProgramsSlice';
+import { addWorkoutSessionToPendingQueue, processPendingQueue } from '../redux/slices/workoutProgramsSlice';
 import { Audio, InterruptionModeIOS, InterruptionModeAndroid, AVPlaybackStatus } from 'expo-av';
 import { useSubscription } from '../context/SubscriptionContext';
 import { calculateSegmentCalories } from '../utils/calorieUtils';
+import { calculateTotalDistance, calculateWorkoutInProgressDistance } from '../utils/distanceUtils';
 import { Ionicons } from '@expo/vector-icons';
-import Svg, { Circle } from 'react-native-svg';
+import { loadSegmentAudio } from '../utils/audioUtils';
+import { AppDispatch } from '../redux/store';
+import { v4 as uuidv4 } from 'uuid';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'WorkoutInProgress'>;
-
-// Define types for the CircularProgress component
-interface CircularProgressProps {
-  progress: number;
-  size?: number;
-  strokeWidth?: number;
-  circleColor?: string;
-  progressColor?: string;
-  elapsedTime: number;
-  totalDuration: number;
-}
-
-// Circular progress component for workout progress
-const CircularProgress: React.FC<CircularProgressProps> = ({ 
-  progress, 
-  size = 80, 
-  strokeWidth = 8, 
-  circleColor = 'rgba(255, 255, 255, 0.1)', 
-  progressColor = COLORS.lightGray,
-  elapsedTime,
-  totalDuration
-}) => {
-  const radius = (size - strokeWidth) / 2;
-  const circumference = radius * 2 * Math.PI;
-  const progressOffset = circumference - (progress / 100) * circumference;
-
-  return (
-    <View style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center' }}>
-      <Svg width={size} height={size}>
-        {/* Background Circle */}
-        <Circle
-          stroke={circleColor}
-          fill="transparent"
-          strokeWidth={strokeWidth}
-          cx={size / 2}
-          cy={size / 2}
-          r={radius}
-        />
-        {/* Progress Circle */}
-        <Circle
-          stroke={progressColor}
-          fill="transparent"
-          strokeWidth={strokeWidth}
-          strokeDasharray={circumference}
-          strokeDashoffset={progressOffset}
-          strokeLinecap="round"
-          cx={size / 2}
-          cy={size / 2}
-          r={radius}
-          transform={`rotate(-90, ${size / 2}, ${size / 2})`}
-        />
-      </Svg>
-      <View style={styles.progressTextContainer}>
-        <Text style={styles.progressTime}>{formatTime(elapsedTime)}</Text>
-        <Text style={styles.totalTime}>/ {formatTime(totalDuration)}</Text>
-      </View>
-    </View>
-  );
-};
 
 const formatSegmentDuration = (seconds: number) => {
   const minutes = Math.floor(seconds / 60);
@@ -145,7 +82,7 @@ const WorkoutInProgressScreen: React.FC<Props> = ({ route, navigation }) => {
   const prevIsSkippingRef = useRef(false);
   
   // Redux state
-  const dispatch = useDispatch();
+  const dispatch = useDispatch<AppDispatch>();
   const activeWorkout = useSelector(selectActiveWorkout);
   const isWorkoutActive = activeWorkout !== null;
   const isRunning = useSelector(selectIsRunning);
@@ -177,8 +114,8 @@ const WorkoutInProgressScreen: React.FC<Props> = ({ route, navigation }) => {
   // Track if workout has been initialized
   const hasInitializedRef = useRef(false);
 
-  // Get user preferences from context
-  const { userSettings } = useContext(UserContext);
+  // Get user preferences from hook
+  const { userSettings } = useUserSettings();
   const preferences = userSettings?.preferences || { enableAudioCues: true, units: 'imperial', darkMode: false };
   const paceSettings = userSettings?.paceSettings || { recovery: { speed: 3, incline: 1 }, base: { speed: 5, incline: 1 }, run: { speed: 7, incline: 2 }, sprint: { speed: 9, incline: 2 } };
 
@@ -189,12 +126,12 @@ const WorkoutInProgressScreen: React.FC<Props> = ({ route, navigation }) => {
   // State for calorie tracking
   const [caloriesBurned, setCaloriesBurned] = useState(0);
   const [segmentCalories, setSegmentCalories] = useState(0);
-  const userWeight = userSettings?.profile?.weight;
+  const userWeight = userSettings?.weight;
   const hasWeight = !!userWeight;
 
   // Calculate calories burned in real-time
   useEffect(() => {
-    if (isPremium && hasWeight && currentSegment && isRunning) {
+    if (hasWeight && currentSegment && isRunning) {
       // Get pace settings for the current segment type
       const paceType = currentSegment.type as PaceType;
       const pace = paceSettings[paceType];
@@ -234,7 +171,6 @@ const WorkoutInProgressScreen: React.FC<Props> = ({ route, navigation }) => {
       }
     }
   }, [
-    isPremium, 
     hasWeight, 
     currentSegment, 
     segmentElapsedTime, 
@@ -364,7 +300,7 @@ const WorkoutInProgressScreen: React.FC<Props> = ({ route, navigation }) => {
   useEffect(() => {
     if (!activeWorkout || !audioEnabled) return;
 
-    const loadSegmentAudio = async () => {
+    const loadWorkoutAudio = async () => {
       try {
         // Clean up any existing sounds
         for (const key in sounds) {
@@ -378,10 +314,13 @@ const WorkoutInProgressScreen: React.FC<Props> = ({ route, navigation }) => {
         // Load audio for each segment that has an audio file
         for (let i = 0; i < activeWorkout.segments.length; i++) {
           const segment = activeWorkout.segments[i];
-          if (segment.audio && segment.audio.uri) {
+          if (segment.audio) {
             try {
-              const { sound } = await Audio.Sound.createAsync({ uri: segment.audio.uri });
-              sounds[`segment-${i}`] = sound;
+              // Use the new audio caching system to load audio
+              const sound = await loadSegmentAudio(segment);
+              if (sound) {
+                sounds[`segment-${i}`] = sound;
+              }
             } catch (e) {
               console.error(`Failed to load audio for segment ${i}:`, e);
             }
@@ -393,7 +332,7 @@ const WorkoutInProgressScreen: React.FC<Props> = ({ route, navigation }) => {
       }
     };
 
-    loadSegmentAudio();
+    loadWorkoutAudio();
 
     // Clean up sounds when component unmounts
     return () => {
@@ -589,75 +528,123 @@ const WorkoutInProgressScreen: React.FC<Props> = ({ route, navigation }) => {
   };
 
   // Handle workout completion
-  const handleWorkoutComplete = () => {
-    // First create a session from the current workout state
-    if (activeWorkout) {
-      // Generate a unique ID for the session
-      const sessionId = `session_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+  const handleWorkoutComplete = async () => {
+    try {
+      // First create a session from the current workout state
+      if (activeWorkout) {
+        // Generate a unique session ID using UUID v4
+        const sessionId = uuidv4();
 
-      // Create completed segments array
-      const completedSegments = activeWorkout.segments.map((segment: WorkoutSegment, index: number) => {
-        return {
-          type: segment.type,
-          duration: index < currentSegmentIndex ? segment.duration : 
-                   index === currentSegmentIndex ? segmentElapsedTime : 0,
-          plannedDuration: segment.duration,
-          skipped: index > currentSegmentIndex || 
-                  (index === currentSegmentIndex && segmentElapsedTime < segment.duration)
+        // Create completed segments array
+        const completedSegments = activeWorkout.segments.map((segment: WorkoutSegment, index: number) => {
+          return {
+            type: segment.type,
+            duration: index < currentSegmentIndex ? segment.duration : 
+                     index === currentSegmentIndex ? segmentElapsedTime : 0,
+            plannedDuration: segment.duration,
+            skipped: index > currentSegmentIndex || 
+                    (index === currentSegmentIndex && segmentElapsedTime < segment.duration)
+          };
+        });
+
+        // Create the session object
+        const now = new Date();
+        const localDateString = 
+          now.getFullYear() + '-' + 
+          String(now.getMonth() + 1).padStart(2, '0') + '-' + 
+          String(now.getDate()).padStart(2, '0');
+        
+        // Get user's pace settings to include in the session
+        const paceSettings = userSettings?.paceSettings;
+        
+        // Calculate distance based on each segment's pace and duration
+        let distanceValue: number | undefined = undefined;
+        try {
+          // Ensure we have pace settings - either from user settings or default values
+          const effectivePaceSettings = paceSettings || {
+            recovery: { speed: 4, incline: 0 },
+            base: { speed: 6, incline: 0 },
+            run: { speed: 8, incline: 1 },
+            sprint: { speed: 10, incline: 2 }
+          };
+          
+          // For in-progress workout, calculate distance for completed segments plus current segment
+          if (activeWorkout && activeWorkout.segments) {
+            // Get completed segments (all segments before current one)
+            const completedSegments = activeWorkout.segments.slice(0, currentSegmentIndex);
+            
+            // Calculate distance using the utility function
+            distanceValue = calculateWorkoutInProgressDistance(
+              completedSegments,
+              currentSegment,
+              segmentElapsedTime,
+              effectivePaceSettings
+            );
+            
+            console.log(`[WORKOUT] Calculated total distance: ${distanceValue} km`);
+          }
+        } catch (error) {
+          console.error('[WORKOUT] Error calculating distance:', error);
+        }
+        
+        const session = {
+          id: sessionId,
+          workoutId: activeWorkout.id,
+          workoutName: activeWorkout.name,
+          date: localDateString, // Local date string in YYYY-MM-DD format
+          startTime: now.toISOString(), // Keep ISO string for full timestamp
+          endTime: now.toISOString(),
+          duration: elapsedTime,
+          completed: currentSegmentIndex >= activeWorkout.segments.length - 1,
+          pauses: [], // Could track pauses in a real implementation
+          segments: completedSegments,
+          paceSettings: paceSettings, // Add pace settings to allow distance calculation
+          distance: distanceValue, // Add calculated distance
+          weight: userSettings?.weight, // Add user's weight from settings
+          caloriesBurned: hasWeight ? Math.round(caloriesBurned) : undefined,
         };
-      });
 
-      // Create the session object
-      const now = new Date();
-      const localDateString = 
-        now.getFullYear() + '-' + 
-        String(now.getMonth() + 1).padStart(2, '0') + '-' + 
-        String(now.getDate()).padStart(2, '0');
+        console.log('Creating workout session:', JSON.stringify({
+          id: session.id,
+          workoutName: session.workoutName,
+          duration: session.duration,
+          distance: session.distance,
+          weight: session.weight,
+          paceSettings: session.paceSettings ? 'present' : 'missing'
+        }));
         
-      // Get user's pace settings to include in the session
-      const paceSettings = userSettings?.paceSettings;
-        
-      const session = {
-        id: sessionId,
-        workoutId: activeWorkout.id,
-        workoutName: activeWorkout.name,
-        date: localDateString, // Local date string in YYYY-MM-DD format
-        startTime: now.toISOString(), // Keep ISO string for full timestamp
-        endTime: now.toISOString(),
-        duration: elapsedTime,
-        completed: currentSegmentIndex >= activeWorkout.segments.length - 1,
-        pauses: [], // Could track pauses in a real implementation
-        segments: completedSegments,
-        paceSettings: paceSettings, // Add pace settings to allow distance calculation
-        caloriesBurned: isPremium && hasWeight ? Math.round(caloriesBurned) : undefined,
-      };
+        // Stop any playing audio
+        if (audioEnabled) {
+          stopAudio();
+        }
 
-      console.log('Creating workout session with pace settings:', paceSettings);
+        // Save the session using the utility function
+        createWorkoutSession(session).then(() => {
+          // End the workout in Redux
+          dispatch(endWorkoutAction());
 
-      // Stop any playing audio
-      if (audioEnabled) {
-        stopAudio();
+          // Add the session to Redux
+          dispatch(addWorkoutSessionToPendingQueue(session))
+            .catch(err => {
+              console.error('Error adding session to Redux:', err);
+            });
+
+          // Navigate to the complete screen
+          navigation.navigate('WorkoutComplete', { sessionId });
+        }).catch(error => {
+          console.error('Error saving workout session:', error);
+          // Still end the workout in redux
+          dispatch(endWorkoutAction());
+          navigation.navigate('WorkoutLibrary');
+        });
       }
-
-      // Save the session using the utility function
-      createWorkoutSession(session).then(() => {
-        // End the workout in Redux
-        dispatch(endWorkoutAction());
-
-        // IMPORTANT: Add the session to Redux directly to ensure stats are calculated properly
-        dispatch(addWorkoutSession(session))
-          .catch(err => {
-            console.error('Error adding session to Redux:', err);
-          });
-
-        // Navigate to the complete screen
-        navigation.navigate('WorkoutComplete', { sessionId });
-      }).catch(error => {
-        console.error('Error saving workout session:', error);
-        // Still end the workout in redux
-        dispatch(endWorkoutAction());
-        navigation.navigate('WorkoutLibrary');
-      });
+    } catch (error: any) {
+      console.error('Error completing workout:', error);
+      Alert.alert(
+        'Error',
+        'There was a problem saving your workout. Please try again.',
+        [{ text: 'OK' }]
+      );
     }
   };
 
@@ -667,8 +654,8 @@ const WorkoutInProgressScreen: React.FC<Props> = ({ route, navigation }) => {
     
     // First create a session from the current workout state
     if (activeWorkout) {
-      // Generate a unique ID for the session
-      const sessionId = `session_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+      // Generate a unique session ID using UUID v4
+      const sessionId = uuidv4();
 
       // Create completed segments array - mark all as completed
       const completedSegments = activeWorkout.segments.map((segment: WorkoutSegment) => {
@@ -687,6 +674,34 @@ const WorkoutInProgressScreen: React.FC<Props> = ({ route, navigation }) => {
         String(now.getMonth() + 1).padStart(2, '0') + '-' + 
         String(now.getDate()).padStart(2, '0');
         
+      // Get user's pace settings to include in the session
+      const paceSettings = userSettings?.paceSettings;
+      
+      // Calculate distance based on each segment's pace and duration
+      let distanceValue: number | undefined = undefined;
+      try {
+        // Ensure we have pace settings - either from user settings or default values
+        const effectivePaceSettings = paceSettings || {
+          recovery: { speed: 4, incline: 0 },
+          base: { speed: 6, incline: 0 },
+          run: { speed: 8, incline: 1 },
+          sprint: { speed: 10, incline: 2 }
+        };
+        
+        // For completed workout, calculate distance for all segments
+        if (activeWorkout && activeWorkout.segments) {
+          // Calculate distance using the utility function
+          distanceValue = calculateTotalDistance(
+            activeWorkout.segments,
+            effectivePaceSettings
+          );
+          
+          console.log(`[WORKOUT] Calculated total distance: ${distanceValue} km`);
+        }
+      } catch (error) {
+        console.error('[WORKOUT] Error calculating distance:', error);
+      }
+      
       const session = {
         id: sessionId,
         workoutId: activeWorkout.id,
@@ -694,12 +709,14 @@ const WorkoutInProgressScreen: React.FC<Props> = ({ route, navigation }) => {
         date: localDateString,
         startTime: now.toISOString(),
         endTime: now.toISOString(),
-        duration: totalDuration, // Use total duration instead of elapsed time
-        completed: true, // Mark as fully completed
+        duration: elapsedTime,
+        completed: true,
         pauses: [],
         segments: completedSegments,
         paceSettings: paceSettings, // Add pace settings to allow distance calculation
-        caloriesBurned: isPremium && hasWeight ? Math.round(caloriesBurned) : undefined,
+        distance: distanceValue, // Add calculated distance
+        weight: userSettings?.weight, // Add user's weight from settings
+        caloriesBurned: hasWeight ? Math.round(caloriesBurned) : undefined,
       };
 
       // Stop any playing audio
@@ -713,7 +730,7 @@ const WorkoutInProgressScreen: React.FC<Props> = ({ route, navigation }) => {
         dispatch(endWorkoutAction());
 
         // Add the session to Redux
-        dispatch(addWorkoutSession(session))
+        dispatch(addWorkoutSessionToPendingQueue(session))
           .catch(err => {
             console.error('Error adding session to Redux:', err);
           });
@@ -811,38 +828,9 @@ const WorkoutInProgressScreen: React.FC<Props> = ({ route, navigation }) => {
                 <Text style={styles.inclineInfo}>Incline: {currentSegment.incline}%</Text>
               )}
             </View>
-
-            {/* Weight prompt for premium users without weight */}
-            {isPremium && !hasWeight && (
-              <TouchableOpacity 
-                style={styles.weightPromptBanner}
-                onPress={() => {
-                  if (isRunning) {
-                    dispatch(pauseWorkoutAction());
-                  }
-                  navigation.navigate('Settings');
-                }}
-              >
-                <Ionicons name="information-circle" size={16} color={COLORS.white} style={styles.weightPromptIcon} />
-                <Text style={styles.weightPromptText}>Set weight in Settings to track calories</Text>
-              </TouchableOpacity>
-            )}
           </View>
 
-          {/* Split Info Cards */}
-          <View style={styles.splitCardsContainer}>
-            {/* Workout Progress Card with Circular Progress */}
-            {/* <View style={styles.workoutProgressCard}>
-              <Text style={styles.cardLabel}>Total</Text>
-              <CircularProgress 
-                progress={progressPercentage}
-                size={80}
-                strokeWidth={8}
-                elapsedTime={elapsedTime}
-                totalDuration={totalDuration}
-              />
-            </View> */}
-            
+          <View>
             {/* Next Segment Info with Static Value */}
             <View style={[styles.nextSegment, styles.noBottomMargin]}>
               <Text style={styles.nextLabel}>Next:</Text>
@@ -872,9 +860,7 @@ const WorkoutInProgressScreen: React.FC<Props> = ({ route, navigation }) => {
           </View>
 
           {/* Timeline */}
-          <View style={[styles.timelineContainerNoGap, { maxHeight: '45%' }]}>
-            <Text style={styles.timelineTitle}>Workout Timeline</Text>
-
+          <View style={styles.timelineContainerNoGap}>
             <View style={styles.timelineLegend}>
               <View style={styles.legendItem}>
                 <View style={[styles.legendColor, { backgroundColor: PACE_COLORS.recovery }]} />
@@ -895,12 +881,7 @@ const WorkoutInProgressScreen: React.FC<Props> = ({ route, navigation }) => {
             </View>
 
             {/* Use the shared WorkoutVisualization component with dynamic height */}
-            <View 
-              style={[
-                styles.visualizationWrapper,
-                { height: visualizationHeight, maxHeight: '100%' }
-              ]}
-            >
+            <View style={styles.visualizationWrapper}>
               <WorkoutVisualization 
                 segments={activeWorkout.segments} 
                 currentSegmentIndex={currentSegmentIndex}
@@ -914,18 +895,18 @@ const WorkoutInProgressScreen: React.FC<Props> = ({ route, navigation }) => {
                 showTicks={true}
               />
             </View>
-          </View>
-
-          {/* Calories counter - only shown if user weight is provided */}
-          {isPremium && hasWeight && (
-            <View style={styles.caloriesContainer}>
-              <View style={styles.caloriesBadge}>
-                <Text style={styles.caloriesText}>
-                  Calories: <Text style={styles.caloriesValue}>{Math.round(caloriesBurned)}</Text>
-                </Text>
+            
+            {/* Calories counter - only shown if user weight is provided */}
+            {hasWeight && (
+              <View style={styles.caloriesContainer}>
+                <View style={styles.caloriesBadge}>
+                  <Text style={styles.caloriesText}>
+                    Calories: <Text style={styles.caloriesValue}>{Math.round(caloriesBurned)}</Text>
+                  </Text>
+                </View>
               </View>
-            </View>
-          )}
+            )}
+          </View>
 
           {/* Control Buttons */}
           <View 
@@ -1093,28 +1074,14 @@ const styles = StyleSheet.create({
   inclineInfo: {
     fontSize: 16,
     color: 'rgba(255, 255, 255, 0.6)',
-    // marginTop: 5,
-  },
-  splitCardsContainer: {
-    flexDirection: 'row',
-    marginBottom: 20,
-    gap: 10,
-  },
-  workoutProgressCard: {
-    flex: 1,
-    backgroundColor: COLORS.darkGray,
-    borderRadius: 10,
-    padding: 15,
-    alignItems: 'center',
   },
   nextSegment: {
     backgroundColor: COLORS.darkGray,
     borderRadius: 10,
-    padding: 15,
-    marginBottom: 10,
     flexDirection: 'row',
     alignItems: 'center',
     width: '100%',
+    padding: 15,
   },
   nextLabel: {
     fontSize: FONT_SIZES.small,
@@ -1171,24 +1138,14 @@ const styles = StyleSheet.create({
     marginRight: 10,
   },
   timelineContainerNoGap: {
-    marginTop: 0,
-    paddingTop: 10,
     flex: 1,
-    justifyContent: 'flex-start',
-    marginBottom: 20,
-    maxHeight: '45%',
-  },
-  timelineTitle: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    marginBottom: 10,
-    color: COLORS.white,
-    opacity: 0.9,
+    justifyContent: 'center',
+    marginBottom: 5,
   },
   timelineLegend: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginBottom: 8,
+    marginBottom: 12,
     fontSize: 12,
     color: 'rgba(255, 255, 255, 0.7)',
   },
@@ -1208,13 +1165,11 @@ const styles = StyleSheet.create({
   },
   visualizationWrapper: {
     width: '100%',
-    marginVertical: 10,
+    marginVertical: 0,
     minHeight: 120,
-    maxHeight: '100%',
     backgroundColor: COLORS.darkGray,
     borderRadius: 12,
-    padding: 16,
-    paddingBottom: 40,
+    padding: 5,
   },
   controlButtonsContainer: {
     position: 'absolute',
@@ -1225,7 +1180,7 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.black,
     borderTopWidth: 1,
     borderTopColor: COLORS.darkGray,
-    paddingBottom: Platform.OS === 'ios' ? 30 : 20,
+    paddingBottom: 20,
   },
   controlButtonsRow: {
     flexDirection: 'row',
@@ -1408,23 +1363,6 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     fontSize: 16,
   },
-  progressTextContainer: {
-    position: 'absolute',
-    alignItems: 'center',
-    justifyContent: 'center',
-    width: '100%',
-    height: '100%',
-  },
-  progressTime: {
-    fontSize: FONT_SIZES.medium,
-    fontWeight: 'bold',
-    color: COLORS.white,
-  },
-  totalTime: {
-    fontSize: FONT_SIZES.xs,
-    color: COLORS.white,
-    opacity: 0.5,
-  },
   cardLabel: {
     fontSize: FONT_SIZES.small,
     color: COLORS.white,
@@ -1466,9 +1404,9 @@ const styles = StyleSheet.create({
   caloriesContainer: {
     alignItems: 'center',
     justifyContent: 'center',
-    marginVertical: 15,
-    paddingVertical: 5,
+    marginTop: 10,
     width: '100%',
+    zIndex: 10,
   },
   caloriesBadge: {
     backgroundColor: 'rgba(0, 0, 0, 0.5)',

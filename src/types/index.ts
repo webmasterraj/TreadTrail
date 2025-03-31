@@ -9,6 +9,7 @@ export interface PaceSetting {
 }
 
 export interface PaceSettings {
+  [key: string]: { speed: number };
   recovery: PaceSetting;
   base: PaceSetting;
   run: PaceSetting;
@@ -25,9 +26,10 @@ export interface UserPreferences {
 // User profile
 export interface UserProfile {
   name: string;
-  dateCreated: string; // ISO date string
-  lastActive: string; // ISO date string
-  weight?: number; // Weight in kg for calorie calculations (optional)
+  email?: string;
+  id?: string;
+  dateCreated?: string; // ISO date string
+  lastActive?: string; // ISO date string
 }
 
 // User settings
@@ -36,6 +38,7 @@ export interface UserSettings {
   paceSettings: PaceSettings;
   preferences: UserPreferences;
   subscription?: SubscriptionInfo; // Optional subscription information
+  weight?: number; // User weight in kg
 }
 
 // Workout types
@@ -99,6 +102,7 @@ export interface WorkoutSession {
   paceSettings?: PaceSettings; // Pace settings used during this workout
   distance?: number; // Distance in miles
   caloriesBurned?: number; // Calories burned during workout (for premium users)
+  weight?: number; // User weight at the time of workout
 }
 
 // Workout stats
@@ -106,20 +110,7 @@ export interface WorkoutStats {
   totalWorkouts: number;
   totalDuration: number; // In seconds
   totalDistance: number; // In miles (always stored in miles internally)
-  totalSegmentsCompleted: number;
   totalCaloriesBurned: number; // Total calories burned across all workouts
-  workoutsByCategory: {
-    'Easy \ud83d\udc23': number;
-    'Trad HIIT \ud83c\udfc3\ud83c\udffc': number;
-    'Hills \u26f0': number;
-    'Endurance \ud83d\udcaa\ud83c\udffd': number;
-    'Death \ud83d\udc80': number;
-  };
-  workoutsByFocus: {
-    endurance: number;
-    hiit: number;
-    fat_burn: number;
-  };
   lastWorkoutDate: string | null; // ISO date string
   longestWorkout: {
     duration: number; // In seconds
@@ -143,6 +134,9 @@ export interface Stats {
   lastUpdated: string; // ISO date string
   stats: WorkoutStats;
   achievements: AchievementProgress[];
+  // Debug properties
+  source?: 'server' | 'cache' | 'local'; // Where the stats came from
+  pendingWorkoutsIncluded?: boolean; // Whether pending workouts are included in these stats
 }
 
 // Authentication types

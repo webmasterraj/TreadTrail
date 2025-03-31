@@ -1,4 +1,4 @@
-import React, { useContext, useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { 
   View, 
   Text, 
@@ -15,7 +15,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList, WorkoutProgram, CategoryType } from '../types';
 import { COLORS, FONT_SIZES, SPACING } from '../styles/theme';
-import { UserContext } from '../context';
+import { useAuth, useUserSettings } from '../hooks';
 import { useSubscription } from '../context/SubscriptionContext';
 import WorkoutCard from '../components/workout/WorkoutCard';
 import BottomTabBar from '../components/common/BottomTabBar';
@@ -24,9 +24,10 @@ import {
   fetchWorkoutPrograms, 
   fetchWorkoutHistory, 
   fetchStats, 
-  toggleWorkoutFavorite,
+  toggleFavoriteWorkout,
   selectWorkoutPrograms, 
-  selectIsLoading 
+  selectIsLoading,
+  processPendingQueue
 } from '../redux/slices/workoutProgramsSlice';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'WorkoutLibrary'>;
@@ -35,7 +36,8 @@ const WorkoutLibraryScreen: React.FC<Props> = ({ navigation, route }) => {
   const dispatch = useAppDispatch();
   const workoutPrograms = useAppSelector(selectWorkoutPrograms);
   const isLoading = useAppSelector(selectIsLoading);
-  const { userSettings, authState } = useContext(UserContext);
+  const { userSettings } = useUserSettings();
+  const { authState } = useAuth();
   const { isPremiumWorkout, validateSubscription, subscriptionInfo } = useSubscription();
   const cameFromWelcome = useRef(false);
   
@@ -88,11 +90,23 @@ const WorkoutLibraryScreen: React.FC<Props> = ({ navigation, route }) => {
 
   // Initialize data on component mount
   useEffect(() => {
-    dispatch(fetchWorkoutPrograms());
-    dispatch(fetchWorkoutHistory());
-    dispatch(fetchStats());
+    if (workoutPrograms.length > 0) {
+      // Skip fetch if programs are already loaded
+    } else if (!isLoading) {
+      dispatch(fetchWorkoutPrograms());
+    }
     
-    // Set navigation options dynamically based on auth state
+    // Only fetch workout history and stats if user is authenticated
+    if (authState.isAuthenticated) {
+      // Fetch workout history and stats
+      dispatch(fetchWorkoutHistory({}));
+      dispatch(fetchStats());
+      
+      // Try to process any pending workouts
+      dispatch(processPendingQueue());
+    }
+    
+    // Check if user is authenticated
     if (!authState.isAuthenticated) {
       navigation.setOptions({
         headerShown: true,
@@ -103,9 +117,12 @@ const WorkoutLibraryScreen: React.FC<Props> = ({ navigation, route }) => {
         headerShown: false
       });
     }
-  }, [dispatch, navigation, authState.isAuthenticated]);
-  
-  
+    
+    return () => {
+      console.log('[LIBRARY] Component unmounting');
+    };
+  }, [dispatch, workoutPrograms.length, isLoading, authState.isAuthenticated]);
+
   // Convert km/h to mph for display
   const convertToImperial = (speed: number) => {
     return (speed / 1.60934).toFixed(1);
@@ -115,7 +132,6 @@ const WorkoutLibraryScreen: React.FC<Props> = ({ navigation, route }) => {
   const getDisplaySpeed = (speed: number) => {
     return isMetric ? speed.toFixed(1) : convertToImperial(speed);
   };
-
 
   // Update local state when userSettings change
   useEffect(() => {
@@ -175,55 +191,58 @@ const WorkoutLibraryScreen: React.FC<Props> = ({ navigation, route }) => {
     }, [validateSubscription])
   );
   
+  // Filter workouts based on selected categories
+  const getFilteredWorkouts = useCallback(() => {
+    let filtered = [...workoutPrograms];
+    
+    // Track special filters and regular category filters separately
+    const specialFilters = selectedCategories.filter(cat => 
+      cat === 'Free' || cat === 'Premium');
+    const categoryFilters = selectedCategories.filter(cat => 
+      CATEGORIES.includes(cat as CategoryType));
+    
+    // Apply filters if any are selected
+    if (selectedCategories.length > 0) {
+      filtered = filtered.filter(workout => {
+        // Check for special filters
+        const isPremium = workout.premium;
+        
+        // If Free filter is selected, exclude premium workouts
+        if (specialFilters.includes('Free') && isPremium) {
+          return false;
+        }
+        
+        // If Premium filter is selected, only include premium workouts
+        if (specialFilters.includes('Premium') && !isPremium) {
+          return false;
+        }
+        
+        // If category filters are selected, check for category match
+        if (categoryFilters.length > 0) {
+          return categoryFilters.includes(workout.category as CategoryType);
+        }
+        
+        // If only special filters are selected (no category filters),
+        // and the workout passed the special filter checks above, include it
+        return true;
+      });
+    }
+    
+    return filtered;
+  }, [workoutPrograms, selectedCategories, CATEGORIES]);
+  
   // Toggle category selection
   const toggleCategorySelection = (category: CategoryType | 'Free' | 'Premium') => {
     setSelectedCategories(prevSelected => {
       if (prevSelected.includes(category)) {
-        // Remove category if already selected
-        return prevSelected.filter(cat => cat !== category);
+        // Remove category if already selected (deselect)
+        return [];
       } else {
-        // Add category if not selected
-        return [...prevSelected, category];
+        // Replace current selection with the new category
+        return [category];
       }
     });
   };
-  
-  // Apply filters whenever workouts or selected categories change
-  useEffect(() => {
-    if (!workoutPrograms || workoutPrograms.length === 0) return;
-    
-    // Make sure we're creating a new array reference
-    let filtered = workoutPrograms.map(workout => ({
-      ...workout,
-      // Ensure favorite is always a boolean
-      favorite: Boolean(workout.favorite)
-    }));
-    
-    // Check if we have any special filters
-    const hasSpecialFilters = selectedCategories.some(cat => SPECIAL_FILTERS.includes(cat));
-    const regularCategoryFilters = selectedCategories.filter(cat => !SPECIAL_FILTERS.includes(cat)) as CategoryType[];
-    
-    // Apply special filters if selected
-    if (hasSpecialFilters) {
-      if (selectedCategories.includes('Free') && !selectedCategories.includes('Premium')) {
-        // Only show free workouts
-        filtered = filtered.filter(workout => !workout.premium);
-      } else if (selectedCategories.includes('Premium') && !selectedCategories.includes('Free')) {
-        // Only show premium workouts
-        filtered = filtered.filter(workout => workout.premium);
-      }
-      // If both Free and Premium are selected, show all workouts (no filtering needed)
-    }
-    
-    // Apply regular category filter if any categories are selected
-    if (regularCategoryFilters.length > 0) {
-      filtered = filtered.filter(workout => 
-        regularCategoryFilters.includes(workout.category)
-      );
-    }
-    
-    setFilteredWorkouts(filtered);
-  }, [workoutPrograms, selectedCategories]);
   
   // Navigate to workout details
   const handleWorkoutPress = (workoutId: string) => {
@@ -237,8 +256,12 @@ const WorkoutLibraryScreen: React.FC<Props> = ({ navigation, route }) => {
     
     // If it's a premium workout, check subscription status
     if (workout.premium) {
+      // If user is not authenticated, go to regular details screen
+      if (!authState.isAuthenticated) {
+        navigation.navigate('WorkoutDetails', { workoutId });
+      }
       // If user has active subscription, go to regular details screen
-      if (isPremiumWorkout(workout.premium)) {
+      else if (isPremiumWorkout(workout.premium)) {
         navigation.navigate('WorkoutDetails', { workoutId });
       } else {
         // Otherwise, go to premium preview screen
@@ -250,35 +273,10 @@ const WorkoutLibraryScreen: React.FC<Props> = ({ navigation, route }) => {
     }
   };
   
-  // Toggle favorite status using Redux
+  // Handle favorite toggle
   const handleFavoriteToggle = (workoutId: string) => {
-    if (!authState.isAuthenticated) {
-      Alert.alert(
-        'Sign In Required',
-        'Please sign in to add workouts to your favorites.',
-        [
-          {
-            text: 'Sign In',
-            onPress: () => navigation.navigate('Landing'),
-          },
-          {
-            text: 'Cancel',
-            style: 'cancel',
-          },
-        ]
-      );
-      return;
-    }
-    
-    try {
-      if (!workoutId) {
-        return;
-      }
-      
-      // Directly dispatch the toggle action
-      dispatch(toggleWorkoutFavorite(workoutId));
-    } catch (error) {
-      console.error('Error toggling favorite:', error);
+    if (workoutId) {
+      dispatch(toggleFavoriteWorkout(workoutId));
     }
   };
   
@@ -303,196 +301,213 @@ const WorkoutLibraryScreen: React.FC<Props> = ({ navigation, route }) => {
     navigation.navigate('Settings');
   };
   
-  // Show loading indicator while data is loading
-  if (isLoading) {
-    return (
-      <SafeAreaView style={styles.container}>
+  // Render the main content
+  const renderContent = () => {
+    if (isLoading && workoutPrograms.length === 0) {
+      return (
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={COLORS.accent} />
           <Text style={styles.loadingText}>Loading workouts...</Text>
         </View>
-      </SafeAreaView>
-    );
-  }
-  
-  return (
-    <View style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor="transparent" translucent />
-      
-      <SafeAreaView style={styles.safeArea}>
-        <View style={styles.content}>
-          {/* Pace Settings Section - Only shown for logged-in users */}
-          {authState.isAuthenticated && (
-            <>
-              <View style={styles.sectionHeader}>
-                <Text style={styles.sectionTitle}>Pace Settings</Text>
-                <Text style={styles.unitsIndicator}>({isMetric ? 'km/h' : 'mph'})</Text>
-              </View>
-              
-              <View style={styles.paceSettingsCard}>
-                <View key={`pace-circles-${updateKey}`} style={styles.paceCircles}>
-                  {/* Recovery Pace */}
-                  <View style={styles.paceCircle}>
-                    <View style={[styles.circle, { backgroundColor: COLORS.recovery }]}>
-                      <Text style={styles.circleText}>
-                        {getDisplaySpeed(paceSettings?.recovery?.speed || 7.2)}
-                      </Text>
-                    </View>
-                    <Text style={styles.circleLabel}>Recovery</Text>
-                  </View>
-                  
-                  {/* Base Pace */}
-                  <View style={styles.paceCircle}>
-                    <View style={[styles.circle, { backgroundColor: COLORS.base }]}>
-                      <Text style={styles.circleText}>
-                        {getDisplaySpeed(paceSettings?.base?.speed || 8.8)}
-                      </Text>
-                    </View>
-                    <Text style={styles.circleLabel}>Base</Text>
-                  </View>
-                  
-                  {/* Run Pace */}
-                  <View style={styles.paceCircle}>
-                    <View style={[styles.circle, { backgroundColor: COLORS.run }]}>
-                      <Text style={styles.circleText}>
-                        {getDisplaySpeed(paceSettings?.run?.speed || 11.3)}
-                      </Text>
-                    </View>
-                    <Text style={styles.circleLabel}>Run</Text>
-                  </View>
-                  
-                  {/* Sprint Pace */}
-                  <View style={styles.paceCircle}>
-                    <View style={[styles.circle, { backgroundColor: COLORS.sprint }]}>
-                      <Text style={styles.circleText}>
-                        {getDisplaySpeed(paceSettings?.sprint?.speed || 14.5)}
-                      </Text>
-                    </View>
-                    <Text style={styles.circleLabel}>Sprint</Text>
-                  </View>
-                  
-                  {/* Edit Button */}
-                  <View style={styles.paceCircle}>
-                    <TouchableOpacity 
-                      style={styles.editButton}
-                      onPress={handleEditPacePress}
-                    >
-                      <Text style={styles.editButtonText}>✎</Text>
-                    </TouchableOpacity>
-                    <Text style={styles.circleLabel}>Edit</Text>
-                  </View>
-                </View>
-              </View>
-            </>
-          )}
-          
-          {/* Workout Library Section */}
-          <View style={styles.librarySection}>
-            <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>Workout Library</Text>
-              {/* <TouchableOpacity onPress={handleSeeAllPress}>
-                <Text style={styles.seeAllText}>See All →</Text>
-              </TouchableOpacity> */}
-            </View>
-            
-            {/* Category Filters */}
-            <ScrollView 
-              horizontal 
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.categoryFiltersContainer}
-              scrollEnabled={true}
-              bounces={false}
-              directionalLockEnabled={true} // Lock scrolling to horizontal only
-              showsVerticalScrollIndicator={false}
-              alwaysBounceVertical={false}
-              nestedScrollEnabled={false}
-            >
-              {/* Special filters first */}
-              {getSpecialFilters().map((filter) => (
-                <TouchableOpacity
-                  key={filter}
-                  style={[
-                    styles.categoryPill,
-                    selectedCategories.includes(filter as any) && styles.categoryPillSelected,
-                    filter === 'Free' ? styles.freePill : {},
-                    filter === 'Premium' ? styles.premiumPill : {}
-                  ]}
-                  onPress={() => toggleCategorySelection(filter as any)}
-                >
-                  <Text 
-                    style={[
-                      styles.categoryPillText,
-                      selectedCategories.includes(filter as any) && styles.categoryPillTextSelected
-                    ]}
-                  >
-                    {filter}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-              
-              {/* Regular category filters */}
-              {CATEGORIES.map((category) => (
-                <TouchableOpacity
-                  key={category}
-                  style={[
-                    styles.categoryPill,
-                    selectedCategories.includes(category) && styles.categoryPillSelected
-                  ]}
-                  onPress={() => toggleCategorySelection(category)}
-                >
-                  <Text 
-                    style={[
-                      styles.categoryPillText,
-                      selectedCategories.includes(category) && styles.categoryPillTextSelected
-                    ]}
-                  >
-                    {category}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
-            
-            {/* Workout list */}
-            <FlatList
-              data={filteredWorkouts}
-              keyExtractor={(item) => item.id}
-              extraData={[workoutPrograms, selectedCategories]} // Force re-render when Redux state or filters change
-              contentContainerStyle={styles.listContent}
-              renderItem={({ item }) => {
-                // Look up the latest data from Redux for this item
-                const reduxWorkout = workoutPrograms.find(w => w.id === item.id) || item;
-                
-                return (
-                  <WorkoutCard
-                    key={`workout-${item.id}`} // Use a stable key that doesn't change on favorite toggle
-                    workout={reduxWorkout} // Use the latest data from Redux
-                    onPress={() => handleWorkoutPress(reduxWorkout.id)}
-                    onFavoriteToggle={() => dispatch(toggleWorkoutFavorite(reduxWorkout.id))}
-                    showVisualization={true}
-                    showFavoriteButton={authState.isAuthenticated}
-                    isSubscribed={subscriptionInfo.isActive && !subscriptionInfo.trialActive}
-                    isTrialActive={subscriptionInfo.trialActive}
-                  />
-                );
-              }}
-              ListEmptyComponent={
-                <View style={styles.emptyContainer}>
-                  <Text style={styles.emptyText}>
-                    {selectedCategories.length > 0 
-                      ? 'No workouts found for the selected categories.' 
-                      : 'No workouts found.'}
-                  </Text>
-                </View>
-              }
-            />
-          </View>
-        </View>
+      );
+    }
+    
+    const filteredWorkouts = getFilteredWorkouts();
+    
+    return (
+      <View style={styles.container}>
+        <StatusBar barStyle="light-content" backgroundColor="transparent" translucent />
         
-        {/* Use the shared BottomTabBar component only for authenticated users */}
-        {authState.isAuthenticated && <BottomTabBar activeTab="Workouts" />}
-      </SafeAreaView>
-    </View>
-  );
+        <SafeAreaView style={styles.safeArea}>
+          <View style={styles.content}>
+            {/* Pace Settings Section - Only shown for logged-in users */}
+            {authState.isAuthenticated && (
+              <>
+                <View style={styles.sectionHeader}>
+                  <Text style={styles.sectionTitle}>Pace Settings</Text>
+                  <Text style={styles.unitsIndicator}>({isMetric ? 'km/h' : 'mph'})</Text>
+                </View>
+                
+                <View style={styles.paceSettingsCard}>
+                  <View key={`pace-circles-${updateKey}`} style={styles.paceCircles}>
+                    {/* Recovery Pace */}
+                    <View style={styles.paceCircle}>
+                      <View style={[styles.circle, { backgroundColor: COLORS.recovery }]}>
+                        <Text style={styles.circleText}>
+                          {getDisplaySpeed(paceSettings?.recovery?.speed || 7.2)}
+                        </Text>
+                      </View>
+                      <Text style={styles.circleLabel}>Recovery</Text>
+                    </View>
+                    
+                    {/* Base Pace */}
+                    <View style={styles.paceCircle}>
+                      <View style={[styles.circle, { backgroundColor: COLORS.base }]}>
+                        <Text style={styles.circleText}>
+                          {getDisplaySpeed(paceSettings?.base?.speed || 8.8)}
+                        </Text>
+                      </View>
+                      <Text style={styles.circleLabel}>Base</Text>
+                    </View>
+                    
+                    {/* Run Pace */}
+                    <View style={styles.paceCircle}>
+                      <View style={[styles.circle, { backgroundColor: COLORS.run }]}>
+                        <Text style={styles.circleText}>
+                          {getDisplaySpeed(paceSettings?.run?.speed || 11.3)}
+                        </Text>
+                      </View>
+                      <Text style={styles.circleLabel}>Run</Text>
+                    </View>
+                    
+                    {/* Sprint Pace */}
+                    <View style={styles.paceCircle}>
+                      <View style={[styles.circle, { backgroundColor: COLORS.sprint }]}>
+                        <Text style={styles.circleText}>
+                          {getDisplaySpeed(paceSettings?.sprint?.speed || 14.5)}
+                        </Text>
+                      </View>
+                      <Text style={styles.circleLabel}>Sprint</Text>
+                    </View>
+                    
+                    {/* Edit Button */}
+                    <View style={styles.paceCircle}>
+                      <TouchableOpacity 
+                        style={styles.editButton}
+                        onPress={handleEditPacePress}
+                      >
+                        <Text style={styles.editButtonText}>✎</Text>
+                      </TouchableOpacity>
+                      <Text style={styles.circleLabel}>Edit</Text>
+                    </View>
+                  </View>
+                </View>
+              </>
+            )}
+            
+            {/* Workout Library Section */}
+            <View style={styles.librarySection}>
+              <View style={styles.sectionHeader}>
+                <Text style={styles.sectionTitle}>Workout Library</Text>
+                {/* <TouchableOpacity onPress={handleSeeAllPress}>
+                  <Text style={styles.seeAllText}>See All →</Text>
+                </TouchableOpacity> */}
+              </View>
+              
+              {/* Category Filters */}
+              <ScrollView 
+                horizontal 
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.categoryFiltersContainer}
+                scrollEnabled={true}
+                bounces={false}
+                directionalLockEnabled={true} // Lock scrolling to horizontal only
+                showsVerticalScrollIndicator={false}
+                alwaysBounceVertical={false}
+                nestedScrollEnabled={false}
+              >
+                {/* Special filters first */}
+                {getSpecialFilters().map((filter) => (
+                  <TouchableOpacity
+                    key={filter}
+                    style={[
+                      styles.categoryPill,
+                      selectedCategories.includes(filter as any) && styles.categoryPillSelected,
+                      filter === 'Free' ? styles.freePill : {},
+                      filter === 'Premium' ? styles.premiumPill : {}
+                    ]}
+                    onPress={() => toggleCategorySelection(filter as any)}
+                  >
+                    <Text 
+                      style={[
+                        styles.categoryPillText,
+                        selectedCategories.includes(filter as any) && styles.categoryPillTextSelected
+                      ]}
+                    >
+                      {filter}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+                
+                {/* Regular category filters */}
+                {CATEGORIES.map((category) => (
+                  <TouchableOpacity
+                    key={category}
+                    style={[
+                      styles.categoryPill,
+                      selectedCategories.includes(category) && styles.categoryPillSelected
+                    ]}
+                    onPress={() => toggleCategorySelection(category)}
+                  >
+                    <Text 
+                      style={[
+                        styles.categoryPillText,
+                        selectedCategories.includes(category) && styles.categoryPillTextSelected
+                      ]}
+                    >
+                      {category}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+              
+              {/* Workout list with loading indicator */}
+              {isLoading && filteredWorkouts.length === 0 ? (
+                <View style={styles.loadingContainer}>
+                  <ActivityIndicator size="large" color={COLORS.accent} />
+                  <Text style={styles.loadingText}>Loading workouts...</Text>
+                </View>
+              ) : (
+                <FlatList
+                  data={filteredWorkouts}
+                  keyExtractor={(item) => item.id}
+                  extraData={[workoutPrograms, selectedCategories]} // Force re-render when Redux state or filters change
+                  contentContainerStyle={styles.listContent}
+                  ListHeaderComponent={isLoading ? (
+                    <View style={styles.inlineLoadingContainer}>
+                      <ActivityIndicator size="small" color={COLORS.accent} />
+                      <Text style={styles.inlineLoadingText}>Loading more workouts...</Text>
+                    </View>
+                  ) : null}
+                  renderItem={({ item }) => {
+                    // Look up the latest data from Redux for this item
+                    const reduxWorkout = workoutPrograms.find(w => w.id === item.id) || item;
+                    
+                    return (
+                      <WorkoutCard
+                        key={`workout-${item.id}`} // Use a stable key that doesn't change on favorite toggle
+                        workout={reduxWorkout} // Use the latest data from Redux
+                        onPress={() => handleWorkoutPress(reduxWorkout.id)}
+                        onFavoriteToggle={() => handleFavoriteToggle(reduxWorkout.id)}
+                        showVisualization={true}
+                        showFavoriteButton={authState.isAuthenticated}
+                        isSubscribed={subscriptionInfo.isActive && !subscriptionInfo.trialActive}
+                        isTrialActive={subscriptionInfo.trialActive}
+                      />
+                    );
+                  }}
+                  ListEmptyComponent={
+                    <View style={styles.emptyContainer}>
+                      <Text style={styles.emptyText}>
+                        {selectedCategories.length > 0 
+                          ? 'No workouts found for the selected categories.' 
+                          : 'No workouts found.'}
+                      </Text>
+                    </View>
+                  }
+                />
+              )}
+            </View>
+          </View>
+          
+          {/* Use the shared BottomTabBar component only for authenticated users */}
+          {authState.isAuthenticated && <BottomTabBar activeTab="Workouts" />}
+        </SafeAreaView>
+      </View>
+    );
+  };
+
+  return renderContent();
 };
 
 const styles = StyleSheet.create({
@@ -605,7 +620,7 @@ const styles = StyleSheet.create({
   },
   // Category filter styles
   categoryFiltersContainer: {
-    paddingBottom: 12,
+    marginBottom: 20,
     flexDirection: 'row',
     height: 45, // Fixed height instead of minHeight to prevent vertical scrolling
     alignItems: 'center', // Center items vertically
@@ -639,6 +654,20 @@ const styles = StyleSheet.create({
   },
   premiumPill: {
     borderColor: COLORS.gold,
+  },
+  inlineLoadingContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: SPACING.md,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    borderRadius: 8,
+    marginBottom: SPACING.md,
+  },
+  inlineLoadingText: {
+    color: COLORS.white,
+    marginLeft: SPACING.sm,
+    fontSize: FONT_SIZES.body,
   },
 });
 export default WorkoutLibraryScreen;

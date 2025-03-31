@@ -4,8 +4,8 @@ import { SubscriptionInfo } from '../types';
 import * as IAP from 'react-native-iap';
 import { Platform } from 'react-native';
 
-// Debug flag - set to false to disable debug logs
-const DEBUG_SUBSCRIPTION_CONTEXT = true;
+// Debug flags
+const DEBUG_SUBSCRIPTION_CONTEXT = false;
 
 // Storage key for subscription data
 const SUBSCRIPTION_KEY = 'treadtrail_subscription';
@@ -112,7 +112,9 @@ export const SubscriptionProvider: React.FC<SubscriptionProviderProps> = ({ chil
         }
       } catch (err) {
         setError('Failed to initialize subscription');
-        console.error('[DEBUG-SUBSCRIPTION-CONTEXT] Error initializing subscription:', err);
+        if (DEBUG_SUBSCRIPTION_CONTEXT) {
+          console.error('[DEBUG-SUBSCRIPTION-CONTEXT] Error initializing subscription:', err);
+        }
       } finally {
         setIsLoading(false);
       }
@@ -146,7 +148,9 @@ export const SubscriptionProvider: React.FC<SubscriptionProviderProps> = ({ chil
       }
     } catch (err) {
       setError('Failed to save subscription info');
-      console.error('[DEBUG-SUBSCRIPTION-CONTEXT] Error saving subscription info:', err);
+      if (DEBUG_SUBSCRIPTION_CONTEXT) {
+        console.error('[DEBUG-SUBSCRIPTION-CONTEXT] Error saving subscription info:', err);
+      }
     }
   };
 
@@ -202,7 +206,9 @@ export const SubscriptionProvider: React.FC<SubscriptionProviderProps> = ({ chil
       return true;
     } catch (err) {
       setError('Failed to initialize IAP');
-      console.error('[DEBUG-SUBSCRIPTION-CONTEXT] Error initializing IAP:', err);
+      if (DEBUG_SUBSCRIPTION_CONTEXT) {
+        console.error('[DEBUG-SUBSCRIPTION-CONTEXT] Error initializing IAP:', err);
+      }
       return false;
     }
   };
@@ -250,7 +256,9 @@ export const SubscriptionProvider: React.FC<SubscriptionProviderProps> = ({ chil
       }
     } catch (err) {
       setError('Failed to process purchase');
-      console.error('[DEBUG-SUBSCRIPTION-CONTEXT] Error processing purchase:', err);
+      if (DEBUG_SUBSCRIPTION_CONTEXT) {
+        console.error('[DEBUG-SUBSCRIPTION-CONTEXT] Error processing purchase:', err);
+      }
     }
   };
 
@@ -294,7 +302,9 @@ export const SubscriptionProvider: React.FC<SubscriptionProviderProps> = ({ chil
       return true;
     } catch (err) {
       setError('Failed to purchase subscription');
-      console.error('[DEBUG-SUBSCRIPTION-CONTEXT] Error purchasing subscription:', err);
+      if (DEBUG_SUBSCRIPTION_CONTEXT) {
+        console.error('[DEBUG-SUBSCRIPTION-CONTEXT] Error purchasing subscription:', err);
+      }
       return false;
     }
   };
@@ -327,7 +337,9 @@ export const SubscriptionProvider: React.FC<SubscriptionProviderProps> = ({ chil
       return false;
     } catch (err) {
       setError('Failed to restore purchases');
-      console.error('[DEBUG-SUBSCRIPTION-CONTEXT] Error restoring purchases:', err);
+      if (DEBUG_SUBSCRIPTION_CONTEXT) {
+        console.error('[DEBUG-SUBSCRIPTION-CONTEXT] Error restoring purchases:', err);
+      }
       return false;
     }
   };
@@ -380,7 +392,9 @@ export const SubscriptionProvider: React.FC<SubscriptionProviderProps> = ({ chil
       return true;
     } catch (err) {
       setError('Failed to start free trial');
-      console.error('[DEBUG-SUBSCRIPTION-CONTEXT] Error starting free trial:', err);
+      if (DEBUG_SUBSCRIPTION_CONTEXT) {
+        console.error('[DEBUG-SUBSCRIPTION-CONTEXT] Error starting free trial:', err);
+      }
       return false;
     }
   };
@@ -428,7 +442,9 @@ export const SubscriptionProvider: React.FC<SubscriptionProviderProps> = ({ chil
       return false;
     } catch (err) {
       setError('Failed to check trial status');
-      console.error('[DEBUG-SUBSCRIPTION-CONTEXT] Error checking trial status:', err);
+      if (DEBUG_SUBSCRIPTION_CONTEXT) {
+        console.error('[DEBUG-SUBSCRIPTION-CONTEXT] Error checking trial status:', err);
+      }
       return false;
     }
   };
@@ -490,7 +506,9 @@ export const SubscriptionProvider: React.FC<SubscriptionProviderProps> = ({ chil
       return true;
     } catch (err) {
       setError('Failed to validate subscription');
-      console.error('[DEBUG-SUBSCRIPTION-CONTEXT] Error validating subscription:', err);
+      if (DEBUG_SUBSCRIPTION_CONTEXT) {
+        console.error('[DEBUG-SUBSCRIPTION-CONTEXT] Error validating subscription:', err);
+      }
       return false;
     }
   };

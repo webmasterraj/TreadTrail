@@ -3,7 +3,7 @@ import { Alert, Platform } from 'react-native';
 import * as FileSystem from 'expo-file-system';
 import { useRef, useEffect } from 'react';
 import { WorkoutSegment, WorkoutProgram } from '../types/index';
-import { loadSegmentAudio } from '../utils/audioMapping';
+import { loadSegmentAudio, loadCountdownSound } from '../utils/audioUtils';
 
 interface UseWorkoutAudioOptions {
   workout: WorkoutProgram | null;
@@ -41,6 +41,38 @@ export const useWorkoutAudio = (options: UseWorkoutAudioOptions) => {
   const lastSegmentTimeRef = useRef<number>(0); // Track the last time we checked for segment audio
   const countdownTriggeredRef = useRef<boolean>(false); // Track if countdown has been triggered for the current segment
   const audioSequenceInProgressRef = useRef<boolean>(false); // Track when a complete audio sequence is in progress
+  
+  // Initialize audio
+  useEffect(() => {
+    const initAudio = async () => {
+      if (audioInitializedRef.current) return;
+      
+      try {
+        // Load countdown sound
+        countdownSoundRef.current = await loadCountdownSound();
+        audioInitializedRef.current = true;
+      } catch (error) {
+        console.error('Failed to initialize audio:', error);
+      }
+    };
+    
+    initAudio();
+    
+    // Cleanup on unmount
+    return () => {
+      if (countdownSoundRef.current) {
+        countdownSoundRef.current.unloadAsync().catch(e => {
+          console.error('Error unloading countdown sound:', e);
+        });
+      }
+      
+      if (segmentAudioRef.current) {
+        segmentAudioRef.current.unloadAsync().catch(e => {
+          console.error('Error unloading segment audio:', e);
+        });
+      }
+    };
+  }, []);
   
   // Handle segment transitions and audio cues
   useEffect(() => {
@@ -119,7 +151,7 @@ export const useWorkoutAudio = (options: UseWorkoutAudioOptions) => {
               lastSegmentAudioTriggeredRef.current = currentSegmentIndex;
               
               // Load the segment audio using our utility function
-              const segmentSound = await loadSegmentAudio(nextSegment.audio.file);
+              const segmentSound = await loadSegmentAudio(workout.id, currentSegmentIndex + 1);
               
               if (segmentSound) {
                 // Set up status monitoring to play countdown after segment audio finishes
@@ -298,12 +330,9 @@ export const useWorkoutAudio = (options: UseWorkoutAudioOptions) => {
         countdownSoundRef.current = null;
       }
       
-      const sound = new Audio.Sound();
+      const sound = await loadCountdownSound();
       
-      try {
-        await sound.loadAsync(require('../assets/audio/countdown.aac'));
-        countdownSoundRef.current = sound;
-        
+      if (sound) {
         // Set up status monitoring
         sound.setOnPlaybackStatusUpdate((status: AVPlaybackStatus) => {
           if (!status.isLoaded) return;
@@ -324,16 +353,15 @@ export const useWorkoutAudio = (options: UseWorkoutAudioOptions) => {
           }
         });
         
-        // Play the sound with increased volume
-        await sound.setVolumeAsync(1.0);  // Ensure full volume
+        countdownSoundRef.current = sound;
         await sound.playAsync();
-      } catch (loadError) {
+      } else {
         countdownPlayingRef.current = false;
         
         // Try alternate method as fallback
         try {
           const { sound: altSound } = await Audio.Sound.createAsync(
-            require('../assets/audio/countdown.aac'),
+            { uri: 'https://docs.expo.dev/static/examples/t-rex-roar.mp3' },
             { shouldPlay: true, volume: 1.0 }
           );
           
@@ -432,49 +460,6 @@ export const useWorkoutAudio = (options: UseWorkoutAudioOptions) => {
         resetAudioMode().catch(() => {});
       }
     };
-  }, []);
-  
-  // Initialize audio on mount
-  useEffect(() => {
-    const initializeAudio = async () => {
-      if (audioInitializedRef.current) {
-        return;
-      }
-      
-      try {
-        // Set audio mode for best compatibility
-        await Audio.setAudioModeAsync({
-          playsInSilentModeIOS: true,
-          staysActiveInBackground: true,
-          interruptionModeIOS: InterruptionModeIOS.DuckOthers,
-          shouldDuckAndroid: true,
-          interruptionModeAndroid: InterruptionModeAndroid.DuckOthers,
-          playThroughEarpieceAndroid: false,
-          allowsRecordingIOS: false, // Prevent microphone permission prompt
-        });
-        
-        try {
-          const soundAsset = require('../assets/audio/countdown.aac');
-          
-          // Try to load the sound to verify it works
-          const { sound } = await Audio.Sound.createAsync(soundAsset);
-          await sound.unloadAsync();
-          
-          // Set audio as initialized
-          audioInitializedRef.current = true;
-        } catch (e) {
-          Alert.alert(
-            "Audio File Error",
-            "Could not load countdown.aac file. Please check that the file exists in the assets/audio folder."
-          );
-        }
-        
-      } catch (error) {
-        Alert.alert("Audio Error", "Failed to initialize audio system. Some workout cues may not play.");
-      }
-    };
-    
-    initializeAudio();
   }, []);
   
   // Function to pause audio playback

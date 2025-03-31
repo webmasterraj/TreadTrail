@@ -1,4 +1,4 @@
-import React, { useContext, useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   View, 
   Text, 
@@ -14,11 +14,26 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { RootStackParamList, PaceType, PaceSettings, PaceSetting } from '../types';
-import { COLORS, FONT_SIZES, SPACING, BORDER_RADIUS, PACE_COLORS } from '../styles/theme';
-import { UserContext } from '../context';
+import { RootStackParamList, PaceType, PaceSettings } from '../types';
+import { COLORS, FONT_SIZES, SPACING, BORDER_RADIUS } from '../styles/theme';
+import { useAuth, useUserSettings } from '../hooks';
 import Button from '../components/common/Button';
 import { kgToLbs, lbsToKg } from '../utils/calorieUtils';
+
+// Debug flags
+const DEBUG_PACE_SETTINGS = false;
+const DEBUG_PREFIX = '[DEBUG-PACE-SETTINGS]';
+
+// Debug logging helper
+const logDebug = (message: string, ...args: any[]) => {
+  if (DEBUG_PACE_SETTINGS) {
+    if (args.length > 0) {
+      console.log(`${DEBUG_PREFIX} ${message}`, ...args);
+    } else {
+      console.log(`${DEBUG_PREFIX} ${message}`);
+    }
+  }
+};
 
 type Props = NativeStackScreenProps<RootStackParamList, 'EditPace'>;
 
@@ -52,15 +67,13 @@ const kmhToMph = (kmh: number): number => {
 };
 
 const EditPaceScreen: React.FC<Props> = ({ navigation }) => {
-  // Get all the context functions we need
+  // Get all the context functions we need using hooks
+  const { authState } = useAuth();
   const { 
     userSettings, 
-    updatePaceSetting, 
-    updatePreference, 
-    authState,
-    updateWeight,
-    saveSettings
-  } = useContext(UserContext);
+    syncUserSettings,
+    isLoading
+  } = useUserSettings();
   
   // Reference to the ScrollView
   const scrollViewRef = useRef<ScrollView>(null);
@@ -90,8 +103,17 @@ const EditPaceScreen: React.FC<Props> = ({ navigation }) => {
     sprint: paceSettings.sprint.speed.toFixed(1),
   });
   
+  // Add state to track previous valid values
+  const [previousValidValues, setPreviousValidValues] = useState<Record<PaceType, string>>({
+    recovery: '',
+    base: '',
+    run: '',
+    sprint: ''
+  });
+  
   // Weight state
   const [weightInput, setWeightInput] = useState('');
+  const [previousValidWeight, setPreviousValidWeight] = useState<string>('');
   
   const [isSubmitting, setIsSubmitting] = useState(false);
   // Toggle between mph and km/h
@@ -99,15 +121,45 @@ const EditPaceScreen: React.FC<Props> = ({ navigation }) => {
   
   // Initialize from user settings when component mounts
   useEffect(() => {
-    if (userSettings?.paceSettings) {
-      setPaceSettings(userSettings.paceSettings);
+    logDebug('EditPaceScreen mounted or userSettings changed');
+    
+    // Initialize the input values from the user's pace settings
+    if (userSettings) {
+      logDebug('User settings loaded', userSettings);
       
       // Check if the user has a preference for units
       const isMetric = userSettings.preferences?.units === 'metric';
-      setUseMetric(isMetric);
-      unitPreferenceRef.current = isMetric ? 'metric' : 'imperial';
+      logDebug('Unit preference detected', { units: isMetric ? 'metric' : 'imperial' });
       
-      // Initialize input values based on pace settings and unit preference
+      // Only update the unit preference if it's different from the current value
+      // This prevents unnecessary re-renders
+      if (useMetric !== isMetric) {
+        logDebug('Updating unit preference state');
+        setUseMetric(isMetric);
+        unitPreferenceRef.current = isMetric ? 'metric' : 'imperial';
+      }
+      
+      // Always update the pace settings from user settings to ensure consistency
+      // This is important when returning to the screen after saving
+      logDebug('Initializing pace settings from user settings');
+      setPaceSettings({
+        recovery: { ...userSettings.paceSettings.recovery },
+        base: { ...userSettings.paceSettings.base },
+        run: { ...userSettings.paceSettings.run },
+        sprint: { ...userSettings.paceSettings.sprint }
+      });
+      
+      // Initialize weight input
+      if (userSettings.weight) {
+        const weightValue = isMetric ? userSettings.weight : kgToLbs(userSettings.weight);
+        const weightStr = Math.round(weightValue).toString();
+        setWeightInput(weightStr);
+        setPreviousValidWeight(weightStr);
+        logDebug('Weight initialized', { weight: weightValue, units: isMetric ? 'kg' : 'lbs' });
+      }
+      
+      // Always update input values to ensure they match the current unit system
+      logDebug('Updating input values for display');
       const updatedValues: Record<PaceType, string> = {
         recovery: '',
         base: '',
@@ -116,6 +168,7 @@ const EditPaceScreen: React.FC<Props> = ({ navigation }) => {
       };
       
       (['recovery', 'base', 'run', 'sprint'] as PaceType[]).forEach(paceType => {
+        // Use userSettings to ensure we have the correct values from Redux
         const currentSpeed = userSettings.paceSettings[paceType].speed;
         
         if (isMetric) {
@@ -128,21 +181,10 @@ const EditPaceScreen: React.FC<Props> = ({ navigation }) => {
       });
       
       setInputValues(updatedValues);
-      
-      // Initialize weight input
-      if (userSettings.profile?.weight) {
-        const weight = userSettings.profile.weight;
-        if (isMetric) {
-          setWeightInput(Math.round(weight).toString());
-        } else {
-          setWeightInput(Math.round(kgToLbs(weight)).toString());
-        }
-      } else {
-        setWeightInput('');
-      }
+      setPreviousValidValues(updatedValues);
     }
   }, [userSettings]);
-
+  
   // Add keyboard listeners
   useEffect(() => {
     const keyboardDidShowListener = Keyboard.addListener(
@@ -200,48 +242,149 @@ const EditPaceScreen: React.FC<Props> = ({ navigation }) => {
 
   // Handle blur event to update the actual pace settings
   const handleInputBlur = (paceType: PaceType) => {
-    // If empty, default to 0
-    let numValue = 0;
+    // If empty, use previous valid value
+    if (inputValues[paceType] === '') {
+      setInputValues(prev => ({
+        ...prev,
+        [paceType]: previousValidValues[paceType]
+      }));
+      return;
+    }
     
-    if (inputValues[paceType] !== '') {
-      numValue = parseFloat(inputValues[paceType]);
+    const numValue = parseFloat(inputValues[paceType]);
+    
+    // Define min and max values based on units
+    const minValue = 0.1;
+    const maxValue = useMetric ? 25 : 15;
+    
+    // Check if value is outside the acceptable range
+    if (isNaN(numValue) || numValue < minValue) {
+      Alert.alert(
+        'Invalid Value',
+        `The ${paceType} pace must be at least ${minValue.toFixed(1)} ${useMetric ? 'km/h' : 'mph'}.`,
+        [{ text: 'OK' }]
+      );
+      // Reset to previous valid value
+      setInputValues(prev => ({
+        ...prev,
+        [paceType]: previousValidValues[paceType]
+      }));
+    } else if (numValue > maxValue) {
+      Alert.alert(
+        'Invalid Value',
+        `The ${paceType} pace cannot exceed ${maxValue.toFixed(1)} ${useMetric ? 'km/h' : 'mph'}.`,
+        [{ text: 'OK' }]
+      );
+      // Reset to previous valid value
+      setInputValues(prev => ({
+        ...prev,
+        [paceType]: previousValidValues[paceType]
+      }));
+    } else {
+      // Value is valid, update the previous valid value
+      setPreviousValidValues(prev => ({
+        ...prev,
+        [paceType]: numValue.toFixed(1)
+      }));
       
-      // Ensure the value is within a reasonable range (0.1 to 25 km/h or 0.1 to 15 mph)
-      const maxValue = useMetric ? 25 : 15;
-      numValue = Math.max(0.1, Math.min(numValue, maxValue));
-      
-      // Update the input value to show the constrained value
+      // Format to one decimal place
       setInputValues(prev => ({
         ...prev,
         [paceType]: numValue.toFixed(1)
       }));
+      
+      // Convert from display units to storage units (always in km/h)
+      const speedInKmh = useMetric ? numValue : mphToKmh(numValue);
+      
+      // Update the pace settings
+      setPaceSettings(prev => ({
+        ...prev,
+        [paceType]: {
+          ...prev[paceType],
+          speed: speedInKmh
+        }
+      }));
+    }
+  };
+  
+  // Handle weight input change
+  const handleWeightInputChange = (value: string) => {
+    // Allow only valid numeric input
+    if (value === '' || /^\d+$/.test(value)) {
+      setWeightInput(value);
+    }
+  };
+  
+  // Handle weight input blur
+  const handleWeightInputBlur = () => {
+    // If empty, use previous valid value
+    if (weightInput === '') {
+      setWeightInput(previousValidWeight);
+      return;
     }
     
-    // Convert from display units to storage units (always in km/h)
-    const speedInKmh = useMetric ? numValue : mphToKmh(numValue);
+    const numValue = parseFloat(weightInput);
     
-    setPaceSettings(prev => ({
-      ...prev,
-      [paceType]: {
-        ...prev[paceType],
-        speed: speedInKmh,
-      },
-    }));
+    // Define min and max values based on units
+    const minValue = 1;
+    const maxValue = useMetric ? 453.592 : 1000; // 1000 lbs = 453.592 kg
     
-    setFocusedInput(null);
+    // Check if value is outside the acceptable range
+    if (isNaN(numValue) || numValue < minValue) {
+      Alert.alert(
+        'Invalid Weight',
+        `Weight must be at least ${minValue} ${useMetric ? 'kg' : 'lbs'}.`,
+        [{ text: 'OK' }]
+      );
+      // Reset to previous valid value
+      setWeightInput(previousValidWeight);
+    } else if (numValue > maxValue) {
+      Alert.alert(
+        'Invalid Weight',
+        `Weight cannot exceed ${useMetric ? '453.6 kg' : '1000 lbs'}.`,
+        [{ text: 'OK' }]
+      );
+      // Reset to previous valid value
+      setWeightInput(previousValidWeight);
+    } else {
+      // Value is valid, update the previous valid value
+      setPreviousValidWeight(numValue.toString());
+    }
   };
   
   // Toggle between miles and kilometers
   const toggleUnits = (useMetricUnits: boolean) => {
     const unitPref = useMetricUnits ? 'metric' : 'imperial';
-    // Update the ref value
+    
+    logDebug(`Toggling units to ${unitPref}`);
+    
+    // First, update our local reference to prevent any race conditions
     unitPreferenceRef.current = unitPref;
-    // Update the state
-    setUseMetric(useMetricUnits);
     
-    // Update the displayed values based on the new unit system
-    const updatedValues: Record<PaceType, string> = {};
+    // Calculate the converted values BEFORE updating the state
+    const updatedValues: Record<PaceType, string> = {
+      recovery: '',
+      base: '',
+      run: '',
+      sprint: ''
+    };
     
+    // Get updated weight value
+    let newWeightInput = weightInput;
+    if (weightInput) {
+      const numValue = parseFloat(weightInput);
+      if (!isNaN(numValue)) {
+        if (useMetricUnits) {
+          // Convert from lbs to kg
+          newWeightInput = Math.round(lbsToKg(numValue)).toString();
+        } else {
+          // Convert from kg to lbs
+          newWeightInput = Math.round(kgToLbs(numValue)).toString();
+        }
+      }
+    }
+    
+    // Convert pace values
     (['recovery', 'base', 'run', 'sprint'] as PaceType[]).forEach(paceType => {
       const currentSpeed = paceSettings[paceType].speed;
       
@@ -254,29 +397,23 @@ const EditPaceScreen: React.FC<Props> = ({ navigation }) => {
       }
     });
     
+    // Batch update all state changes at once to prevent UI flicker
+    setUseMetric(useMetricUnits);
     setInputValues(updatedValues);
+    setPreviousValidValues(updatedValues);
+    setWeightInput(newWeightInput);
+    setPreviousValidWeight(newWeightInput);
     
-    // Also update weight input based on the new unit system
-    if (weightInput) {
-      const numValue = parseFloat(weightInput);
-      if (!isNaN(numValue)) {
-        if (useMetricUnits) {
-          // Convert from lbs to kg
-          setWeightInput(Math.round(lbsToKg(numValue)).toString());
-        } else {
-          // Convert from kg to lbs
-          setWeightInput(Math.round(kgToLbs(numValue)).toString());
-        }
+    // Save the preference to storage - do this last to prioritize local changes
+    syncUserSettings({
+      preferences: {
+        units: unitPref
       }
-    }
-  };
-  
-  // Handle weight input change
-  const handleWeightInputChange = (value: string) => {
-    // Allow only valid numeric input
-    if (value === '' || /^\d+$/.test(value)) {
-      setWeightInput(value);
-    }
+    }).then(() => {
+      logDebug(`Successfully saved unit preference: ${unitPref}`);
+    }).catch(error => {
+      console.error('Error saving unit preference:', error);
+    });
   };
   
   // Save pace settings
@@ -284,151 +421,110 @@ const EditPaceScreen: React.FC<Props> = ({ navigation }) => {
     setIsSubmitting(true);
     
     try {
-      // If there's a currently focused input, process its value before saving
-      if (focusedInput) {
-        handleInputBlur(focusedInput);
-        // Small delay to ensure state updates before proceeding
-        await new Promise(resolve => setTimeout(resolve, 100));
+      // Validate all inputs before saving
+      const paceTypes = ['recovery', 'base', 'run', 'sprint'] as PaceType[];
+      let hasValidationErrors = false;
+      
+      // Validate pace values
+      for (const paceType of paceTypes) {
+        const value = parseFloat(inputValues[paceType]);
+        const minValue = 0.1;
+        const maxValue = useMetric ? 25 : 15;
+        
+        if (isNaN(value) || value < minValue || value > maxValue) {
+          hasValidationErrors = true;
+          Alert.alert(
+            'Invalid Pace Value',
+            `The ${paceType} pace must be between ${minValue.toFixed(1)} and ${maxValue.toFixed(1)} ${useMetric ? 'km/h' : 'mph'}.`,
+            [{ text: 'OK' }]
+          );
+          setIsSubmitting(false);
+          return;
+        }
       }
       
-      // Validate weight input - required field
-      if (!weightInput.trim()) {
-        Alert.alert(
-          'Weight Required',
-          'Please enter your weight to continue. This is needed for calorie calculations.',
-          [{ text: 'OK' }]
-        );
-        setIsSubmitting(false);
-        return;
-      }
+      // Validate weight
+      const weightValue = parseFloat(weightInput);
+      const minWeight = 1;
+      const maxWeight = useMetric ? 453.592 : 1000; // 1000 lbs = 453.592 kg
       
-      const weightValue = parseInt(weightInput, 10);
-      if (isNaN(weightValue) || weightValue <= 0) {
+      if (weightInput && (!isNaN(weightValue) && (weightValue < minWeight || weightValue > maxWeight))) {
+        hasValidationErrors = true;
         Alert.alert(
           'Invalid Weight',
-          'Please enter a valid weight value greater than 0.',
+          `Weight must be between ${minWeight} and ${useMetric ? '453.6 kg' : '1000 lbs'}.`,
           [{ text: 'OK' }]
         );
         setIsSubmitting(false);
         return;
       }
       
-      // Create a fresh pace settings object directly from input values
-      const freshInputPaceSettings: PaceSettings = {
-        recovery: { 
-          speed: parseFloat(inputValues.recovery) || 0,
-          incline: paceSettings.recovery.incline
-        },
-        base: { 
-          speed: parseFloat(inputValues.base) || 0,
-          incline: paceSettings.base.incline
-        },
-        run: { 
-          speed: parseFloat(inputValues.run) || 0,
-          incline: paceSettings.run.incline
-        },
-        sprint: { 
-          speed: parseFloat(inputValues.sprint) || 0,
-          incline: paceSettings.sprint.incline
-        }
-      };
-      
-      // Convert to km/h if in imperial mode
-      if (!useMetric) {
-        freshInputPaceSettings.recovery.speed = mphToKmh(freshInputPaceSettings.recovery.speed);
-        freshInputPaceSettings.base.speed = mphToKmh(freshInputPaceSettings.base.speed);
-        freshInputPaceSettings.run.speed = mphToKmh(freshInputPaceSettings.run.speed);
-        freshInputPaceSettings.sprint.speed = mphToKmh(freshInputPaceSettings.sprint.speed);
-      }
-      
-      // Update pace settings state with fresh values
-      setPaceSettings(freshInputPaceSettings);
-      
-      // Get the current user settings after unit preference and weight update
-      const currentSettings = userSettings;
-      if (!currentSettings) {
-        Alert.alert('Error', 'Could not access user settings');
-        setIsSubmitting(false);
-        return;
-      }
-      
-      // Create updated settings object with all pace settings updated at once
-      const updatedSettings = {
-        ...currentSettings,
-        paceSettings: freshInputPaceSettings,
-        // Explicitly set the preferences to ensure they don't get overwritten
-        preferences: {
-          ...currentSettings.preferences,
-          units: unitPreferenceRef.current,
-        },
-      };
-      
-      // Ensure profile and weight are preserved
-      if (currentSettings.profile) {
-        updatedSettings.profile = {
-          ...currentSettings.profile,
+      // If validation passes, proceed with saving
+      if (!hasValidationErrors) {
+        // Create an object to hold all the updates
+        const updates: {
+          paceSettings?: Partial<typeof paceSettings>;
+          weight?: number;
+        } = {};
+        
+        // Add pace settings to updates
+        const updatedPaceSettings = {
+          recovery: { 
+            speed: useMetric ? parseFloat(inputValues.recovery) : mphToKmh(parseFloat(inputValues.recovery)), 
+            incline: paceSettings.recovery.incline 
+          },
+          base: { 
+            speed: useMetric ? parseFloat(inputValues.base) : mphToKmh(parseFloat(inputValues.base)), 
+            incline: paceSettings.base.incline 
+          },
+          run: { 
+            speed: useMetric ? parseFloat(inputValues.run) : mphToKmh(parseFloat(inputValues.run)), 
+            incline: paceSettings.run.incline 
+          },
+          sprint: { 
+            speed: useMetric ? parseFloat(inputValues.sprint) : mphToKmh(parseFloat(inputValues.sprint)), 
+            incline: paceSettings.sprint.incline 
+          },
         };
         
-        // If we have a weight input, make sure it's included in the updated settings
-        if (weightInput.trim()) {
-          const weightValue = parseInt(weightInput, 10);
-          if (!isNaN(weightValue) && weightValue > 0) {
-            const weightInKg = useMetric ? weightValue : lbsToKg(weightValue);
-            updatedSettings.profile.weight = weightInKg;
-          }
-        }
-      }
-      
-      // Get the units preference from our ref
-      const unitPref = unitPreferenceRef.current;
-      
-      // Navigate back immediately after validation
-      navigation.goBack();
-      
-      // Continue saving in the background
-      try {
-        // Save the preference first
-        await updatePreference('units', unitPref);
-      } catch (prefError) {
-        console.error('Error saving units preference:', prefError);
-        // Don't show alert since we've already navigated away
-      }
-      
-      // Process weight input
-      if (weightInput.trim()) {
-        const weightValue = parseInt(weightInput, 10);
+        // Log the input values and the converted values for debugging
+        logDebug('Input values before conversion:', {
+          recovery: inputValues.recovery,
+          base: inputValues.base,
+          run: inputValues.run,
+          sprint: inputValues.sprint,
+          isMetric: useMetric
+        });
+        
+        // Update local state to match what we're saving to ensure consistency
+        setPaceSettings(updatedPaceSettings);
+        
+        updates.paceSettings = updatedPaceSettings;
+        
+        logDebug('Saving pace settings:', updatedPaceSettings);
+        
+        // Add weight to updates if provided
+        const weightValue = parseFloat(weightInput);
         if (!isNaN(weightValue) && weightValue > 0) {
           // Convert to kg if in imperial
-          const weightInKg = useMetric ? weightValue : lbsToKg(weightValue);
-          
-          try {
-            // Save weight directly
-            await updateWeight(weightInKg);
-          } catch (weightError) {
-            console.error('Error saving weight:', weightError);
-            // Don't show alert since we've already navigated away
-          }
+          updates.weight = useMetric ? weightValue : lbsToKg(weightValue);
+          logDebug('Saving weight:', { value: updates.weight, units: 'kg' });
         }
+        
+        // Save all updates at once
+        await syncUserSettings(updates);
+        logDebug('Settings saved successfully');
+        
+        // Navigate back
+        navigation.goBack();
       }
-      
-      // Save the updated settings to AsyncStorage
-      try {
-        // Use the saveSettings function from context to persist to AsyncStorage
-        if (saveSettings) {
-          const saved = await saveSettings(updatedSettings);
-          if (!saved) {
-            console.error('Save operation returned false');
-          }
-        }
-      } catch (saveError) {
-        console.error('Error saving settings:', saveError);
-      }
-      
     } catch (error) {
-      console.error('Error in handleSaveSettings:', error);
-      if (navigation.isFocused()) {
-        Alert.alert('Error', 'An unexpected error occurred. Please try again.');
-      }
+      logDebug('Error saving settings', error);
+      Alert.alert(
+        'Error',
+        'Failed to save pace settings. Please try again.',
+        [{ text: 'OK' }]
+      );
     } finally {
       setIsSubmitting(false);
     }
@@ -515,6 +611,7 @@ const EditPaceScreen: React.FC<Props> = ({ navigation }) => {
                 style={styles.weightInput}
                 value={weightInput}
                 onChangeText={handleWeightInputChange}
+                onBlur={handleWeightInputBlur}
                 keyboardType="numeric"
                 placeholder={useMetric ? "Weight in kg" : "Weight in lbs"}
                 placeholderTextColor="rgba(255, 255, 255, 0.5)"

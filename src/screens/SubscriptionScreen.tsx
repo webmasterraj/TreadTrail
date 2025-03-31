@@ -15,7 +15,7 @@ import {
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../types';
 import { COLORS, FONT_SIZES, SPACING, BORDER_RADIUS } from '../styles/theme';
-import { UserContext } from '../context';
+import { useAuth, useUserSettings } from '../hooks';
 import BottomTabBar from '../components/common/BottomTabBar';
 import { useSubscription, PREMIUM_SUBSCRIPTION_ID } from '../context/SubscriptionContext';
 import PremiumCard from '../components/subscription/PremiumCard';
@@ -24,7 +24,8 @@ import { kgToLbs, lbsToKg } from '../utils/calorieUtils';
 type Props = NativeStackScreenProps<RootStackParamList, 'Subscription'>;
 
 const SubscriptionScreen: React.FC<Props> = ({ navigation }) => {
-  const { authState, preferences, updateWeight, userSettings } = useContext(UserContext);
+  const { authState } = useAuth();
+  const { preferences, syncUserSettings, userSettings } = useUserSettings();
   const {
     subscriptionInfo,
     isLoading: isSubscriptionLoading,
@@ -235,7 +236,7 @@ const SubscriptionScreen: React.FC<Props> = ({ navigation }) => {
       if (!isNaN(weightValue) && weightValue > 0) {
         // Convert to kg if user is using imperial units
         const weightInKg = unitPreference === 'imperial' ? lbsToKg(weightValue) : weightValue;
-        updateWeight(weightInKg);
+        syncUserSettings({ weight: weightInKg });
         
         Alert.alert(
           'Weight Saved',

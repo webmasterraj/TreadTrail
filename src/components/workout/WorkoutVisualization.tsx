@@ -280,9 +280,9 @@ const WorkoutVisualization: React.FC<WorkoutVisualizationProps> = ({
             styles.completedOverlay, 
             { 
               width: `${progressIndicatorPosition}%`,
-              borderTopLeftRadius: 12,
-              borderBottomLeftRadius: 12,
-              // If we're at the end, make sure both corners are rounded
+              // borderTopLeftRadius: 12,
+              // borderBottomLeftRadius: 12,
+              // // If we're at the end, make sure both corners are rounded
               borderTopRightRadius: progressIndicatorPosition >= 99 ? 12 : 0,
               borderBottomRightRadius: progressIndicatorPosition >= 99 ? 12 : 0,
             }

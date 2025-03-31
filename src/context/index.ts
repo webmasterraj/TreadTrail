@@ -1,3 +1,2 @@
-export * from './UserContext';
-export * from './DataContext';
-export * from './WorkoutContext';
+// This file is kept for backward compatibility
+// All context-based state management has been migrated to Redux

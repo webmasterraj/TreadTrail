@@ -1,42 +1,59 @@
-import React, { useContext, useEffect, useState } from 'react';
-import { 
-  View, 
-  Text, 
-  StyleSheet, 
-  SafeAreaView, 
-  ScrollView, 
+import React, { useState, useEffect } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
   TouchableOpacity,
-  Alert,
+  SafeAreaView,
   StatusBar,
+  Alert,
   Dimensions,
   Platform,
   LayoutChangeEvent
 } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { RootStackParamList, WorkoutSegment, PaceType } from '../types';
-import { COLORS, FONT_SIZES, SPACING, BORDER_RADIUS, DIFFICULTY_INDICATORS, FOCUS_INDICATORS, PACE_COLORS } from '../styles/theme';
-import WorkoutVisualization from '../components/workout/WorkoutVisualization';
-import { UserContext } from '../context';
+import { RootStackParamList, PaceType } from '../types';
+import { COLORS, FONT_SIZES, SPACING, DIFFICULTY_INDICATORS, FOCUS_INDICATORS, PACE_COLORS } from '../styles/theme';
+import { useAuth, useUserSettings } from '../hooks';
 import { useSubscription } from '../context/SubscriptionContext';
 import { formatDuration, formatTime } from '../utils/helpers';
-import BottomTabBar from '../components/common/BottomTabBar';
+import WorkoutVisualization from '../components/workout/WorkoutVisualization';
 import Button from '../components/common/Button';
 import { useAppDispatch, useAppSelector } from '../redux/store';
 import { 
-  fetchWorkoutPrograms,
-  toggleWorkoutFavorite,
-  selectWorkoutById
+  selectWorkoutById, 
+  toggleFavoriteWorkout,
 } from '../redux/slices/workoutProgramsSlice';
 import PremiumCard from '../components/subscription/PremiumCard';
+import BottomTabBar from '../components/common/BottomTabBar';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'WorkoutDetails'>;
 
 const WorkoutDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
   const { workoutId } = route.params;
   const dispatch = useAppDispatch();
-  // Get user context once at component level
-  const { userSettings, authState } = useContext(UserContext);
+  // Get user context using hooks
+  const { userSettings } = useUserSettings();
+  const { authState } = useAuth();
   const { isPremiumWorkout, subscriptionInfo } = useSubscription();
+  
+  // Log workout ID only once when component mounts or workoutId changes
+  useEffect(() => {
+    console.log(`[WorkoutDetailsScreen] Starting workout with ID: ${workoutId}`);
+  }, [workoutId]);
+  
+  // Get the workout from the Redux store - Fix the selector usage
+  const workout = useAppSelector(selectWorkoutById(workoutId));
+  
+  // Add detailed logging of the workout data
+  useEffect(() => {
+    if (workout) {
+      console.log(`[WorkoutDetailsScreen] Loaded workout: ${workout.name} with ${workout.segments.length} segments`);
+    } else {
+      console.log(`[WorkoutDetailsScreen] No workout found with ID: ${workoutId}`);
+    }
+  }, [workout, workoutId]);
   
   // Calculate days remaining in trial
   const getDaysRemaining = () => {
@@ -54,11 +71,8 @@ const WorkoutDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
   
   // Initialize workout data if not loaded
   useEffect(() => {
-    dispatch(fetchWorkoutPrograms());
+    // No need to fetch workout programs here, using cached data from Redux store
   }, [dispatch]);
-  
-  // Get the workout from Redux
-  const workout = useAppSelector(selectWorkoutById(workoutId));
   
   // Handle case where workout is not found
   if (!workout) {
@@ -146,7 +160,7 @@ const WorkoutDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
     }
     
     try {
-      console.log('[WorkoutDetailsScreen] Starting workout with ID:', workoutId);
+      console.log('[WorkoutDetailsScreen] User initiated workout start with ID:', workoutId);
       if (!workoutId || typeof workoutId !== 'string') {
         console.error('[WorkoutDetailsScreen] Invalid workout ID:', workoutId);
         Alert.alert('Error', 'Invalid workout. Please try again.');
@@ -161,15 +175,8 @@ const WorkoutDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
   
   // Handle favorite toggle
   const handleFavoriteToggle = () => {
-    try {
-      if (!workoutId || !workout) {
-        return;
-      }
-      
-      // Directly dispatch action to toggle the favorite status
-      dispatch(toggleWorkoutFavorite(workoutId));
-    } catch (error) {
-      console.error('Error toggling favorite:', error);
+    if (workoutId) {
+      dispatch(toggleFavoriteWorkout(workoutId));
     }
   };
   
@@ -350,7 +357,7 @@ const styles = StyleSheet.create({
     marginBottom: SPACING.medium,
   },
   title: {
-    color: COLORS.white,
+    color: COLORS.accent,
     fontSize: FONT_SIZES.xl,
     fontWeight: 'bold',
     marginBottom: SPACING.small,

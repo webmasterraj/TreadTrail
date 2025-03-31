@@ -1,4 +1,4 @@
-import React, { useContext, useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { 
   View, 
   Text, 
@@ -15,16 +15,17 @@ import { RootStackParamList, WorkoutSegment } from '../types';
 import { COLORS, FONT_SIZES, SPACING, BORDER_RADIUS, PACE_COLORS } from '../styles/theme';
 import Button from '../components/common/Button';
 import WorkoutVisualization from '../components/workout/WorkoutVisualization';
-import { UserContext } from '../context';
-import { SubscriptionContext } from '../context/SubscriptionContext';
+import { useAuth, useUserSettings } from '../hooks';
+import { useSubscription } from '../context/SubscriptionContext';
 import { kgToLbs, lbsToKg } from '../utils/calorieUtils';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Welcome'>;
 
 const WelcomeScreen: React.FC<Props> = ({ route, navigation }) => {
   const { name } = route.params;
-  const { authState, preferences, updateWeight } = useContext(UserContext);
-  const { subscriptionInfo, startFreeTrial } = useContext(SubscriptionContext);
+  const { authState } = useAuth();
+  const { preferences, syncUserSettings } = useUserSettings();
+  const { subscriptionInfo, startFreeTrial } = useSubscription();
   
   // Get user's unit preference
   const unitPreference = preferences?.units || 'imperial';

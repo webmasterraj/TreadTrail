@@ -1,11 +1,11 @@
 import { createSlice, createAsyncThunk, PayloadAction } from '@reduxjs/toolkit';
-import { getWorkoutById } from '../../utils/workoutData';
-import { Workout, WorkoutSegment } from '../../types/workout';
+import { selectWorkoutById } from './workoutProgramsSlice';
+import { WorkoutProgram, WorkoutSegment as Segment } from '../../types';
 
 // Define types for workout state
 export interface WorkoutState {
   // Workout data
-  activeWorkout: Workout | null;
+  activeWorkout: WorkoutProgram | null;
   
   // Timer state
   isRunning: boolean;
@@ -60,10 +60,11 @@ const initialState: WorkoutState = {
 // Async thunks
 export const loadWorkout = createAsyncThunk(
   'workout/load',
-  async (workoutId: string, { rejectWithValue }) => {
+  async (workoutId: string, { rejectWithValue, getState }) => {
     try {
       console.log('[workoutSlice] Loading workout with ID:', workoutId);
-      const workout = getWorkoutById(workoutId);
+      const state = getState() as any;
+      const workout = selectWorkoutById(workoutId)(state);
       
       if (!workout) {
         console.error('[workoutSlice] Workout not found for ID:', workoutId);
@@ -74,9 +75,11 @@ export const loadWorkout = createAsyncThunk(
         console.error('[workoutSlice] Workout has no segments:', workoutId);
         return rejectWithValue('Workout has no segments');
       }
+            
+      const workoutCopy = JSON.parse(JSON.stringify(workout));
       
       console.log('[workoutSlice] Successfully loaded workout:', workout.name);
-      return workout;
+      return workoutCopy;
     } catch (error) {
       console.error('[workoutSlice] Error loading workout:', error);
       return rejectWithValue(error instanceof Error ? error.message : 'Failed to load workout');
@@ -86,9 +89,10 @@ export const loadWorkout = createAsyncThunk(
 
 export const startWorkout = createAsyncThunk(
   'workout/start',
-  async (workoutId: string, { rejectWithValue }) => {
+  async (workoutId: string, { rejectWithValue, getState }) => {
     try {
-      const workout = getWorkoutById(workoutId);
+      const state = getState() as any;
+      const workout = selectWorkoutById(workoutId)(state);
       if (!workout || workout.segments.length === 0) {
         return rejectWithValue('Invalid workout or no segments found');
       }

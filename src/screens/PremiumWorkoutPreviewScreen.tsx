@@ -1,4 +1,4 @@
-import React, { useContext, useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { 
   View, 
   Text, 
@@ -16,7 +16,7 @@ import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList, PaceType } from '../types';
 import { COLORS, FONT_SIZES, SPACING, DIFFICULTY_INDICATORS, FOCUS_INDICATORS, PACE_COLORS, BORDER_RADIUS } from '../styles/theme';
 import WorkoutVisualization from '../components/workout/WorkoutVisualization';
-import { UserContext } from '../context';
+import { useAuth } from '../hooks';
 import { formatDuration, formatTime } from '../utils/helpers';
 import BottomTabBar from '../components/common/BottomTabBar';
 import { useAppSelector } from '../redux/store';
@@ -29,7 +29,7 @@ type Props = NativeStackScreenProps<RootStackParamList, 'PremiumWorkoutPreview'>
 
 const PremiumWorkoutPreviewScreen: React.FC<Props> = ({ route, navigation }) => {
   const { workoutId } = route.params;
-  const { authState } = useContext(UserContext);
+  const { authState } = useAuth();
   const { subscriptionInfo, validateSubscription, initializeIAP } = useSubscription();
   const [isCheckingSubscription, setIsCheckingSubscription] = useState(false);
   

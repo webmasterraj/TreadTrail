@@ -16,9 +16,10 @@ import {
 import {NativeStackScreenProps} from '@react-navigation/native-stack';
 import {RootStackParamList} from '../types';
 import {COLORS, FONT_SIZES, SPACING, BORDER_RADIUS} from '../styles/theme';
-import {UserContext} from '../context';
+import {useAuth, useUserSettings} from '../hooks';
 import {SubscriptionContext} from '../context/SubscriptionContext';
 import BottomTabBar from '../components/common/BottomTabBar';
+import NetInfo from '@react-native-community/netinfo';
 
 // Debug flag - set to false to disable debug logs
 const DEBUG_SETTINGS = false;
@@ -29,9 +30,12 @@ const APP_VERSION = '1.0.0';
 const BUILD_NUMBER = '42';
 
 const SettingsScreen: React.FC<Props> = ({navigation}) => {
-  const {authState, signOut, preferences, updatePreference, isLoading, userSettings} = useContext(UserContext);
+  const {authState, signOut, deleteAccount} = useAuth();
+  const {preferences, userSettings, isLoading, syncUserSettings} = useUserSettings();
   const {subscriptionInfo} = useContext(SubscriptionContext);
   const [isError, setIsError] = useState(false);
+  const [localAudioCues, setLocalAudioCues] = useState<boolean | undefined>(undefined);
+  const [isDeletingAccount, setIsDeletingAccount] = useState(false);
 
   // Add debug logging on component mount
   useEffect(() => {
@@ -52,7 +56,12 @@ const SettingsScreen: React.FC<Props> = ({navigation}) => {
         console.log('[DEBUG-SETTINGS] enableAudioCues from userSettings.preferences:', userSettings.preferences.enableAudioCues);
       }
     }
-  }, [isLoading, userSettings, preferences]);
+
+    // Initialize local audio cues state from preferences
+    if (preferences && localAudioCues === undefined) {
+      setLocalAudioCues(preferences.enableAudioCues);
+    }
+  }, [isLoading, userSettings, preferences, localAudioCues]);
 
   // Handle sign out
   const handleSignOut = async () => {
@@ -72,15 +81,127 @@ const SettingsScreen: React.FC<Props> = ({navigation}) => {
     ]);
   };
 
+  // Handle delete account
+  const handleDeleteAccount = async () => {
+    // Check network connectivity first
+    const netInfo = await NetInfo.fetch();
+    const isConnected = !!netInfo.isConnected && !!netInfo.isInternetReachable;
+    
+    if (!isConnected) {
+      Alert.alert(
+        'No Internet Connection',
+        'You need to be online to delete your account. Please connect to the internet and try again.',
+        [{ text: 'OK' }]
+      );
+      return;
+    }
+    
+    Alert.alert(
+      'Delete Account',
+      'Are you sure you want to delete your account?',
+      [
+        {
+          text: 'Cancel',
+          style: 'cancel',
+        },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: () => confirmDeleteAccount(),
+        },
+      ]
+    );
+  };
+
+  // Add second confirmation
+  const confirmDeleteAccount = () => {
+    Alert.alert(
+      'Confirm Deletion',
+      'This action cannot be undone. All your data will be permanently deleted.',
+      [
+        {
+          text: 'Cancel',
+          style: 'cancel',
+        },
+        {
+          text: 'Delete Permanently',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              // Show loading indicator
+              setIsDeletingAccount(true);
+              
+              const result = await deleteAccount();
+              
+              if (result.success) {
+                // Navigate to landing screen after successful deletion
+                navigation.replace('Landing');
+              } else {
+                // Show appropriate error message based on the error
+                if (result.error?.includes('network') || result.error?.includes('internet')) {
+                  Alert.alert(
+                    'Connection Error',
+                    'There was a problem with your internet connection. Please try again when you have a stable connection.'
+                  );
+                } else {
+                  Alert.alert(
+                    'Error',
+                    result.error || 'Failed to delete your account. Please try again later or contact support if the problem persists.'
+                  );
+                }
+              }
+            } catch (error: any) {
+              console.error('Account deletion error:', error);
+              
+              Alert.alert(
+                'Error',
+                'Failed to delete your account. Please try again later or contact support if the problem persists.'
+              );
+            } finally {
+              setIsDeletingAccount(false);
+            }
+          },
+        },
+      ]
+    );
+  };
+
   // Handle legal links
-  const handleLegalLink = (_url: string) => {
-    // In a real app, we would open the appropriate screen or web link
-    Alert.alert('Coming Soon', 'This feature is not yet implemented.');
+  const handleLegalLink = (type: string) => {
+    let url = '';
+    
+    switch (type) {
+      case 'terms':
+        url = 'https://treadtrail.run/terms';
+        break;
+      case 'privacy':
+        url = 'https://treadtrail.run/privacy.html';
+        break;
+      case 'licenses':
+        // Keep the alert for licenses as it might require a different implementation
+        Alert.alert('Coming Soon', 'This feature is not yet implemented.');
+        return;
+      default:
+        return;
+    }
+    
+    // Check if the URL can be opened
+    Linking.canOpenURL(url).then(supported => {
+      if (supported) {
+        Linking.openURL(url);
+      } else {
+        console.log(`Cannot open URL: ${url}`);
+        Alert.alert('Error', 'Cannot open the link. Please visit our website directly.');
+      }
+    }).catch(err => {
+      console.error('An error occurred', err);
+      Alert.alert('Error', 'Something went wrong. Please try again later.');
+    });
   };
 
   // Handle support link
   const handleSupportPress = () => {
-    Linking.openURL('mailto:support@treadtrail.com');
+    Linking.openURL('mailto:hello@treadtrail.run');
   };
 
   // Handle navigation to workouts screen
@@ -111,11 +232,19 @@ const SettingsScreen: React.FC<Props> = ({navigation}) => {
       return;
     }
     
-    updatePreference('enableAudioCues', value);
+    // Update local state immediately for responsive UI
+    setLocalAudioCues(value);
+    
+    // Sync with Redux in the background
+    syncUserSettings({
+      preferences: {
+        enableAudioCues: value
+      }
+    });
   };
 
-  // Render the settings screen
-  if (isLoading) {
+  // Render the settings screen - only show loading on initial load, not during updates
+  if (isLoading && localAudioCues === undefined) {
     if (DEBUG_SETTINGS) {
       console.log('[DEBUG-SETTINGS] Rendering loading state');
     }
@@ -183,7 +312,7 @@ const SettingsScreen: React.FC<Props> = ({navigation}) => {
                   style={styles.settingsItem}
                   onPress={handleSignOut}>
                   <Text style={styles.signOutText}>Sign Out</Text>
-                </TouchableOpacity>
+                </TouchableOpacity>                
               </>
             ) : (
               <TouchableOpacity
@@ -202,7 +331,7 @@ const SettingsScreen: React.FC<Props> = ({navigation}) => {
             <View style={styles.settingsItem}>
               <Text style={styles.itemLabel}>Audio Cues</Text>
               <Switch
-                value={preferences?.enableAudioCues || false}
+                value={localAudioCues !== undefined ? localAudioCues : preferences?.enableAudioCues || false}
                 onValueChange={toggleAudioCues}
                 trackColor={{false: COLORS.darkGray, true: COLORS.accent}}
                 thumbColor={COLORS.white}
@@ -236,12 +365,23 @@ const SettingsScreen: React.FC<Props> = ({navigation}) => {
               <Text style={styles.chevron}>→</Text>
             </TouchableOpacity>
 
+            {/* Delete Account Button */}
             <TouchableOpacity
               style={styles.settingsItem}
-              onPress={() => handleLegalLink('licenses')}>
-              <Text style={styles.itemLabel}>Licenses</Text>
-              <Text style={styles.chevron}>→</Text>
+              onPress={handleDeleteAccount}
+              disabled={isDeletingAccount}>
+              {isDeletingAccount ? (
+                <View style={styles.deleteAccountContainer}>
+                  <ActivityIndicator size="small" color="#FF453A" />
+                  <Text style={[styles.deleteAccountText, { marginLeft: SPACING.small }]}>
+                    Deleting...
+                  </Text>
+                </View>
+              ) : (
+                <Text style={styles.deleteAccountText}>Delete Account</Text>
+              )}
             </TouchableOpacity>
+
           </View>
         </View>
 
@@ -340,6 +480,15 @@ const styles = StyleSheet.create({
     color: '#FF453A', // iOS red color for destructive actions
     fontSize: FONT_SIZES.medium,
     fontWeight: '500',
+  },
+  deleteAccountText: {
+    color: '#FF453A', // iOS red color for destructive actions
+    fontSize: FONT_SIZES.medium,
+    fontWeight: '500',
+  },
+  deleteAccountContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
   },
   signInText: {
     color: COLORS.accent,
