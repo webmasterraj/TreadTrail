@@ -90,12 +90,9 @@ const WorkoutLibraryScreen: React.FC<Props> = ({ navigation, route }) => {
 
   // Initialize data on component mount
   useEffect(() => {
-    console.log('[LIBRARY] Component mounted');
-    
     if (workoutPrograms.length > 0) {
       // Skip fetch if programs are already loaded
     } else if (!isLoading) {
-      console.log('[LIBRARY] No workout programs loaded, dispatching fetch');
       dispatch(fetchWorkoutPrograms());
     }
     
@@ -198,33 +195,51 @@ const WorkoutLibraryScreen: React.FC<Props> = ({ navigation, route }) => {
   const getFilteredWorkouts = useCallback(() => {
     let filtered = [...workoutPrograms];
     
-    // Apply category filters if any are selected
+    // Track special filters and regular category filters separately
+    const specialFilters = selectedCategories.filter(cat => 
+      cat === 'Free' || cat === 'Premium');
+    const categoryFilters = selectedCategories.filter(cat => 
+      CATEGORIES.includes(cat as CategoryType));
+    
+    // Apply filters if any are selected
     if (selectedCategories.length > 0) {
       filtered = filtered.filter(workout => {
         // Check for special filters
         const isPremium = workout.premium;
         
-        if (selectedCategories.includes('Free') && isPremium) {
+        // If Free filter is selected, exclude premium workouts
+        if (specialFilters.includes('Free') && isPremium) {
           return false;
         }
         
-        // Check for category match
-        return selectedCategories.includes(workout.category as CategoryType);
+        // If Premium filter is selected, only include premium workouts
+        if (specialFilters.includes('Premium') && !isPremium) {
+          return false;
+        }
+        
+        // If category filters are selected, check for category match
+        if (categoryFilters.length > 0) {
+          return categoryFilters.includes(workout.category as CategoryType);
+        }
+        
+        // If only special filters are selected (no category filters),
+        // and the workout passed the special filter checks above, include it
+        return true;
       });
     }
     
     return filtered;
-  }, [workoutPrograms, selectedCategories]);
-
+  }, [workoutPrograms, selectedCategories, CATEGORIES]);
+  
   // Toggle category selection
   const toggleCategorySelection = (category: CategoryType | 'Free' | 'Premium') => {
     setSelectedCategories(prevSelected => {
       if (prevSelected.includes(category)) {
-        // Remove category if already selected
-        return prevSelected.filter(cat => cat !== category);
+        // Remove category if already selected (deselect)
+        return [];
       } else {
-        // Add category if not selected
-        return [...prevSelected, category];
+        // Replace current selection with the new category
+        return [category];
       }
     });
   };

@@ -13,6 +13,7 @@ const DEBUG_SYNC = false;
 const DEBUG_REDUX = false;
 const DEBUG_QUEUE = false;
 const DEBUG_FAVORITES = false; 
+const DEBUG_PREMIUM = true;
 
 // Helper functions for date handling
 const getMonthKey = (date: string): string => {
@@ -284,6 +285,13 @@ const fetchWorkoutPrograms = createAsyncThunk(
           
           // Cache the results for offline use
           await AsyncStorage.setItem('workoutPrograms', JSON.stringify(workouts));
+          
+          // Queue audio downloads for all workouts in the background
+          workouts.forEach(workout => {
+            queueWorkoutAudioDownloads(workout).catch((error: any) => {
+              if (DEBUG_QUEUE) console.error(`Error queuing audio downloads for workout ${workout.id}:`, error);
+            });
+          });
         } else {
           console.log('No workouts found in Supabase');
           
@@ -299,12 +307,12 @@ const fetchWorkoutPrograms = createAsyncThunk(
       }
       
       // Apply favorite status to workout programs
-      const result = workouts.map(workout => ({
+      workouts = workouts.map(workout => ({
         ...workout,
         favorite: favoriteIds.includes(workout.id)
       }));
       
-      return result;
+      return { workouts, favoriteIds };
     } catch (error: any) {
       console.error('Error in fetchWorkoutPrograms:', error);
       return rejectWithValue('Failed to fetch workout programs');
@@ -1046,13 +1054,11 @@ const processPendingQueue = createAsyncThunk(
           
           // Process additions
           for (const workoutId of favoritesToAdd) {
-            if (DEBUG_FAVORITES) console.log(`[FAVORITES] Adding favorite: ${workoutId}`);
             await addFavoriteWorkout(workoutId);
           }
           
           // Process removals
           for (const workoutId of favoritesToRemove) {
-            if (DEBUG_FAVORITES) console.log(`[FAVORITES] Removing favorite: ${workoutId}`);
             await removeFavoriteWorkout(workoutId);
           }
           

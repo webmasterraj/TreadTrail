@@ -172,10 +172,10 @@ const SettingsScreen: React.FC<Props> = ({navigation}) => {
     
     switch (type) {
       case 'terms':
-        url = 'https://www.treadtrail.run/terms';
+        url = 'https://treadtrail.run/terms';
         break;
       case 'privacy':
-        url = 'https://www.treadtrail.run/privacy';
+        url = 'https://treadtrail.run/privacy.html';
         break;
       case 'licenses':
         // Keep the alert for licenses as it might require a different implementation

@@ -7,6 +7,21 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 const AUDIO_CACHE_DIR = `${FileSystem.cacheDirectory}audio/`;
 const AUDIO_CACHE_METADATA_KEY = 'AUDIO_CACHE_METADATA';
 
+// Debug flags
+const DEBUG_AUDIO_CACHE = false;
+const DEBUG_PREFIX = '[DEBUG-AUDIO-CACHE]';
+
+// Debug logging helper
+const logDebug = (message: string, ...args: any[]) => {
+  if (DEBUG_AUDIO_CACHE) {
+    if (args.length > 0) {
+      console.log(`${DEBUG_PREFIX} ${message}`, ...args);
+    } else {
+      console.log(`${DEBUG_PREFIX} ${message}`);
+    }
+  }
+};
+
 // Types
 interface AudioCacheMetadata {
   [filename: string]: {
@@ -24,12 +39,14 @@ export const initAudioCache = async (): Promise<void> => {
     const dirInfo = await FileSystem.getInfoAsync(AUDIO_CACHE_DIR);
     if (!dirInfo.exists) {
       await FileSystem.makeDirectoryAsync(AUDIO_CACHE_DIR, { intermediates: true });
+      logDebug('Created audio cache directory');
     }
     
     // Initialize metadata if it doesn't exist
     const metadata = await getAudioCacheMetadata();
     if (!metadata) {
       await saveAudioCacheMetadata({});
+      logDebug('Initialized empty audio cache metadata');
     }
   } catch (error) {
     console.error('Error initializing audio cache:', error);
@@ -60,7 +77,7 @@ export const isAudioCached = async (filename: string): Promise<boolean> => {
         
         // If we don't have metadata for this file, consider it not cached
         if (!entry) {
-          console.log(`[AUDIO] File exists but no metadata found for ${filename}, considering not cached`);
+          logDebug(`File exists but no metadata found for ${filename}, considering not cached`);
           return false;
         }
       }
@@ -117,7 +134,7 @@ export const updateAudioCacheMetadata = async (
     const urlChanged = existingEntry && existingEntry.url !== url;
     
     if (urlChanged) {
-      console.log(`[AUDIO] URL changed for ${filename}, invalidating cache`);
+      logDebug(`URL changed for ${filename}, invalidating cache`);
       // Delete the cached file if URL has changed
       try {
         const fileUri = getCachedFileUri(filename);
@@ -160,18 +177,18 @@ export const cacheAudioFile = async (
     if (isCached) {
       // Update metadata to reflect it's still needed
       await updateAudioCacheMetadata(filename, url);
-      console.log(`[AUDIO] Using cached audio file: ${filename}`);
+      logDebug(`Using cached audio file: ${filename}`);
       return localUri;
     }
     
     // Check network connectivity
     const netInfo = await NetInfo.fetch();
     if (!netInfo.isConnected) {
-      console.log(`[AUDIO] No network connection to download audio file: ${filename}`);
+      logDebug(`No network connection to download audio file: ${filename}`);
       return null;
     }
     
-    console.log(`[AUDIO] Downloading audio file from URL: ${url}`);
+    logDebug(`Downloading audio file from URL: ${url}`);
     
     // Validate URL format
     if (!url || !url.startsWith('http')) {
@@ -188,7 +205,7 @@ export const cacheAudioFile = async (
         return null;
       }
       
-      console.log(`[AUDIO] Successfully downloaded audio file: ${filename}`);
+      logDebug(`Successfully downloaded audio file: ${filename}`);
       
       // Update metadata
       await updateAudioCacheMetadata(filename, url);
@@ -248,28 +265,28 @@ export const queueAudioDownloads = async (
     // Initialize cache
     await initAudioCache();
     
-    console.log(`[AUDIO] Starting queue of ${audioFiles.length} audio downloads`);
+    logDebug(`Starting queue of ${audioFiles.length} audio downloads`);
     
     // Check network connectivity
     const netInfo = await NetInfo.fetch();
     if (!netInfo.isConnected) {
-      console.log('[AUDIO] No network connection for background audio downloads');
+      logDebug('No network connection for background audio downloads');
       return;
     }
     
     // Log all files being queued
     audioFiles.forEach(({ url, filename }, index) => {
-      console.log(`[AUDIO] Queuing file ${index}: ${filename} from URL: ${url}`);
+      logDebug(`Queuing file ${index}: ${filename} from URL: ${url}`);
     });
     
     // Queue downloads (don't await to allow background processing)
     audioFiles.forEach(async ({ url, filename }, index) => {
       try {
-        console.log(`[AUDIO] Checking if ${filename} is already cached`);
+        logDebug(`Checking if ${filename} is already cached`);
         const isCached = await isAudioCached(filename);
         
         if (!isCached) {
-          console.log(`[AUDIO] File ${filename} not cached, starting download`);
+          logDebug(`File ${filename} not cached, starting download`);
           
           // Validate URL format
           if (!url || !url.startsWith('http')) {
@@ -280,16 +297,16 @@ export const queueAudioDownloads = async (
           cacheAudioFile(url, filename)
             .then(uri => {
               if (uri) {
-                console.log(`[AUDIO] Background download complete: ${filename}`);
+                logDebug(`Background download complete: ${filename}`);
               } else {
-                console.log(`[AUDIO] Background download failed (null URI): ${filename}`);
+                logDebug(`Background download failed (null URI): ${filename}`);
               }
             })
             .catch(error => {
               console.error(`[AUDIO] Background download failed for ${filename}:`, error);
             });
         } else {
-          console.log(`[AUDIO] File ${filename} already cached, skipping download`);
+          logDebug(`File ${filename} already cached, skipping download`);
         }
       } catch (error) {
         console.error(`[AUDIO] Error processing file ${filename}:`, error);
@@ -321,6 +338,7 @@ export const cleanupAudioCache = async (unusedDays: number = 30): Promise<void> 
         try {
           await FileSystem.deleteAsync(fileUri, { idempotent: true });
           delete updatedMetadata[filename];
+          logDebug(`Deleted unused audio file: ${filename}`);
         } catch (error) {
           console.error(`Error deleting unused audio file ${filename}:`, error);
         }
@@ -329,6 +347,7 @@ export const cleanupAudioCache = async (unusedDays: number = 30): Promise<void> 
     
     // Save updated metadata
     await saveAudioCacheMetadata(updatedMetadata);
+    logDebug(`Audio cache cleanup complete, removed ${Object.keys(metadata).length - Object.keys(updatedMetadata).length} files`);
   } catch (error) {
     console.error('Error cleaning up audio cache:', error);
   }
