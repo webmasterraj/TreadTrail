@@ -6,11 +6,21 @@ import { WorkoutProgram, WorkoutSegment } from '../types';
 // Bundled countdown sound
 const COUNTDOWN_SOUND = require('../assets/audio/countdown.aac');
 
+// Debug flags
+const DEBUG_AUDIO_UTILS = false;
+
+// Debug logging helper
+const logDebug = (message: string, ...args: any[]) => {
+  if (DEBUG_AUDIO_UTILS) console.log(`[DEBUG-AUDIO-UTILS] ${message}`, ...args);
+};
+
 /**
  * Initialize the audio system
  */
 export const initializeAudioSystem = async (): Promise<void> => {
   try {
+    logDebug('Initializing audio system');
+    
     // Set up audio mode
     await Audio.setAudioModeAsync({
       playsInSilentModeIOS: true,
@@ -21,8 +31,11 @@ export const initializeAudioSystem = async (): Promise<void> => {
       playThroughEarpieceAndroid: false,
     });
     
+    logDebug('Audio mode set successfully');
+    
     // Initialize audio cache
     await initAudioCache();
+    logDebug('Audio cache initialized');
   } catch (error) {
     console.error('Error initializing audio system:', error);
   }
@@ -57,7 +70,7 @@ export const loadSegmentAudio = async (
   try {    
     // Check if segment has audio
     if (!segment.audio || !segment.audio.file) {
-      console.log(`[AUDIO] No audio file URL provided for segment`);
+      logDebug(`No audio file URL provided for segment`);
       return null;
     }
     
@@ -88,7 +101,7 @@ export const loadSegmentAudio = async (
     await sound.loadAsync({ uri: downloadResult.uri });
     return sound;
   } catch (error) {
-    console.error(`[AUDIO] Error loading segment audio:`, error);
+    console.error(`Error loading segment audio:`, error);
     return null;
   }
 };
@@ -100,35 +113,35 @@ export const loadSegmentAudio = async (
 export const queueWorkoutAudioDownloads = async (workout: WorkoutProgram): Promise<void> => {
   if (!workout || !workout.segments) return;
   
-  console.log(`[AUDIO] Queueing audio downloads for workout: ${workout.name}, segments: ${workout.segments.length}`);
+  logDebug(`Queueing audio downloads for workout: ${workout.name}, segments: ${workout.segments.length}`);
   
   // Log all segments to debug
   workout.segments.forEach((segment, index) => {
-    console.log(`[AUDIO] Segment ${index} type: ${segment.type}, audio:`, JSON.stringify(segment.audio, null, 2));
+    logDebug(`Segment ${index} type: ${segment.type}, audio:`, JSON.stringify(segment.audio, null, 2));
   });
   
   const audioFiles = workout.segments
     .map((segment) => {
       if (segment.audio && segment.audio.file) {
         const audioUrl = segment.audio.file;
-        console.log(`[AUDIO] Found audio URL for segment: ${audioUrl}`);
+        logDebug(`Found audio URL for segment: ${audioUrl}`);
         const filename = getAudioFilenameFromUrl(audioUrl);
         return {
           url: audioUrl,
           filename: filename
         };
       } else {
-        console.log(`[AUDIO] No audio file for segment type: ${segment.type}`);
+        logDebug(`No audio file for segment type: ${segment.type}`);
       }
       return null;
     })
     .filter(item => item !== null) as Array<{ url: string; filename: string }>;
   
   if (audioFiles.length > 0) {
-    console.log(`[AUDIO] Queueing ${audioFiles.length} audio files for download`);
+    logDebug(`Queueing ${audioFiles.length} audio files for download`);
     await queueAudioDownloads(audioFiles);
   } else {
-    console.log('[AUDIO] No audio files to download for this workout');
+    logDebug('No audio files to download for this workout');
   }
 };
 
@@ -141,7 +154,7 @@ export const preFetchWorkoutAudio = async (
   workoutPrograms: WorkoutProgram[]
 ): Promise<void> => {
   try {
-    console.log(`[AUDIO] Starting background pre-fetch for ${workoutPrograms.length} workout programs`);
+    logDebug(`Starting background pre-fetch for ${workoutPrograms.length} workout programs`);
     
     // Create a queue of audio files to download
     const audioUrlsToDownload: string[] = [];
@@ -162,7 +175,7 @@ export const preFetchWorkoutAudio = async (
       }
     });
     
-    console.log(`[AUDIO] Found ${audioUrlsToDownload.length} unique audio files to pre-fetch`);
+    logDebug(`Found ${audioUrlsToDownload.length} unique audio files to pre-fetch`);
     
     // Process downloads in the background
     let downloadedCount = 0;
@@ -182,9 +195,9 @@ export const preFetchWorkoutAudio = async (
       }
     }));
     
-    console.log(`[AUDIO] Pre-fetch complete: ${downloadedCount} files downloaded, ${errorCount} errors`);
+    logDebug(`Pre-fetch complete: ${downloadedCount} files downloaded, ${errorCount} errors`);
   } catch (error) {
-    console.warn('[AUDIO] Error in pre-fetch process:', error);
+    console.warn('Error in pre-fetch process:', error);
     // Don't throw the error since this is a background operation
   }
 };
