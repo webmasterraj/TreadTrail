@@ -53,6 +53,8 @@ import useWorkoutAudio from '../hooks/useWorkoutAudio';
 import { addWorkoutSession } from '../redux/slices/workoutProgramsSlice';
 import { Audio, InterruptionModeIOS, InterruptionModeAndroid, AVPlaybackStatus } from 'expo-av';
 
+import { audioFiles } from './audiofiles';
+
 type Props = NativeStackScreenProps<RootStackParamList, 'WorkoutInProgress'>;
 
 // Define types for the CircularProgress component
@@ -178,34 +180,38 @@ const WorkoutInProgressScreen: React.FC<Props> = ({ route, navigation }) => {
   const paceSettings = userSettings?.paceSettings || { recovery: { speed: 3, incline: 1 }, base: { speed: 5, incline: 1 }, run: { speed: 7, incline: 2 }, sprint: { speed: 9, incline: 2 } };
 
   // Initialize audio for workout
-  useEffect(() => {
-    const setupAudio = async () => {
-      try {
-        // We don't need to explicitly request permissions for audio playback
-        // Just set audio mode for best compatibility
-        await Audio.setAudioModeAsync({
-          playsInSilentModeIOS: true,
-          staysActiveInBackground: true,
-          interruptionModeIOS: InterruptionModeIOS.DuckOthers,
-          shouldDuckAndroid: true,
-          interruptionModeAndroid: InterruptionModeAndroid.DuckOthers,
-          playThroughEarpieceAndroid: false
-        });
-        
-      } catch (error) {
-        console.error("[WorkoutScreen] Error setting up audio:", error);
-      }
-    };
+  // useEffect(() => {
     
-    setupAudio();
+  //   setupAudio();
     
-    // Cleanup audio when component unmounts
-    return () => {
-      if (preferences.enableAudioCues) {
-        stopAudio();
-      }
-    };
-  }, []);
+  //   // Cleanup audio when component unmounts
+  //   return () => {
+  //     if (preferences.enableAudioCues) {
+  //       stopAudio();
+  //     }
+  //   };
+  // }, []);
+
+  const setupAudio = async () => {
+    try {
+      // We don't need to explicitly request permissions for audio playback
+      // Just set audio mode for best compatibility
+      console.log("iGold ::: [WorkoutScreen] Setting up audio mode");
+
+      await Audio.setAudioModeAsync({
+        allowsRecordingIOS: false,
+        playsInSilentModeIOS: true,
+        staysActiveInBackground: true,
+        interruptionModeIOS: InterruptionModeIOS.DuckOthers,
+        shouldDuckAndroid: true,
+        interruptionModeAndroid: InterruptionModeAndroid.DuckOthers,
+        playThroughEarpieceAndroid: false
+      });
+      
+    } catch (error) {
+      console.error("[WorkoutScreen] Error setting up audio:", error);
+    }
+  };
 
   // Initialize workout when component mounts (but only once!)
   useEffect(() => {
@@ -293,49 +299,60 @@ const WorkoutInProgressScreen: React.FC<Props> = ({ route, navigation }) => {
   }, [currentSegmentIndex, activeWorkout, audioEnabled, currentSegment, isSkipping, isCompleted, stopAudio]);
 
   // Preload segment audio files
-  useEffect(() => {
-    if (!activeWorkout || !audioEnabled) return;
+  // useEffect(() => {
+  //   if (!activeWorkout || !audioEnabled) return;
     
-    const loadSegmentAudio = async () => {
-      try {
-        // Clean up any existing sounds
-        for (const key in sounds) {
-          const sound = sounds[key];
-          if (sound) {
-            await sound.unloadAsync();
-            delete sounds[key];
-          }
-        }
+  //   const loadSegmentAudio = async () => {
+  //     try {
+  //       // Clean up any existing sounds
+  //       for (const key in sounds) {
+  //         const sound = sounds[key];
+  //         if (sound) {
+  //           await sound.unloadAsync();
+  //           delete sounds[key];
+  //         }
+  //       }
         
-        // Load audio for each segment that has an audio file
-        for (let i = 0; i < activeWorkout.segments.length; i++) {
-          const segment = activeWorkout.segments[i];
-          if (segment.audio && segment.audio.uri) {
-            try {
-              const { sound } = await Audio.Sound.createAsync({ uri: segment.audio.uri });
-              sounds[`segment-${i}`] = sound;
-            } catch (e) {
-              console.error(`Failed to load audio for segment ${i}:`, e);
-            }
-          }
-        }
+  //       console.log("iGold ::: Loading segment audio...");
+
+  //       // Load audio for each segment that has an audio file
+  //       for (let i = 0; i < activeWorkout.segments.length; i++) {
+  //         const segment = activeWorkout.segments[i];
+  //         if (segment.audio && segment.audio.file) {
+  //           try {
+  //             // const { sound } = await Audio.Sound.createAsync({ uri: segment.audio.uri });
+  //             // const { sound } = await Audio.Sound.createAsync(require(`./assets/audio/${segment.audio.file}`));
+  //             const audioFile = audioFiles[segment.audio.file as string];
+  //             if (!audioFile) {
+  //               console.warn(`Audio file not found in mapping: ${segment.audio.file}`);
+  //               continue;
+  //             }
+  //             const { sound } = await Audio.Sound.createAsync(audioFile);
+              
+  //             sounds[`segment-${i}`] = sound;
+  //             console.log(`Segment ${i},  ::: url = ${segment.audio.file} audio loaded successfully`);
+  //           } catch (e) {
+  //             console.error(`Failed to load audio for segment ${i}:`, e);
+  //           }
+  //         }
+  //       }
         
-      } catch (e) {
-        console.error("Error loading segment audio:", e);
-      }
-    };
+  //     } catch (e) {
+  //       console.error("Error loading segment audio:", e);
+  //     }
+  //   };
     
-    loadSegmentAudio();
+  //   loadSegmentAudio();
     
-    // Clean up sounds when component unmounts
-    return () => {
-      Object.values(sounds).forEach(sound => {
-        if (sound) {
-          sound.unloadAsync().catch(e => console.error("Error unloading sound:", e));
-        }
-      });
-    };
-  }, [activeWorkout, audioEnabled]);
+  //   // Clean up sounds when component unmounts
+  //   return () => {
+  //     Object.values(sounds).forEach(sound => {
+  //       if (sound) {
+  //         sound.unloadAsync().catch(e => console.error("Error unloading sound:", e));
+  //       }
+  //     });
+  //   };
+  // }, [activeWorkout, audioEnabled]);
 
   // Handle workout completion
   useEffect(() => {
@@ -356,45 +373,136 @@ const WorkoutInProgressScreen: React.FC<Props> = ({ route, navigation }) => {
       // Default voiceover duration if not available
       const voiceoverDuration = (nextSegment.audio && nextSegment.audio.duration) || 3;
       const countdownDuration = 3; // Fixed 3-second countdown
-      const pauseDuration = 1; // Pause between voiceover and countdown
+      const pauseDuration = 3; // Pause between voiceover and countdown
       const totalDuration = voiceoverDuration + pauseDuration + countdownDuration;
       
       const timeUntilNextSegment = currentSegment.duration - segmentElapsedTime;
       
+      console.log(`iGold ::: timeUntilNextSegment =${timeUntilNextSegment},  totalDuration = ${totalDuration}`);
+
       // Start playing the sequence so that the countdown ends exactly when the segment changes
       if (timeUntilNextSegment <= totalDuration && 
           timeUntilNextSegment > totalDuration - 1 &&
           audioPlayingRef.current !== `segment-${currentSegmentIndex + 1}`) {
         
-        const playAudioSequence = async () => {
-          // Play the voiceover for the next segment if it exists
-          const soundKey = `segment-${currentSegmentIndex + 1}`;
-          const sound = sounds[soundKey];
-          
-          if (sound) {
-            audioPlayingRef.current = soundKey;
-            try {
-              await sound.playAsync();
-              
-              // Reset the reference when done playing
-              sound.setOnPlaybackStatusUpdate((status: AVPlaybackStatus) => {
-                if (status.isLoaded && status.didJustFinish) {
-                  audioPlayingRef.current = null;
-                }
-              });
-            } catch (e) {
-              console.error("Error playing segment audio:", e);
-              audioPlayingRef.current = null;
-            }
-          } else {
-            console.log(`No audio available for segment ${currentSegmentIndex + 1}`);
-          }
-        };
+        console.log(`iGold ::: Playing audio sequence for segment ${currentSegmentIndex + 1}`);
         
         playAudioSequence();
       }
     }
   }, [currentSegmentIndex, segmentElapsedTime, isRunning, activeWorkout, audioEnabled]);
+
+  const playCountdown = async () => {
+    try {
+      // try {
+      //   await Audio.setAudioModeAsync({
+      //     playsInSilentModeIOS: true,
+      //     staysActiveInBackground: true,
+      //     interruptionModeIOS: InterruptionModeIOS.DuckOthers,
+      //     shouldDuckAndroid: true,
+      //     interruptionModeAndroid: InterruptionModeAndroid.DuckOthers,
+      //     playThroughEarpieceAndroid: false,
+      //     allowsRecordingIOS: false,
+      //   });
+      // } catch (audioModeError) {
+      //   console.log('Error setting audio mode for countdown:', audioModeError);
+      // }
+      
+      
+      const { sound } = await Audio.Sound.createAsync(
+        require('./../assets/audio/countdown.aac'),
+        { shouldPlay: true }
+      );
+      
+      await sound.playAsync();
+
+      sound.setOnPlaybackStatusUpdate(async (status: AVPlaybackStatus) => {
+        if (!status.isLoaded) return;
+        
+        if (status.didJustFinish) {
+          
+          await audioDuckBack()
+        }
+      });
+      
+      
+    } catch (innerError) {
+      
+    }
+  };
+
+  const playAudioSequence = async () => {
+    // Play the voiceover for the next segment if it exists
+    const soundKey = `segment-${currentSegmentIndex + 1}`;
+    
+    await setupAudio();
+
+    const segment = activeWorkout.segments[currentSegmentIndex + 1];
+    const audioFile = audioFiles[segment.audio.file as string];
+    if (!audioFile) {
+      console.warn(`Audio file not found in mapping: ${segment.audio.file}`);
+      return;
+    }
+    
+    const { sound } = await Audio.Sound.createAsync(
+      audioFile,
+      { shouldPlay: true }
+    );
+
+
+    if (sound) {
+      audioPlayingRef.current = soundKey;
+      try {
+
+        await sound.playAsync();
+        
+        // Reset the reference when done playing
+        sound.setOnPlaybackStatusUpdate(async (status: AVPlaybackStatus) => {
+          if (status.isLoaded && status.didJustFinish) {
+            audioPlayingRef.current = null;
+
+            await playCountdown()
+          }
+        });
+      } catch (e) {
+        console.error("Error playing segment audio:", e);
+        audioPlayingRef.current = null;
+      }
+    } else {
+      console.log(`No audio available for segment ${currentSegmentIndex + 1}`);
+    }
+  };
+
+  const audioDuckBack = async () => {
+    try {
+      await Audio.setAudioModeAsync({
+        allowsRecordingIOS: false,
+        playsInSilentModeIOS: true, // Ensures sound plays even in silent mode
+        staysActiveInBackground: true, // Keeps audio active when the app is in the background
+        shouldDuckAndroid: true, // Enables audio ducking on Android
+        interruptionModeAndroid: InterruptionModeAndroid.DoNotMix,
+        interruptionModeIOS: InterruptionModeIOS.MixWithOthers,
+      });
+    } catch (error) {
+      console.error("Error setting audio mode:", error);
+    }
+
+    
+    const { sound } = await Audio.Sound.createAsync(
+      require("./../assets/audio/silent_audio.mp3"),
+      { shouldPlay: true }
+    );
+    await sound.playAsync();
+
+    // Unload sound when done
+    sound.setOnPlaybackStatusUpdate(async (status: AVPlaybackStatus) => {
+      if (status.isLoaded && status.didJustFinish) {
+        await sound.unloadAsync();        
+        console.log(`unaudio playback finished.`);
+      }
+    });
+
+  };
 
   /**
    * Progress Indicator Management
@@ -802,6 +910,56 @@ const WorkoutInProgressScreen: React.FC<Props> = ({ route, navigation }) => {
                 {hasStarted ? "End Workout" : "Start Workout"}
               </Text>
             </TouchableOpacity>
+
+            {/* <TouchableOpacity 
+              style={[
+                styles.startButton
+              ]} 
+              onPress={async () => {
+                try {
+                  // Set audio mode for proper ducking
+                  await Audio.setAudioModeAsync({
+                    allowsRecordingIOS: false,
+                    playsInSilentModeIOS: true,
+                    staysActiveInBackground: true,
+                    interruptionModeIOS: InterruptionModeIOS.DuckOthers,
+                    shouldDuckAndroid: true,
+                    interruptionModeAndroid: InterruptionModeAndroid.DuckOthers,
+                  });
+            
+                  // Wait 10 seconds
+                  await new Promise(resolve => setTimeout(resolve, 10000));
+            
+                  // Create and play the sound
+                  const { sound } = await Audio.Sound.createAsync(
+                    require('./../assets/audio/baby-steps-segment-0.aac'),
+                    { shouldPlay: true }
+                  );
+                  
+                  await sound.playAsync();
+                  
+                  // Unload sound when done
+                  sound.setOnPlaybackStatusUpdate(async (status: AVPlaybackStatus) => {
+                    if (status.isLoaded && status.didJustFinish) {
+                      await sound.unloadAsync();
+                    }
+                  });
+            
+                } catch (error) {
+                  Alert.alert('Error', 'Failed to play audio');
+                  console.error('Audio test error:', error);
+                } finally {
+                  
+                }
+              }}
+            >
+              <Text style={[
+                styles.startButtonText
+              ]}>
+                TEST
+              </Text>
+            </TouchableOpacity> */}
+
           </View>
         </View>
       </SafeAreaView>

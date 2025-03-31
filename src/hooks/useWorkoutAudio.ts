@@ -86,91 +86,91 @@ export const useWorkoutAudio = (options: UseWorkoutAudioOptions) => {
         
         // Play the segment audio if available
         const playSegmentAudio = async () => {
-          try {
-            // Check if the next segment has audio
-            if (nextSegment.audio?.file) {
-              // Set audio sequence flag at the start of the sequence
-              audioSequenceInProgressRef.current = true;
+          // try {
+          //   // Check if the next segment has audio
+          //   if (nextSegment.audio?.file) {
+          //     // Set audio sequence flag at the start of the sequence
+          //     audioSequenceInProgressRef.current = true;
               
-              // Set audio mode to duck others at the start of the sequence
-              try {
-                await Audio.setAudioModeAsync({
-                  playsInSilentModeIOS: true,
-                  staysActiveInBackground: true,
-                  interruptionModeIOS: InterruptionModeIOS.DuckOthers,
-                  shouldDuckAndroid: true,
-                  interruptionModeAndroid: InterruptionModeAndroid.DuckOthers,
-                  playThroughEarpieceAndroid: false,
-                  allowsRecordingIOS: false, // Prevent microphone permission prompt
-                });
-              } catch (audioModeError) {
-                console.log('Error setting audio mode:', audioModeError);
-              }
+          //     // Set audio mode to duck others at the start of the sequence
+          //     try {
+          //       await Audio.setAudioModeAsync({
+          //         playsInSilentModeIOS: true,
+          //         staysActiveInBackground: true,
+          //         interruptionModeIOS: InterruptionModeIOS.DuckOthers,
+          //         shouldDuckAndroid: true,
+          //         interruptionModeAndroid: InterruptionModeAndroid.DuckOthers,
+          //         playThroughEarpieceAndroid: false,
+          //         allowsRecordingIOS: false, // Prevent microphone permission prompt
+          //       });
+          //     } catch (audioModeError) {
+          //       console.log('Error setting audio mode:', audioModeError);
+          //     }
               
-              // Clean up previous segment audio if any
-              if (segmentAudioRef.current) {
-                await segmentAudioRef.current.unloadAsync();
-                segmentAudioRef.current = null;
-              }
+          //     // Clean up previous segment audio if any
+          //     if (segmentAudioRef.current) {
+          //       await segmentAudioRef.current.unloadAsync();
+          //       segmentAudioRef.current = null;
+          //     }
               
-              // Set the flag before attempting to load
-              segmentAudioPlayingRef.current = true;
-              // Mark this segment as triggered
-              lastSegmentAudioTriggeredRef.current = currentSegmentIndex;
+          //     // Set the flag before attempting to load
+          //     segmentAudioPlayingRef.current = true;
+          //     // Mark this segment as triggered
+          //     lastSegmentAudioTriggeredRef.current = currentSegmentIndex;
               
-              // Load the segment audio using our utility function
-              const segmentSound = await loadSegmentAudio(nextSegment.audio.file);
+          //     // Load the segment audio using our utility function
+          //     const segmentSound = await loadSegmentAudio(nextSegment.audio.file);
               
-              if (segmentSound) {
-                // Set up status monitoring to play countdown after segment audio finishes
-                segmentSound.setOnPlaybackStatusUpdate((status: AVPlaybackStatus) => {
-                  if (!status.isLoaded) return;
+          //     if (segmentSound) {
+          //       // Set up status monitoring to play countdown after segment audio finishes
+          //       segmentSound.setOnPlaybackStatusUpdate((status: AVPlaybackStatus) => {
+          //         if (!status.isLoaded) return;
                   
-                  if (status.didJustFinish) {
-                    // Segment audio finished, reset the flag
-                    segmentAudioPlayingRef.current = false;
-                    segmentSound?.unloadAsync().catch(() => {});
-                    segmentAudioRef.current = null;
+          //         if (status.didJustFinish) {
+          //           // Segment audio finished, reset the flag
+          //           segmentAudioPlayingRef.current = false;
+          //           segmentSound?.unloadAsync().catch(() => {});
+          //           segmentAudioRef.current = null;
                     
-                    // Check if we should play the countdown immediately after segment audio finishes
-                    if (!countdownTriggeredRef.current) {
-                      const currentTimeUntilNextSegment = currentSegment.duration - segmentElapsedTime;
+          //           // Check if we should play the countdown immediately after segment audio finishes
+          //           if (!countdownTriggeredRef.current) {
+          //             const currentTimeUntilNextSegment = currentSegment.duration - segmentElapsedTime;
                       
-                      // If we're in the countdown window or past it, play countdown immediately
-                      if (currentTimeUntilNextSegment <= 4) {
-                        countdownTriggeredRef.current = true;
-                        playCountdown();
-                      }
-                    }
-                  }
-                });
+          //             // If we're in the countdown window or past it, play countdown immediately
+          //             if (currentTimeUntilNextSegment <= 4) {
+          //               countdownTriggeredRef.current = true;
+          //               playCountdown();
+          //             }
+          //           }
+          //         }
+          //       });
                 
-                segmentAudioRef.current = segmentSound;
-                await segmentSound.playAsync();
-              } else {
-                // Reset flag if we couldn't load the sound
-                segmentAudioPlayingRef.current = false;
+          //       segmentAudioRef.current = segmentSound;
+          //       await segmentSound.playAsync();
+          //     } else {
+          //       // Reset flag if we couldn't load the sound
+          //       segmentAudioPlayingRef.current = false;
                 
-                // If we can't play segment audio, reset the audio sequence flag
-                if (!countdownPlayingRef.current) {
-                  audioSequenceInProgressRef.current = false;
-                  resetAudioMode().catch(() => {});
-                }
-              }
-            } else {
-              // No audio for this segment
-              segmentAudioPlayingRef.current = false;
-            }
-          } catch (error) {
-            // Reset flag on error
-            segmentAudioPlayingRef.current = false;
+          //       // If we can't play segment audio, reset the audio sequence flag
+          //       if (!countdownPlayingRef.current) {
+          //         audioSequenceInProgressRef.current = false;
+          //         resetAudioMode().catch(() => {});
+          //       }
+          //     }
+          //   } else {
+          //     // No audio for this segment
+          //     segmentAudioPlayingRef.current = false;
+          //   }
+          // } catch (error) {
+          //   // Reset flag on error
+          //   segmentAudioPlayingRef.current = false;
             
-            // If error occurs and no countdown is playing, reset audio sequence
-            if (!countdownPlayingRef.current) {
-              audioSequenceInProgressRef.current = false;
-              resetAudioMode().catch(() => {});
-            }
-          }
+          //   // If error occurs and no countdown is playing, reset audio sequence
+          //   if (!countdownPlayingRef.current) {
+          //     audioSequenceInProgressRef.current = false;
+          //     resetAudioMode().catch(() => {});
+          //   }
+          // }
         };
         
         // Start the segment audio playback
@@ -242,141 +242,142 @@ export const useWorkoutAudio = (options: UseWorkoutAudioOptions) => {
   
   // Helper function to reset audio mode
   const resetAudioMode = async () => {
-    try {
-      await Audio.setAudioModeAsync({
-        playsInSilentModeIOS: true,
-        staysActiveInBackground: true,
-        interruptionModeIOS: InterruptionModeIOS.DoNotMix,
-        shouldDuckAndroid: false,
-        interruptionModeAndroid: InterruptionModeAndroid.DoNotMix,
-        playThroughEarpieceAndroid: false,
-        allowsRecordingIOS: false,
-      });
-    } catch (error) {
-      console.log('Error resetting audio mode:', error);
-    }
+    console.log('iGold ::: resetting audio mode ===============================');
+    // try {
+    //   await Audio.setAudioModeAsync({
+    //     playsInSilentModeIOS: true,
+    //     staysActiveInBackground: true,
+    //     interruptionModeIOS: InterruptionModeIOS.DoNotMix,
+    //     shouldDuckAndroid: false,
+    //     interruptionModeAndroid: InterruptionModeAndroid.DoNotMix,
+    //     playThroughEarpieceAndroid: false,
+    //     allowsRecordingIOS: false,
+    //   });
+    // } catch (error) {
+    //   console.log('Error resetting audio mode:', error);
+    // }
   };
   
   // Function to play countdown sound
   const playCountdown = async () => {
-    try {
-      // Don't play if already playing
-      if (countdownPlayingRef.current) {
-        return;
-      }
+    // try {
+    //   // Don't play if already playing
+    //   if (countdownPlayingRef.current) {
+    //     return;
+    //   }
       
-      // If this is a standalone countdown (not part of a sequence)
-      if (!audioSequenceInProgressRef.current) {
-        audioSequenceInProgressRef.current = true;
+    //   // If this is a standalone countdown (not part of a sequence)
+    //   if (!audioSequenceInProgressRef.current) {
+    //     audioSequenceInProgressRef.current = true;
         
-        // Set audio mode to duck others
-        try {
-          await Audio.setAudioModeAsync({
-            playsInSilentModeIOS: true,
-            staysActiveInBackground: true,
-            interruptionModeIOS: InterruptionModeIOS.DuckOthers,
-            shouldDuckAndroid: true,
-            interruptionModeAndroid: InterruptionModeAndroid.DuckOthers,
-            playThroughEarpieceAndroid: false,
-            allowsRecordingIOS: false,
-          });
-        } catch (audioModeError) {
-          console.log('Error setting audio mode for countdown:', audioModeError);
-        }
-      }
+    //     // Set audio mode to duck others
+    //     try {
+    //       await Audio.setAudioModeAsync({
+    //         playsInSilentModeIOS: true,
+    //         staysActiveInBackground: true,
+    //         interruptionModeIOS: InterruptionModeIOS.DuckOthers,
+    //         shouldDuckAndroid: true,
+    //         interruptionModeAndroid: InterruptionModeAndroid.DuckOthers,
+    //         playThroughEarpieceAndroid: false,
+    //         allowsRecordingIOS: false,
+    //       });
+    //     } catch (audioModeError) {
+    //       console.log('Error setting audio mode for countdown:', audioModeError);
+    //     }
+    //   }
       
-      // Set flag before attempting to play
-      countdownPlayingRef.current = true;
+    //   // Set flag before attempting to play
+    //   countdownPlayingRef.current = true;
       
-      // Unload any existing sound to ensure a fresh start
-      if (countdownSoundRef.current) {
-        try {
-          await countdownSoundRef.current.unloadAsync();
-        } catch (e) {
-          // Handle error silently
-        }
-        countdownSoundRef.current = null;
-      }
+    //   // Unload any existing sound to ensure a fresh start
+    //   if (countdownSoundRef.current) {
+    //     try {
+    //       await countdownSoundRef.current.unloadAsync();
+    //     } catch (e) {
+    //       // Handle error silently
+    //     }
+    //     countdownSoundRef.current = null;
+    //   }
       
-      const sound = new Audio.Sound();
+    //   const sound = new Audio.Sound();
       
-      try {
-        await sound.loadAsync(require('../assets/audio/countdown.aac'));
-        countdownSoundRef.current = sound;
+    //   try {
+    //     await sound.loadAsync(require('../assets/audio/countdown.aac'));
+    //     countdownSoundRef.current = sound;
         
-        // Set up status monitoring
-        sound.setOnPlaybackStatusUpdate((status: AVPlaybackStatus) => {
-          if (!status.isLoaded) return;
+    //     // Set up status monitoring
+    //     sound.setOnPlaybackStatusUpdate((status: AVPlaybackStatus) => {
+    //       if (!status.isLoaded) return;
           
-          if (status.didJustFinish) {
-            // Add a small delay before resetting the flag to ensure the sound completes
-            setTimeout(() => {
-              countdownPlayingRef.current = false;
+    //       if (status.didJustFinish) {
+    //         // Add a small delay before resetting the flag to ensure the sound completes
+    //         setTimeout(() => {
+    //           countdownPlayingRef.current = false;
               
-              // Only reset audio mode if this is the end of a complete sequence
-              if (audioSequenceInProgressRef.current) {
-                audioSequenceInProgressRef.current = false;
+    //           // Only reset audio mode if this is the end of a complete sequence
+    //           if (audioSequenceInProgressRef.current) {
+    //             audioSequenceInProgressRef.current = false;
                 
-                // Reset audio mode to not duck other apps
-                resetAudioMode().catch(() => {});
-              }
-            }, 500);
-          }
-        });
+    //             // Reset audio mode to not duck other apps
+    //             resetAudioMode().catch(() => {});
+    //           }
+    //         }, 500);
+    //       }
+    //     });
         
-        // Play the sound with increased volume
-        await sound.setVolumeAsync(1.0);  // Ensure full volume
-        await sound.playAsync();
-      } catch (loadError) {
-        countdownPlayingRef.current = false;
+    //     // Play the sound with increased volume
+    //     await sound.setVolumeAsync(1.0);  // Ensure full volume
+    //     await sound.playAsync();
+    //   } catch (loadError) {
+    //     countdownPlayingRef.current = false;
         
-        // Try alternate method as fallback
-        try {
-          const { sound: altSound } = await Audio.Sound.createAsync(
-            require('../assets/audio/countdown.aac'),
-            { shouldPlay: true, volume: 1.0 }
-          );
+    //     // Try alternate method as fallback
+    //     try {
+    //       const { sound: altSound } = await Audio.Sound.createAsync(
+    //         require('../assets/audio/countdown.aac'),
+    //         { shouldPlay: true, volume: 1.0 }
+    //       );
           
-          // Set up status monitoring for the alternate sound
-          altSound.setOnPlaybackStatusUpdate((status: AVPlaybackStatus) => {
-            if (!status.isLoaded) return;
+    //       // Set up status monitoring for the alternate sound
+    //       altSound.setOnPlaybackStatusUpdate((status: AVPlaybackStatus) => {
+    //         if (!status.isLoaded) return;
             
-            if (status.didJustFinish) {
-              // Add a small delay before resetting the flag to ensure the sound completes
-              setTimeout(() => {
-                countdownPlayingRef.current = false;
+    //         if (status.didJustFinish) {
+    //           // Add a small delay before resetting the flag to ensure the sound completes
+    //           setTimeout(() => {
+    //             countdownPlayingRef.current = false;
                 
-                // Only reset audio mode if this is the end of a complete sequence
-                if (audioSequenceInProgressRef.current) {
-                  audioSequenceInProgressRef.current = false;
+    //             // Only reset audio mode if this is the end of a complete sequence
+    //             if (audioSequenceInProgressRef.current) {
+    //               audioSequenceInProgressRef.current = false;
                   
-                  // Reset audio mode to not duck other apps
-                  resetAudioMode().catch(() => {});
-                }
-              }, 500);
-            }
-          });
+    //               // Reset audio mode to not duck other apps
+    //               resetAudioMode().catch(() => {});
+    //             }
+    //           }, 500);
+    //         }
+    //       });
           
-          countdownSoundRef.current = altSound;
-        } catch (altError) {
-          countdownPlayingRef.current = false;
+    //       countdownSoundRef.current = altSound;
+    //     } catch (altError) {
+    //       countdownPlayingRef.current = false;
           
-          // Reset audio sequence flag on error
-          if (audioSequenceInProgressRef.current) {
-            audioSequenceInProgressRef.current = false;
-            resetAudioMode().catch(() => {});
-          }
-        }
-      }
-    } catch (innerError) {
-      countdownPlayingRef.current = false;
+    //       // Reset audio sequence flag on error
+    //       if (audioSequenceInProgressRef.current) {
+    //         audioSequenceInProgressRef.current = false;
+    //         resetAudioMode().catch(() => {});
+    //       }
+    //     }
+    //   }
+    // } catch (innerError) {
+    //   countdownPlayingRef.current = false;
       
-      // Reset audio sequence flag on error
-      if (audioSequenceInProgressRef.current) {
-        audioSequenceInProgressRef.current = false;
-        resetAudioMode().catch(() => {});
-      }
-    }
+    //   // Reset audio sequence flag on error
+    //   if (audioSequenceInProgressRef.current) {
+    //     audioSequenceInProgressRef.current = false;
+    //     resetAudioMode().catch(() => {});
+    //   }
+    // }
   };
   
   // Function to stop audio playback
@@ -441,37 +442,37 @@ export const useWorkoutAudio = (options: UseWorkoutAudioOptions) => {
         return;
       }
       
-      try {
-        // Set audio mode for best compatibility
-        await Audio.setAudioModeAsync({
-          playsInSilentModeIOS: true,
-          staysActiveInBackground: true,
-          interruptionModeIOS: InterruptionModeIOS.DuckOthers,
-          shouldDuckAndroid: true,
-          interruptionModeAndroid: InterruptionModeAndroid.DuckOthers,
-          playThroughEarpieceAndroid: false,
-          allowsRecordingIOS: false, // Prevent microphone permission prompt
-        });
+      // try {
+      //   // Set audio mode for best compatibility
+      //   await Audio.setAudioModeAsync({
+      //     playsInSilentModeIOS: true,
+      //     staysActiveInBackground: true,
+      //     interruptionModeIOS: InterruptionModeIOS.DuckOthers,
+      //     shouldDuckAndroid: true,
+      //     interruptionModeAndroid: InterruptionModeAndroid.DuckOthers,
+      //     playThroughEarpieceAndroid: false,
+      //     allowsRecordingIOS: false, // Prevent microphone permission prompt
+      //   });
         
-        try {
-          const soundAsset = require('../assets/audio/countdown.aac');
+      //   try {
+      //     const soundAsset = require('../assets/audio/countdown.aac');
           
-          // Try to load the sound to verify it works
-          const { sound } = await Audio.Sound.createAsync(soundAsset);
-          await sound.unloadAsync();
+      //     // Try to load the sound to verify it works
+      //     const { sound } = await Audio.Sound.createAsync(soundAsset);
+      //     await sound.unloadAsync();
           
-          // Set audio as initialized
-          audioInitializedRef.current = true;
-        } catch (e) {
-          Alert.alert(
-            "Audio File Error",
-            "Could not load countdown.aac file. Please check that the file exists in the assets/audio folder."
-          );
-        }
+      //     // Set audio as initialized
+      //     audioInitializedRef.current = true;
+      //   } catch (e) {
+      //     Alert.alert(
+      //       "Audio File Error",
+      //       "Could not load countdown.aac file. Please check that the file exists in the assets/audio folder."
+      //     );
+      //   }
         
-      } catch (error) {
-        Alert.alert("Audio Error", "Failed to initialize audio system. Some workout cues may not play.");
-      }
+      // } catch (error) {
+      //   Alert.alert("Audio Error", "Failed to initialize audio system. Some workout cues may not play.");
+      // }
     };
     
     initializeAudio();
@@ -498,142 +499,143 @@ export const useWorkoutAudio = (options: UseWorkoutAudioOptions) => {
   
   // Function to play a test countdown sound
   const playTestCountdown = async () => {
-    try {
-      // Set audio sequence flag
-      audioSequenceInProgressRef.current = true;
+    // try {
+    //   // Set audio sequence flag
+    //   audioSequenceInProgressRef.current = true;
       
-      // Ensure audio mode is set correctly for maximum compatibility
-      await Audio.setAudioModeAsync({
-        playsInSilentModeIOS: true,
-        staysActiveInBackground: true,
-        interruptionModeIOS: InterruptionModeIOS.DuckOthers,
-        shouldDuckAndroid: true,
-        interruptionModeAndroid: InterruptionModeAndroid.DuckOthers,
-        playThroughEarpieceAndroid: false,
-        allowsRecordingIOS: false, // Prevent microphone permission prompt
-      });
+    //   // Ensure audio mode is set correctly for maximum compatibility
+    //   await Audio.setAudioModeAsync({
+    //     playsInSilentModeIOS: true,
+    //     staysActiveInBackground: true,
+    //     interruptionModeIOS: InterruptionModeIOS.DuckOthers,
+    //     shouldDuckAndroid: true,
+    //     interruptionModeAndroid: InterruptionModeAndroid.DuckOthers,
+    //     playThroughEarpieceAndroid: false,
+    //     allowsRecordingIOS: false, // Prevent microphone permission prompt
+    //   });
       
-      // Unload any existing sound to prevent resource conflicts
-      if (countdownSoundRef.current) {
-        await countdownSoundRef.current.unloadAsync();
-        countdownSoundRef.current = null;
-      }
+    //   // Unload any existing sound to prevent resource conflicts
+    //   if (countdownSoundRef.current) {
+    //     await countdownSoundRef.current.unloadAsync();
+    //     countdownSoundRef.current = null;
+    //   }
       
-      // Function to try playing a remote sound as fallback
-      const tryRemoteSound = async () => {
-        try {
-          // Try with a known working remote sound
-          const { sound: remoteSound } = await Audio.Sound.createAsync(
-            { uri: 'https://docs.expo.dev/static/examples/t-rex-roar.mp3' },
-            { shouldPlay: true, volume: 1.0, progressUpdateIntervalMillis: 100 }
-          );
+    //   // Function to try playing a remote sound as fallback
+    //   const tryRemoteSound = async () => {
+    //     try {
+    //       // Try with a known working remote sound
+    //       const { sound: remoteSound } = await Audio.Sound.createAsync(
+    //         { uri: 'https://docs.expo.dev/static/examples/t-rex-roar.mp3' },
+    //         { shouldPlay: true, volume: 1.0, progressUpdateIntervalMillis: 100 }
+    //       );
           
-          // Set up status monitoring
-          remoteSound.setOnPlaybackStatusUpdate((status) => {
-            if (!status.isLoaded) {
-              return;
-            }
+    //       // Set up status monitoring
+    //       remoteSound.setOnPlaybackStatusUpdate((status) => {
+    //         if (!status.isLoaded) {
+    //           return;
+    //         }
             
-            if (status.didJustFinish) {
-              // Unload the sound when done
-              remoteSound.unloadAsync().catch(e => {
-                // Handle error silently
-              });
+    //         if (status.didJustFinish) {
+    //           // Unload the sound when done
+    //           remoteSound.unloadAsync().catch(e => {
+    //             // Handle error silently
+    //           });
               
-              // Reset audio mode after test sound finishes
-              if (audioSequenceInProgressRef.current) {
-                audioSequenceInProgressRef.current = false;
-                resetAudioMode().catch(() => {});
-              }
-            }
-          });
+    //           // Reset audio mode after test sound finishes
+    //           if (audioSequenceInProgressRef.current) {
+    //             audioSequenceInProgressRef.current = false;
+    //             resetAudioMode().catch(() => {});
+    //           }
+    //         }
+    //       });
           
-          // Store reference
-          countdownSoundRef.current = remoteSound;
+    //       // Store reference
+    //       countdownSoundRef.current = remoteSound;
           
-          // Alert for remote sound
-          Alert.alert(
-            "Remote Audio Test",
-            "A dinosaur roar sound should be playing from the internet. Can you hear it?",
-            [
-              { text: "Yes, I hear it", onPress: () => {} },
-              { text: "No, I don't hear anything", onPress: () => {} }
-            ]
-          );
-        } catch (remoteError) {
-          Alert.alert("Audio Error", "Failed to play any sound. Please check your device settings and ensure audio is enabled.");
+    //       // Alert for remote sound
+    //       Alert.alert(
+    //         "Remote Audio Test",
+    //         "A dinosaur roar sound should be playing from the internet. Can you hear it?",
+    //         [
+    //           { text: "Yes, I hear it", onPress: () => {} },
+    //           { text: "No, I don't hear anything", onPress: () => {} }
+    //         ]
+    //       );
+    //     } catch (remoteError) {
+    //       Alert.alert("Audio Error", "Failed to play any sound. Please check your device settings and ensure audio is enabled.");
           
-          // Reset audio mode on error
-          if (audioSequenceInProgressRef.current) {
-            audioSequenceInProgressRef.current = false;
-            resetAudioMode().catch(() => {});
-          }
-        }
-      };
+    //       // Reset audio mode on error
+    //       if (audioSequenceInProgressRef.current) {
+    //         audioSequenceInProgressRef.current = false;
+    //         resetAudioMode().catch(() => {});
+    //       }
+    //     }
+    //   };
       
-      // Try with a known working sound first
-      try {
-        // Play the AAC sound file instead of MP3
-        const { sound: beepSound } = await Audio.Sound.createAsync(
-          require('../assets/audio/countdown.aac'),
-          { shouldPlay: true, volume: 1.0, progressUpdateIntervalMillis: 100 }
-        );
+    //   // Try with a known working sound first
+    //   try {
+    //     // Play the AAC sound file instead of MP3
+    //     const { sound: beepSound } = await Audio.Sound.createAsync(
+    //       require('../assets/audio/countdown.aac'),
+    //       { shouldPlay: true, volume: 1.0, progressUpdateIntervalMillis: 100 }
+    //     );
         
-        // Set up status monitoring
-        beepSound.setOnPlaybackStatusUpdate((status: AVPlaybackStatus) => {
-          if (!status.isLoaded) {
-            return;
-          }
+    //     // Set up status monitoring
+    //     beepSound.setOnPlaybackStatusUpdate((status: AVPlaybackStatus) => {
+    //       if (!status.isLoaded) {
+    //         return;
+    //       }
           
-          if (status.didJustFinish) {
-            // Unload the sound when done
-            beepSound.unloadAsync().catch(e => {
-              // Handle error silently
-            });
+    //       if (status.didJustFinish) {
+    //         // Unload the sound when done
+    //         beepSound.unloadAsync().catch(e => {
+    //           // Handle error silently
+    //         });
             
-            // Reset audio mode after test sound finishes
-            if (audioSequenceInProgressRef.current) {
-              audioSequenceInProgressRef.current = false;
-              resetAudioMode().catch(() => {});
-            }
-          }
-        });
+    //         // Reset audio mode after test sound finishes
+    //         if (audioSequenceInProgressRef.current) {
+    //           audioSequenceInProgressRef.current = false;
+    //           resetAudioMode().catch(() => {});
+    //         }
+    //       }
+    //     });
         
-        // Store reference
-        countdownSoundRef.current = beepSound;
+    //     // Store reference
+    //     countdownSoundRef.current = beepSound;
         
-        // Alert for beep sound
-        Alert.alert(
-          "Audio Test",
-          "A beep sound (AAC format) should be playing now. Can you hear it?",
-          [
-            { text: "Yes, I hear it", onPress: () => {} },
-            { text: "No, I don't hear anything", onPress: () => {
-              // Try fallback to remote sound
-              tryRemoteSound();
-            }}
-          ]
-        );
-      } catch (aacError) {
-        // Try fallback to remote sound
-        tryRemoteSound();
-      }
+    //     // Alert for beep sound
+    //     Alert.alert(
+    //       "Audio Test",
+    //       "A beep sound (AAC format) should be playing now. Can you hear it?",
+    //       [
+    //         { text: "Yes, I hear it", onPress: () => {} },
+    //         { text: "No, I don't hear anything", onPress: () => {
+    //           // Try fallback to remote sound
+    //           tryRemoteSound();
+    //         }}
+    //       ]
+    //     );
+    //   } catch (aacError) {
+    //     // Try fallback to remote sound
+    //     tryRemoteSound();
+    //   }
       
-    } catch (e) {
-      Alert.alert("Audio Error", "Failed to set up audio: " + (e instanceof Error ? e.message : String(e)));
+    // } catch (e) {
+    //   Alert.alert("Audio Error", "Failed to set up audio: " + (e instanceof Error ? e.message : String(e)));
       
-      // Reset audio mode on error
-      if (audioSequenceInProgressRef.current) {
-        audioSequenceInProgressRef.current = false;
-        resetAudioMode().catch(() => {});
-      }
-    }
+    //   // Reset audio mode on error
+    //   if (audioSequenceInProgressRef.current) {
+    //     audioSequenceInProgressRef.current = false;
+    //     resetAudioMode().catch(() => {});
+    //   }
+    // }
   };
   
   return {
     pauseAudio,
     stopAudio,
     playTestCountdown,
+    
   };
 };
 
