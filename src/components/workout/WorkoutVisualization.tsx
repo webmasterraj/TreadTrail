@@ -20,6 +20,7 @@ interface WorkoutVisualizationProps {
   showTicks?: boolean; // Control ticks visibility
   connectingLineOffset?: number; // Add this prop
   showConnectingLine?: boolean; // New prop to control connecting line visibility
+  opacity?: number; // Add opacity prop for premium preview
 }
 
 /**
@@ -47,6 +48,7 @@ const WorkoutVisualization: React.FC<WorkoutVisualizationProps> = ({
   showTicks = true, // Default to showing ticks
   connectingLineOffset = 0, // Default to 0 (bottom)
   showConnectingLine = true, // Default to showing connecting line
+  opacity = 1, // Default to full opacity
 }) => {
   // Add state to track measured height
   const [measuredHeight, setMeasuredHeight] = useState(0);
@@ -244,7 +246,8 @@ const WorkoutVisualization: React.FC<WorkoutVisualizationProps> = ({
     <View 
       style={[
         styles.container, 
-        { height: containerHeight || 100 }
+        containerHeight ? { height: containerHeight } : null,
+        { opacity: opacity } // Apply opacity to the entire visualization
       ]}
       onLayout={(event: LayoutChangeEvent) => {
         const {height, width} = event.nativeEvent.layout;
@@ -373,7 +376,7 @@ const WorkoutVisualization: React.FC<WorkoutVisualizationProps> = ({
             
             {/* Time labels - using the same major tick positions */}
             {showTimeLabels && (
-              <View style={styles.timelineTimes}>
+              <View style={styles.timeLabelsContainer}>
                 {majorTicks.map((tick, index) => {
                   // Only show labels for 0%, 50%, and 100% based on percentile
                   if (tick.percentile === 0 || tick.percentile === 0.5 || tick.percentile === 1) {
@@ -381,7 +384,7 @@ const WorkoutVisualization: React.FC<WorkoutVisualizationProps> = ({
                       <Text 
                         key={`label-${index}`}
                         style={[
-                          styles.timeText, 
+                          styles.timeLabel, 
                           { 
                             position: 'absolute', 
                             left: `${tick.percentPosition}%`,
@@ -411,72 +414,52 @@ const styles = StyleSheet.create({
   container: {
     width: '100%',
     height: '100%',
-    backgroundColor: 'transparent',
-    padding: 0,
     position: 'relative',
-    justifyContent: 'flex-end',
   },
   barsContainer: {
-    height: '100%',
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    height: '90%',
     width: '100%',
-    position: 'relative',
-    zIndex: 1,
+    paddingBottom: 12,
   },
   bar: {
-    width: 4, // Default width, will be overridden
-    marginHorizontal: 0, // Remove margin as we're positioning absolutely
-    borderTopLeftRadius: 2,
-    borderTopRightRadius: 2,
-    bottom: 0, // Align to bottom
+    width: 4,
+    marginHorizontal: 2,
+    borderRadius: 2,
   },
   connectingLine: {
     position: 'absolute',
-    bottom: 0, // This will be overridden by the inline style
-    height: 2, // Thinner connecting line
-    backgroundColor: COLORS.lightGray,
-    zIndex: 1,
-  },
-  progressLine: {
-    position: 'absolute',
-    top: 0,
-    bottom: 0,
-    width: 2, 
-    backgroundColor: COLORS.white, // White color
-    zIndex: 10, // Higher z-index to ensure it's visible
-  },
-  completedOverlay: {
-    position: 'absolute',
-    top: 0,
-    bottom: 0,
-    left: 0,
-    backgroundColor: 'rgba(0, 0, 0, 0.7)', // Dark overlay as in the mock
-    zIndex: 1,
-  },
-  timelineTimes: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginTop: 12, // Increase margin to make room for ticks
+    height: 1,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
     width: '100%',
   },
-  timeText: {
-    color: 'rgba(255, 255, 255, 0.5)',
-    fontSize: 11,
-    textAlign: 'center',
-  },
-  ticksContainer: {
+  timeLabelsContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
     position: 'absolute',
-    bottom: 4, // Position above the time labels
+    bottom: 0,
     left: 0,
     right: 0,
-    height: 6,
-    zIndex: 0, // Lower z-index so connecting line appears above
+    paddingHorizontal: 4,
+  },
+  timeLabel: {
+    color: 'rgba(255, 255, 255, 0.4)',
+    fontSize: 9,
+  },
+  ticksContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    paddingHorizontal: 4,
   },
   tick: {
-    position: 'absolute',
     width: 1,
-    height: 4,
-    backgroundColor: 'rgba(255, 255, 255, 0.3)',
-    bottom: 0,
+    height: 3,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
   },
   majorTick: {
     position: 'absolute',
@@ -485,6 +468,22 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255, 255, 255, 0.5)',
     bottom: 0,
     transform: [{ translateX: -0.75 }], // Center the tick
+  },
+  completedOverlay: {
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    left: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)', 
+    zIndex: 1,
+  },
+  progressLine: {
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    width: 2, 
+    backgroundColor: COLORS.white, 
+    zIndex: 10, 
   },
 });
 
@@ -509,6 +508,7 @@ export default React.memo(WorkoutVisualization, (prevProps, nextProps) => {
     prevProps.showTicks === nextProps.showTicks &&
     prevProps.connectingLineOffset === nextProps.connectingLineOffset &&
     prevProps.showConnectingLine === nextProps.showConnectingLine &&
+    prevProps.opacity === nextProps.opacity &&
     segmentsEqual
   );
 });

@@ -7,7 +7,8 @@ import {
   ScrollView, 
   Share,
   TouchableOpacity,
-  ActivityIndicator
+  ActivityIndicator,
+  Alert,
 } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList, WorkoutSession } from '../types';
@@ -17,18 +18,24 @@ import { formatTime, formatDuration, formatDate, mphToKph, calculateTotalDistanc
 import Button from '../components/common/Button';
 import WorkoutTimeline from '../components/workout/WorkoutTimeline';
 import WorkoutCalendar from '../components/common/WorkoutCalendar';
-import WorkoutVisualization from '../components/workout/WorkoutVisualization';
 import { getWorkoutSessionById } from '../utils/historyUtils';
+import { useSubscription } from '../context/SubscriptionContext';
+import { calculateTotalCaloriesBurned } from '../utils/calorieUtils';
+import { Ionicons } from '@expo/vector-icons';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'WorkoutComplete'>;
 
 const WorkoutCompleteScreen: React.FC<Props> = ({ route, navigation }) => {
   const { sessionId } = route.params;
   const { getWorkoutById } = useContext(DataContext);
-  const { authState, userSettings } = useContext(UserContext);
+  const { authState, userSettings, preferences } = useContext(UserContext);
+  const { subscriptionInfo } = useSubscription();
+  const isPremium = subscriptionInfo.isActive || subscriptionInfo.trialActive;
+  
   const [isLoading, setIsLoading] = useState(true);
   const [session, setSession] = useState<WorkoutSession | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [caloriesBurned, setCaloriesBurned] = useState<number | null>(null);
   
   // Get user's unit preference
   const unitPreference = userSettings?.preferences?.units || 'imperial';
@@ -54,6 +61,22 @@ const WorkoutCompleteScreen: React.FC<Props> = ({ route, navigation }) => {
     
     fetchSession();
   }, [sessionId]);
+  
+  useEffect(() => {
+    if (isPremium && session && userSettings?.profile?.weight) {
+      // Calculate calories burned based on workout segments
+      const paceSettings = Object.entries(userSettings.paceSettings).reduce((acc, [key, value]) => {
+        acc[key] = { speed: value.speed, incline: value.incline };
+        return acc;
+      }, {} as { [key: string]: { speed: number; incline: number } });
+      const totalCalories = calculateTotalCaloriesBurned(
+        session.segments,
+        userSettings.profile.weight,
+        paceSettings
+      );
+      setCaloriesBurned(totalCalories);
+    }
+  }, [isPremium, session, userSettings]);
   
   // Handle loading state
   if (isLoading) {
@@ -139,8 +162,7 @@ const WorkoutCompleteScreen: React.FC<Props> = ({ route, navigation }) => {
   
   // Navigation to Profile
   const navigateToProfile = () => {
-    // Force reload stats if needed before navigation
-    navigation.navigate('Profile', { forceReload: true });
+    navigation.navigate('Profile');
   };
   
   return (
@@ -179,16 +201,13 @@ const WorkoutCompleteScreen: React.FC<Props> = ({ route, navigation }) => {
               </View>
               <Text style={styles.circleLabel}>Intervals</Text>
             </View>
-          </View>
-          
-          <View style={styles.workoutVisualizationContainer}>
-            <Text style={styles.visualizationLabel}>Workout Structure</Text>
-            <WorkoutVisualization 
-              segments={segments} 
-              minutePerBar={true}
-              showOverlay={true}
-              progressPosition={duration} // Show entire workout as completed
-            />
+            
+            <View style={styles.statCircle}>
+              <View style={styles.circle}>
+                <Text style={styles.circleValue}>{isPremium && caloriesBurned ? Math.round(caloriesBurned) : '-'}</Text>
+              </View>
+              <Text style={styles.circleLabel}>Calories</Text>
+            </View>
           </View>
         </View>
         
@@ -210,6 +229,25 @@ const WorkoutCompleteScreen: React.FC<Props> = ({ route, navigation }) => {
               onPress={() => navigation.navigate('Landing')}
             >
               <Text style={styles.accountPromptButtonText}>Create Account</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+        
+        {isPremium && !userSettings?.profile?.weight && (
+          <View style={styles.weightPromptContainer}>
+            <View style={styles.weightPromptIcon}>
+              <Ionicons name="information-circle" size={24} color={COLORS.accent} />
+            </View>
+            <View style={styles.weightPromptTextContainer}>
+              <Text style={styles.weightPromptTitle}>Add Your Weight</Text>
+              <Text style={styles.weightPromptText}>
+                Set your weight in Settings to track calories burned during workouts.
+              </Text>
+            </View>
+            <TouchableOpacity 
+              style={styles.weightPromptButton}
+              onPress={() => navigation.navigate('Settings')}>
+              <Text style={styles.weightPromptButtonText}>Settings</Text>
             </TouchableOpacity>
           </View>
         )}
@@ -280,14 +318,6 @@ const styles = StyleSheet.create({
     borderRadius: 15,
     padding: SPACING.medium,
     marginBottom: SPACING.large,
-  },
-  workoutVisualizationContainer: {
-    marginTop: SPACING.medium,
-  },
-  visualizationLabel: {
-    fontSize: FONT_SIZES.small,
-    color: 'rgba(255, 255, 255, 0.7)',
-    marginBottom: SPACING.xs,
   },
   summaryHeader: {
     flexDirection: 'row',
@@ -377,6 +407,45 @@ const styles = StyleSheet.create({
     color: COLORS.black,
     fontWeight: 'bold',
     fontSize: FONT_SIZES.small,
+  },
+  // Weight prompt
+  weightPromptContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.darkGray,
+    borderRadius: BORDER_RADIUS.medium,
+    padding: SPACING.medium,
+    marginBottom: SPACING.large,
+    borderWidth: 1,
+    borderColor: COLORS.accent,
+  },
+  weightPromptIcon: {
+    marginRight: SPACING.small,
+  },
+  weightPromptTextContainer: {
+    flex: 1,
+  },
+  weightPromptTitle: {
+    color: COLORS.white,
+    fontSize: FONT_SIZES.medium,
+    fontWeight: 'bold',
+    marginBottom: SPACING.xs,
+  },
+  weightPromptText: {
+    color: COLORS.lightGray,
+    fontSize: FONT_SIZES.small,
+  },
+  weightPromptButton: {
+    backgroundColor: COLORS.accent,
+    paddingVertical: SPACING.xs,
+    paddingHorizontal: SPACING.small,
+    borderRadius: BORDER_RADIUS.small,
+    marginLeft: SPACING.small,
+  },
+  weightPromptButtonText: {
+    color: COLORS.black,
+    fontSize: FONT_SIZES.small,
+    fontWeight: 'bold',
   },
   // Action buttons
   actionButtons: {

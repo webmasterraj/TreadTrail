@@ -4,7 +4,7 @@
 export type PaceType = 'recovery' | 'base' | 'run' | 'sprint';
 
 export interface PaceSetting {
-  speed: number;  // Speed in mph or kph based on user preference
+  speed: number;  // Speed always stored in km/h internally
   incline: number; // Incline in percentage
 }
 
@@ -27,6 +27,7 @@ export interface UserProfile {
   name: string;
   dateCreated: string; // ISO date string
   lastActive: string; // ISO date string
+  weight?: number; // Weight in kg for calorie calculations (optional)
 }
 
 // User settings
@@ -34,6 +35,7 @@ export interface UserSettings {
   profile: UserProfile;
   paceSettings: PaceSettings;
   preferences: UserPreferences;
+  subscription?: SubscriptionInfo; // Optional subscription information
 }
 
 // Workout types
@@ -96,6 +98,7 @@ export interface WorkoutSession {
   segments: CompletedSegment[];
   paceSettings?: PaceSettings; // Pace settings used during this workout
   distance?: number; // Distance in miles
+  caloriesBurned?: number; // Calories burned during workout (for premium users)
 }
 
 // Workout stats
@@ -104,6 +107,7 @@ export interface WorkoutStats {
   totalDuration: number; // In seconds
   totalDistance: number; // In miles (always stored in miles internally)
   totalSegmentsCompleted: number;
+  totalCaloriesBurned: number; // Total calories burned across all workouts
   workoutsByCategory: {
     'Easy \ud83d\udc23': number;
     'Trad HIIT \ud83c\udfc3\ud83c\udffc': number;
@@ -157,6 +161,22 @@ export interface AuthState {
   token: string | null;
 }
 
+// Subscription types
+export interface SubscriptionInfo {
+  isActive: boolean;
+  expirationDate: string | null; // ISO date string
+  productId: string | null;
+  transactionId: string | null;
+  purchaseDate: string | null; // ISO date string
+  receiptData: string | null; // Encrypted receipt data for validation
+  
+  // Trial-related fields
+  trialActive: boolean; // Whether user is currently in trial period
+  trialStartDate: string | null; // When trial started (ISO date string)
+  trialEndDate: string | null; // When trial ends (ISO date string)
+  trialUsed: boolean; // Whether user has already used their trial
+}
+
 // Navigation types
 export type RootStackParamList = {
   Landing: undefined;
@@ -168,4 +188,6 @@ export type RootStackParamList = {
   WorkoutComplete: { sessionId: string };
   Profile: undefined;
   Settings: undefined;
+  PremiumWorkoutPreview: { workoutId: string };
+  Subscription: undefined;
 };

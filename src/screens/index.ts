@@ -7,3 +7,5 @@ export { default as WorkoutInProgressScreen } from './WorkoutInProgressScreen';
 export { default as WorkoutCompleteScreen } from './WorkoutCompleteScreen';
 export { default as ProfileScreen } from './ProfileScreen';
 export { default as SettingsScreen } from './SettingsScreen';
+export { default as PremiumWorkoutPreviewScreen } from './PremiumWorkoutPreviewScreen';
+export { default as SubscriptionScreen } from './SubscriptionScreen';
