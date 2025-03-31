@@ -19,6 +19,7 @@ import {COLORS, FONT_SIZES, SPACING, BORDER_RADIUS} from '../styles/theme';
 import {useAuth, useUserSettings} from '../hooks';
 import {SubscriptionContext} from '../context/SubscriptionContext';
 import BottomTabBar from '../components/common/BottomTabBar';
+import NetInfo from '@react-native-community/netinfo';
 
 // Debug flag - set to false to disable debug logs
 const DEBUG_SETTINGS = false;
@@ -29,11 +30,12 @@ const APP_VERSION = '1.0.0';
 const BUILD_NUMBER = '42';
 
 const SettingsScreen: React.FC<Props> = ({navigation}) => {
-  const {authState, signOut} = useAuth();
+  const {authState, signOut, deleteAccount} = useAuth();
   const {preferences, userSettings, isLoading, syncUserSettings} = useUserSettings();
   const {subscriptionInfo} = useContext(SubscriptionContext);
   const [isError, setIsError] = useState(false);
   const [localAudioCues, setLocalAudioCues] = useState<boolean | undefined>(undefined);
+  const [isDeletingAccount, setIsDeletingAccount] = useState(false);
 
   // Add debug logging on component mount
   useEffect(() => {
@@ -77,6 +79,91 @@ const SettingsScreen: React.FC<Props> = ({navigation}) => {
         },
       },
     ]);
+  };
+
+  // Handle delete account
+  const handleDeleteAccount = async () => {
+    // Check network connectivity first
+    const netInfo = await NetInfo.fetch();
+    const isConnected = !!netInfo.isConnected && !!netInfo.isInternetReachable;
+    
+    if (!isConnected) {
+      Alert.alert(
+        'No Internet Connection',
+        'You need to be online to delete your account. Please connect to the internet and try again.',
+        [{ text: 'OK' }]
+      );
+      return;
+    }
+    
+    Alert.alert(
+      'Delete Account',
+      'Are you sure you want to delete your account?',
+      [
+        {
+          text: 'Cancel',
+          style: 'cancel',
+        },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: () => confirmDeleteAccount(),
+        },
+      ]
+    );
+  };
+
+  // Add second confirmation
+  const confirmDeleteAccount = () => {
+    Alert.alert(
+      'Confirm Deletion',
+      'This action cannot be undone. All your data will be permanently deleted.',
+      [
+        {
+          text: 'Cancel',
+          style: 'cancel',
+        },
+        {
+          text: 'Delete Permanently',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              // Show loading indicator
+              setIsDeletingAccount(true);
+              
+              const result = await deleteAccount();
+              
+              if (result.success) {
+                // Navigate to landing screen after successful deletion
+                navigation.replace('Landing');
+              } else {
+                // Show appropriate error message based on the error
+                if (result.error?.includes('network') || result.error?.includes('internet')) {
+                  Alert.alert(
+                    'Connection Error',
+                    'There was a problem with your internet connection. Please try again when you have a stable connection.'
+                  );
+                } else {
+                  Alert.alert(
+                    'Error',
+                    result.error || 'Failed to delete your account. Please try again later or contact support if the problem persists.'
+                  );
+                }
+              }
+            } catch (error: any) {
+              console.error('Account deletion error:', error);
+              
+              Alert.alert(
+                'Error',
+                'Failed to delete your account. Please try again later or contact support if the problem persists.'
+              );
+            } finally {
+              setIsDeletingAccount(false);
+            }
+          },
+        },
+      ]
+    );
   };
 
   // Handle legal links
@@ -225,7 +312,7 @@ const SettingsScreen: React.FC<Props> = ({navigation}) => {
                   style={styles.settingsItem}
                   onPress={handleSignOut}>
                   <Text style={styles.signOutText}>Sign Out</Text>
-                </TouchableOpacity>
+                </TouchableOpacity>                
               </>
             ) : (
               <TouchableOpacity
@@ -277,6 +364,24 @@ const SettingsScreen: React.FC<Props> = ({navigation}) => {
               <Text style={styles.itemLabel}>Privacy Policy</Text>
               <Text style={styles.chevron}>→</Text>
             </TouchableOpacity>
+
+            {/* Delete Account Button */}
+            <TouchableOpacity
+              style={styles.settingsItem}
+              onPress={handleDeleteAccount}
+              disabled={isDeletingAccount}>
+              {isDeletingAccount ? (
+                <View style={styles.deleteAccountContainer}>
+                  <ActivityIndicator size="small" color="#FF453A" />
+                  <Text style={[styles.deleteAccountText, { marginLeft: SPACING.small }]}>
+                    Deleting...
+                  </Text>
+                </View>
+              ) : (
+                <Text style={styles.deleteAccountText}>Delete Account</Text>
+              )}
+            </TouchableOpacity>
+
           </View>
         </View>
 
@@ -375,6 +480,15 @@ const styles = StyleSheet.create({
     color: '#FF453A', // iOS red color for destructive actions
     fontSize: FONT_SIZES.medium,
     fontWeight: '500',
+  },
+  deleteAccountText: {
+    color: '#FF453A', // iOS red color for destructive actions
+    fontSize: FONT_SIZES.medium,
+    fontWeight: '500',
+  },
+  deleteAccountContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
   },
   signInText: {
     color: COLORS.accent,

@@ -367,25 +367,33 @@ const userSlice = createSlice({
   name: 'user',
   initialState,
   reducers: {
-    resetUserState: (state) => {
-      // Keep pace settings and preferences when resetting
-      const currentSettings = state.settings;
+    resetUserState: (state, action: PayloadAction<boolean | undefined>) => {
+      // Default to preserving settings if not specified
+      const preserveSettings = action.payload !== false;
       
-      // Reset state
-      Object.assign(state, initialState);
-      
-      // Create new settings with preserved pace settings and preferences
-      if (currentSettings) {
-        state.settings = {
-          profile: { 
-            name: 'Guest',
-            email: '',
-            id: uuidv4() 
-          },
-          paceSettings: currentSettings.paceSettings,
-          preferences: currentSettings.preferences,
-          weight: currentSettings.weight,
-        };
+      if (preserveSettings) {
+        // Keep pace settings and preferences when resetting
+        const currentSettings = state.settings;
+        
+        // Reset state
+        Object.assign(state, initialState);
+        
+        // Create new settings with preserved pace settings and preferences
+        if (currentSettings) {
+          state.settings = {
+            profile: { 
+              name: 'Guest',
+              email: '',
+              id: uuidv4() 
+            },
+            paceSettings: currentSettings.paceSettings,
+            preferences: currentSettings.preferences,
+            weight: currentSettings.weight,
+          };
+        }
+      } else {
+        // Complete reset without preserving any settings
+        Object.assign(state, initialState);
       }
     },
   },

@@ -10,6 +10,21 @@ import { AuthState, User } from '../types';
 import * as AppleAuthentication from 'expo-apple-authentication';
 import supabase from '../api/supabaseClient';
 import { v4 as uuidv4 } from 'uuid';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import NetInfo from '@react-native-community/netinfo';
+
+// Storage keys
+const USER_SETTINGS_KEY_PREFIX = 'treadtrail_user_settings_';
+const USER_SETTINGS_KEY = 'treadtrail_user_settings';
+const WORKOUT_HISTORY_KEY = 'treadtrail_workout_history';
+const FAVORITE_WORKOUTS_KEY = 'treadtrail_favorite_workouts';
+const STATS_KEY = 'treadtrail_stats';
+const PENDING_SYNC_KEY = 'treadtrail_pending_sync';
+const AUTH_STATE_KEY = 'treadtrail_auth_state';
+const SUBSCRIPTION_KEY = 'treadtrail_subscription';
+
+// Helper to get user-specific storage key
+const getUserSettingsKey = (userId: string) => `${USER_SETTINGS_KEY_PREFIX}${userId}`;
 
 // Debug flags
 const DEBUG_AUTH = true;
@@ -273,6 +288,92 @@ export const useAuth = () => {
     }
   }, [authState, isAuthenticated, dispatch]);
   
+  // Delete account function
+  const deleteAccount = useCallback(async (): Promise<{ success: boolean, error?: string }> => {
+    try {
+      if (DEBUG_AUTH) {
+        console.log('[DEBUG-AUTH] Starting account deletion process');
+      }
+      
+      if (!isAuthenticated || !authState.user) {
+        return { success: false, error: 'No authenticated user found' };
+      }
+      
+      // Check network connectivity
+      const netInfo = await NetInfo.fetch();
+      if (!netInfo.isConnected || !netInfo.isInternetReachable) {
+        return { success: false, error: 'No internet connection. Please try again when you are online.' };
+      }
+      
+      // Get the current session for the authorization token
+      const { data: sessionData } = await supabase.auth.getSession();
+      if (!sessionData?.session?.access_token) {
+        return { success: false, error: 'No valid session found' };
+      }
+      
+      if (DEBUG_AUTH) {
+        console.log('[DEBUG-AUTH] Calling Supabase Edge Function to delete user data');
+      }
+      
+      // 1. Call the Edge Function to delete the user and all associated data from the server
+      const { data, error } = await supabase.functions.invoke('delete-user', {
+        body: { userId: authState.user.id }
+      });
+      
+      if (error) {
+        console.error('[DEBUG-AUTH] Error calling delete-user function:', error);
+        return { success: false, error: error.message || 'Failed to delete account on server' };
+      }
+      
+      if (DEBUG_AUTH) {
+        console.log('[DEBUG-AUTH] Server deletion successful, now removing local data');
+      }
+      
+      // 2. Delete local data
+      // User settings
+      const userKey = getUserSettingsKey(authState.user.id);
+      await AsyncStorage.removeItem(userKey);
+      
+      // Also remove the generic settings key
+      await AsyncStorage.removeItem(USER_SETTINGS_KEY);
+      
+      // Workout data
+      await AsyncStorage.removeItem(WORKOUT_HISTORY_KEY);
+      await AsyncStorage.removeItem(FAVORITE_WORKOUTS_KEY);
+      await AsyncStorage.removeItem(STATS_KEY);
+      await AsyncStorage.removeItem(PENDING_SYNC_KEY);
+      
+      // Auth state
+      await AsyncStorage.removeItem(AUTH_STATE_KEY);
+      
+      // Subscription data
+      await AsyncStorage.removeItem(SUBSCRIPTION_KEY);
+      
+      if (DEBUG_AUTH) {
+        console.log('[DEBUG-AUTH] Local data removed, now resetting Redux state');
+      }
+      
+      // Reset Redux state completely (don't preserve settings)
+      dispatch(resetUserState(false));
+      
+      if (DEBUG_AUTH) {
+        console.log('[DEBUG-AUTH] Redux state reset, now signing out user');
+      }
+      
+      // 3. Sign out the user
+      await signOut();
+      
+      if (DEBUG_AUTH) {
+        console.log('[DEBUG-AUTH] Account deletion completed successfully');
+      }
+      
+      return { success: true };
+    } catch (err: any) {
+      console.error('[DEBUG-AUTH] Error in deleteAccount:', err);
+      return { success: false, error: err.message || 'An unknown error occurred' };
+    }
+  }, [authState, isAuthenticated, signOut, dispatch]);
+
   return {
     authState,
     isAuthenticated,
@@ -281,5 +382,6 @@ export const useAuth = () => {
     signInWithApple,
     signOut,
     updateProfile,
+    deleteAccount,
   };
 };
