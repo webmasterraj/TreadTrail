@@ -31,9 +31,9 @@ const LandingScreen: React.FC<Props> = ({ navigation }) => {
   useEffect(() => {
     const checkAuthStatus = async () => {
       try {
-        // If user is authenticated, navigate to the Welcome screen
+        // If user is authenticated, navigate directly to the WorkoutLibrary screen
         if (authState.isAuthenticated) {
-          navigation.replace('Welcome', { name: authState.user?.name || 'Runner' });
+          navigation.replace('WorkoutLibrary');
         }
         setIsLoading(false);
       } catch (error) {
@@ -58,8 +58,10 @@ const LandingScreen: React.FC<Props> = ({ navigation }) => {
           'Sign In Failed',
           'There was an error signing in with Apple. Please try again.'
         );
+      } else {
+        // On successful sign-in, navigate to Welcome screen
+        navigation.navigate('Welcome', { name: authState.user?.name || 'Runner' });
       }
-      // On success, the useEffect will redirect
       
       setAppleSignInLoading(false);
     } catch (error) {
