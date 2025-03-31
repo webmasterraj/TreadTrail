@@ -4,7 +4,9 @@ import {
   selectAuthState,
   selectIsAuthenticated,
   setAuthState,
-  resetUserState
+  resetUserState,
+  syncUserSettings,
+  loadUserSettings
 } from '../redux/slices/userSlice';
 import { AuthState, User } from '../types';
 import * as AppleAuthentication from 'expo-apple-authentication';
@@ -12,6 +14,7 @@ import supabase from '../api/supabaseClient';
 import { v4 as uuidv4 } from 'uuid';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import NetInfo from '@react-native-community/netinfo';
+import { Platform, NativeModules } from 'react-native';
 
 // Storage keys
 const USER_SETTINGS_KEY_PREFIX = 'treadtrail_user_settings_';
@@ -29,6 +32,11 @@ const getUserSettingsKey = (userId: string) => `${USER_SETTINGS_KEY_PREFIX}${use
 // Debug flags
 const DEBUG_AUTH = true;
 
+// Debug logging helper
+const logDebug = (message: string, ...args: any[]) => {
+  if (DEBUG_AUTH) console.log(`[DEBUG-AUTH] ${message}`, ...args);
+};
+
 /**
  * Custom hook for authentication
  * This replaces the auth functions from UserContext with Redux-based state management
@@ -40,100 +48,10 @@ export const useAuth = () => {
   const authState = useAppSelector(selectAuthState);
   const isAuthenticated = useAppSelector(selectIsAuthenticated);
   
-  // Sign up function
-  const signUp = useCallback(async (name: string, email: string, password: string) => {
-    try {
-      if (DEBUG_AUTH) {
-        console.log(`[DEBUG-AUTH] Signing up user: ${email}`);
-      }
-      
-      // Sign up with Supabase
-      const { data, error } = await supabase.auth.signUp({
-        email,
-        password,
-        options: {
-          data: {
-            name
-          }
-        }
-      });
-      
-      if (error) {
-        throw error;
-      }
-      
-      if (!data.user) {
-        throw new Error('Signup successful but no user returned');
-      }
-      
-      if (DEBUG_AUTH) {
-        console.log('[DEBUG-AUTH] Signup successful');
-      }
-      
-      // Session will be handled by the auth state change listener
-      return true;
-    } catch (err: any) {
-      console.error('Error signing up:', err);
-      return false;
-    }
-  }, []);
-  
-  // Sign in function
-  const signIn = useCallback(async (email: string, password: string): Promise<boolean> => {
-    try {
-      if (DEBUG_AUTH) {
-        console.log(`[DEBUG-AUTH] Signing in user: ${email}`);
-      }
-      
-      // Sign in with Supabase
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email,
-        password
-      });
-      
-      if (error) {
-        throw error;
-      }
-      
-      if (!data.user) {
-        throw new Error('Login successful but no user returned');
-      }
-      
-      // Create user object
-      const user: User = {
-        id: data.user.id,
-        email: data.user.email || '',
-        name: data.user.user_metadata?.name || data.user.email?.split('@')[0] || 'User',
-        authMethod: 'email',
-      };
-      
-      // Create new auth state
-      const newAuthState: AuthState = {
-        isAuthenticated: true,
-        user,
-        token: data.session?.access_token || null,
-      };
-      
-      // Update Redux state
-      await dispatch(setAuthState(newAuthState)).unwrap();
-      
-      if (DEBUG_AUTH) {
-        console.log('[DEBUG-AUTH] Login successful');
-      }
-      
-      return true;
-    } catch (err: any) {
-      console.error('Error signing in:', err);
-      return false;
-    }
-  }, [dispatch]);
-  
   // Sign in with Apple function
   const signInWithApple = useCallback(async (): Promise<boolean> => {
     try {
-      if (DEBUG_AUTH) {
-        console.log('[DEBUG-AUTH] Starting Apple sign in');
-      }
+      logDebug('Starting Apple sign in');
       
       // Check if Apple Authentication is available
       const isAvailable = await AppleAuthentication.isAvailableAsync();
@@ -150,9 +68,7 @@ export const useAuth = () => {
         ],
       });
       
-      if (DEBUG_AUTH) {
-        console.log('[DEBUG-AUTH] Apple authentication successful, signing in with Supabase');
-      }
+      logDebug('Apple authentication successful, signing in with Supabase');
       
       // Sign in with Supabase using the Apple ID token
       const { data, error } = await supabase.auth.signInWithIdToken({
@@ -177,9 +93,7 @@ export const useAuth = () => {
             data: { name: fullName }
           });
           
-          if (DEBUG_AUTH) {
-            console.log(`[DEBUG-AUTH] Updated user name to: ${fullName}`);
-          }
+          logDebug(`Updated user name to: ${fullName}`);
         }
       }
       
@@ -198,20 +112,52 @@ export const useAuth = () => {
         token: data.session?.access_token || null,
       };
       
-      // Update Redux state
+      logDebug('Creating auth state and checking for local settings');
+      
+      // Check for existing local settings first to tell if user is new
+      const userKey = getUserSettingsKey(user.id);
+      const localSettingsJson = await AsyncStorage.getItem(userKey);
+      let isNewUser = !localSettingsJson;
+      
+      if (localSettingsJson) {
+        logDebug('Found existing local settings for user');
+      } else {
+        logDebug('No local settings found for user. Treating as new user.');
+      }
+      
+      // Update Redux state with new auth state
       await dispatch(setAuthState(newAuthState)).unwrap();
       
-      if (DEBUG_AUTH) {
-        console.log('[DEBUG-AUTH] Apple sign in successful');
+      // Load user settings - this will pull from backend if no local settings exist
+      await dispatch(loadUserSettings()).unwrap();
+      
+      // If this is a new user, we need to update the unit system based on locale
+      if (isNewUser) {
+        logDebug('New user, updating unit system based on locale');
+        
+        const localeBasedUnitSystem = getDefaultUnitSystem();
+        
+        logDebug(`Setting locale-based unit system: ${localeBasedUnitSystem}`);
+        
+        // Update preferences with locale-based unit system and push to backend
+        await dispatch(syncUserSettings({
+          preferences: {
+            units: localeBasedUnitSystem
+          }
+        })).unwrap();
+        
+        logDebug('User settings initialized with locale-based unit system and synced with backend');
+      } else {
+        logDebug('Using existing local settings as source of truth');
       }
+      
+      logDebug('Apple sign in successful');
       
       return true;
     } catch (err: any) {
       // Don't treat cancellation as an error
       if (err.code === 'ERR_CANCELED') {
-        if (DEBUG_AUTH) {
-          console.log('[DEBUG-AUTH] Apple sign in was cancelled');
-        }
+        logDebug('Apple sign in was cancelled');
         return false;
       }
       
@@ -219,13 +165,31 @@ export const useAuth = () => {
       return false;
     }
   }, [dispatch]);
-  
+
+  // Get default unit system based on device locale
+  const getDefaultUnitSystem = (): 'imperial' | 'metric' => {
+    // Countries that use imperial system (US, UK, Liberia, Myanmar)
+    const imperialCountries = ['US', 'GB', 'LR', 'MM'];
+    
+    // Get device locale
+    let countryCode;
+    if (Platform.OS === 'ios') {
+      countryCode = NativeModules.SettingsManager.settings.AppleLocale?.split('_')[1] || 
+                    NativeModules.SettingsManager.settings.AppleLanguages[0]?.split('_')[1];
+    } else if (Platform.OS === 'android') {
+      countryCode = NativeModules.I18nManager.localeIdentifier?.split('_')[1];
+    }
+    
+    logDebug(`Detected country code: ${countryCode}`);
+    
+    // Default to metric unless explicitly in an imperial country
+    return imperialCountries.includes(countryCode) ? 'imperial' : 'metric';
+  };
+
   // Sign out function
   const signOut = useCallback(async () => {
     try {
-      if (DEBUG_AUTH) {
-        console.log('[DEBUG-AUTH] Signing out');
-      }
+      logDebug('Signing out');
       
       // Sign out from Supabase
       const { error } = await supabase.auth.signOut();
@@ -237,9 +201,7 @@ export const useAuth = () => {
       // Reset user state but keep settings
       dispatch(resetUserState());
       
-      if (DEBUG_AUTH) {
-        console.log('[DEBUG-AUTH] Sign out successful');
-      }
+      logDebug('Sign out successful');
       
       return true;
     } catch (err: any) {
@@ -247,53 +209,11 @@ export const useAuth = () => {
       return false;
     }
   }, [dispatch]);
-  
-  // Update profile function
-  const updateProfile = useCallback(async (name: string, weight: number | null) => {
-    try {
-      if (!isAuthenticated || !authState.user) {
-        return { success: false, error: 'Not authenticated' };
-      }
-      
-      // Update user metadata in Supabase
-      const { error } = await supabase.auth.updateUser({
-        data: {
-          name: name || authState.user.name,
-        }
-      });
-      
-      if (error) {
-        console.error('[DEBUG-AUTH] Error updating user profile:', error);
-        return { success: false, error: error.message };
-      }
-      
-      // Update auth state with new name
-      const updatedUser: User = {
-        ...authState.user,
-        name: name || authState.user.name,
-      };
-      
-      const updatedAuthState: AuthState = {
-        ...authState,
-        user: updatedUser,
-      };
-      
-      // Update Redux state
-      await dispatch(setAuthState(updatedAuthState)).unwrap();
-      
-      return { success: true };
-    } catch (error: any) {
-      console.error('[DEBUG-AUTH] Error in updateProfile:', error);
-      return { success: false, error: 'Unknown error' };
-    }
-  }, [authState, isAuthenticated, dispatch]);
-  
+
   // Delete account function
   const deleteAccount = useCallback(async (): Promise<{ success: boolean, error?: string }> => {
     try {
-      if (DEBUG_AUTH) {
-        console.log('[DEBUG-AUTH] Starting account deletion process');
-      }
+      logDebug('Starting account deletion process');
       
       if (!isAuthenticated || !authState.user) {
         return { success: false, error: 'No authenticated user found' };
@@ -311,9 +231,7 @@ export const useAuth = () => {
         return { success: false, error: 'No valid session found' };
       }
       
-      if (DEBUG_AUTH) {
-        console.log('[DEBUG-AUTH] Calling Supabase Edge Function to delete user data');
-      }
+      logDebug('Calling Supabase Edge Function to delete user data');
       
       // 1. Call the Edge Function to delete the user and all associated data from the server
       const { data, error } = await supabase.functions.invoke('delete-user', {
@@ -321,13 +239,11 @@ export const useAuth = () => {
       });
       
       if (error) {
-        console.error('[DEBUG-AUTH] Error calling delete-user function:', error);
+        console.error('Error calling delete-user function:', error);
         return { success: false, error: error.message || 'Failed to delete account on server' };
       }
       
-      if (DEBUG_AUTH) {
-        console.log('[DEBUG-AUTH] Server deletion successful, now removing local data');
-      }
+      logDebug('Server deletion successful, now removing local data');
       
       // 2. Delete local data
       // User settings
@@ -349,27 +265,21 @@ export const useAuth = () => {
       // Subscription data
       await AsyncStorage.removeItem(SUBSCRIPTION_KEY);
       
-      if (DEBUG_AUTH) {
-        console.log('[DEBUG-AUTH] Local data removed, now resetting Redux state');
-      }
+      logDebug('Local data removed, now resetting Redux state');
       
       // Reset Redux state completely (don't preserve settings)
       dispatch(resetUserState(false));
       
-      if (DEBUG_AUTH) {
-        console.log('[DEBUG-AUTH] Redux state reset, now signing out user');
-      }
+      logDebug('Redux state reset, now signing out user');
       
       // 3. Sign out the user
       await signOut();
       
-      if (DEBUG_AUTH) {
-        console.log('[DEBUG-AUTH] Account deletion completed successfully');
-      }
+      logDebug('Account deletion completed successfully');
       
       return { success: true };
     } catch (err: any) {
-      console.error('[DEBUG-AUTH] Error in deleteAccount:', err);
+      console.error('Error deleting account:', err);
       return { success: false, error: err.message || 'An unknown error occurred' };
     }
   }, [authState, isAuthenticated, signOut, dispatch]);
@@ -377,11 +287,8 @@ export const useAuth = () => {
   return {
     authState,
     isAuthenticated,
-    signUp,
-    signIn,
     signInWithApple,
     signOut,
-    updateProfile,
     deleteAccount,
   };
 };
