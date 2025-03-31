@@ -103,24 +103,6 @@ ALTER TABLE public.workout_history ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Users can only view and insert their own workout history" ON public.workout_history
   FOR ALL USING (auth.uid() = user_id);
 
--- User Stats Table
-CREATE TABLE IF NOT EXISTS public.user_stats (
-  id UUID PRIMARY KEY REFERENCES public.users(id),
-  total_workouts INTEGER DEFAULT 0,
-  total_duration INTEGER DEFAULT 0,
-  total_segments_completed INTEGER DEFAULT 0,
-  total_distance NUMERIC DEFAULT 0,
-  total_calories_burned NUMERIC DEFAULT 0,
-  last_workout_date TIMESTAMP WITH TIME ZONE,
-  longest_workout JSONB,
-  updated_at TIMESTAMP WITH TIME ZONE DEFAULT now()
-);
-
--- RLS Policy for User Stats
-ALTER TABLE public.user_stats ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "Users can only view their own stats" ON public.user_stats
-  FOR ALL USING (auth.uid() = id);
-
 -- Premium Subscriptions Table
 CREATE TABLE IF NOT EXISTS public.premium_subscriptions (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
