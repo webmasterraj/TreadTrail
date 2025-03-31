@@ -96,7 +96,7 @@ serve(async (req) => {
     const { error: userTableError } = await supabaseAdmin
       .from('users')
       .delete()
-      .eq('user_id', userId)
+      .eq('id', userId)
     if (userTableError) {
       console.error('Error deleting users table:', userTableError)
     }
