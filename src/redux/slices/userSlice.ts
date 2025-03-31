@@ -199,25 +199,44 @@ export const loadUserSettings = createAsyncThunk(
       
       // Check network connectivity
       const isConnected = await checkNetworkConnectivity();
+      logDebug(`Network connectivity: ${isConnected ? 'Connected' : 'Disconnected'}`);
       
       // First try to get from local storage
       const userKey = getUserSettingsKey(user.auth.user.id);
+      logDebug(`Checking local storage with key: ${userKey}`);
       const userSpecificSettings = await AsyncStorage.getItem(userKey);
       let localSettings = null;
       
       if (userSpecificSettings) {
         logDebug(`Found user-specific settings in local storage for ${user.auth.user.id}`);
-        localSettings = JSON.parse(userSpecificSettings);
-        
-        // If we have local settings, use them as the primary source
-        settingsToLoad = localSettings;
-        
-        logDebug('Using local settings as primary source');
+        try {
+          localSettings = JSON.parse(userSpecificSettings);
+          logDebug('Local settings parsed successfully');
+          
+          // Log pace settings details to debug
+          if (localSettings.paceSettings) {
+            logDebug('Local pace settings:', JSON.stringify(localSettings.paceSettings, null, 2));
+          } else {
+            logDebug('No pace settings found in local storage');
+          }
+          
+          // If we have local settings, use them as the primary source
+          settingsToLoad = localSettings;
+          
+          logDebug('Using local settings as primary source');
+        } catch (error) {
+          console.error('Error parsing local settings:', error);
+          logDebug('Error parsing local settings - will try backend instead');
+          localSettings = null;
+        }
+      } else {
+        logDebug('No user-specific settings found in local storage');
       }
       
       // If we're connected and either don't have local settings or need to back them up
       if (isConnected) {
         if (!localSettings) {
+          logDebug('No local settings, attempting to fetch from Supabase');
           // No local settings, try to get from Supabase as fallback
           const { data, error } = await supabase
             .from('user_settings')
@@ -227,10 +246,12 @@ export const loadUserSettings = createAsyncThunk(
           
           if (error && error.code !== 'PGRST116') {
             console.error('Error fetching user settings from Supabase:', error);
+            logDebug(`Error fetching from Supabase: ${error.message}`);
           }
           
           if (data) {
-            logDebug('No local settings found. Using Supabase settings as fallback.');
+            logDebug('Successfully retrieved settings from Supabase');
+            logDebug('Supabase pace settings:', JSON.stringify(data.pace_settings, null, 2));
             
             // Convert from database format to app format
             settingsToLoad = {
@@ -244,10 +265,15 @@ export const loadUserSettings = createAsyncThunk(
               weight: data.weight,
             };
             
+            logDebug('Converted Supabase settings to app format');
+            logDebug('Final pace settings from Supabase:', JSON.stringify(settingsToLoad.paceSettings, null, 2));
+            
             // Save server settings to local storage
             await AsyncStorage.setItem(userKey, JSON.stringify(settingsToLoad));
             
             logDebug('Saved Supabase settings to local storage');
+          } else {
+            logDebug('No settings found in Supabase');
           }
         } else {
           // We have local settings and we're connected
@@ -268,18 +294,33 @@ export const loadUserSettings = createAsyncThunk(
       
       if (genericSettings) {
         logDebug('Found generic settings in local storage');
-        settingsToLoad = JSON.parse(genericSettings);
+        try {
+          settingsToLoad = JSON.parse(genericSettings);
+          logDebug('Generic settings parsed successfully');
+        } catch (error) {
+          console.error('Error parsing generic settings:', error);
+          logDebug('Error parsing generic settings');
+        }
       } else {
-        logDebug('No settings found, creating default settings');
-        settingsToLoad = getDefaultSettings();
-        
-        // Save default settings to local storage
-        await AsyncStorage.setItem(USER_SETTINGS_KEY, JSON.stringify(settingsToLoad));
+        logDebug('No generic settings found in local storage');
       }
     }
     
-    // Validate settings to ensure all required fields exist
-    return validateSettings(settingsToLoad!);
+    // If we still don't have settings, use defaults
+    if (!settingsToLoad) {
+      logDebug('No settings found anywhere, using default settings');
+      settingsToLoad = getDefaultSettings();
+      logDebug('Default pace settings:', JSON.stringify(settingsToLoad.paceSettings, null, 2));
+    }
+    
+    // Ensure settings have all required properties
+    const validatedSettings = validateSettings(settingsToLoad);
+    logDebug('Final settings after validation:', 
+      `paceSettings: ${JSON.stringify(validatedSettings.paceSettings, null, 2)}, ` +
+      `preferences: ${JSON.stringify(validatedSettings.preferences, null, 2)}`
+    );
+    
+    return validatedSettings;
   }
 );
 

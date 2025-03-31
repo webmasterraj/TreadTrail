@@ -30,7 +30,7 @@ const SUBSCRIPTION_KEY = 'treadtrail_subscription';
 const getUserSettingsKey = (userId: string) => `${USER_SETTINGS_KEY_PREFIX}${userId}`;
 
 // Debug flags
-const DEBUG_AUTH = true;
+const DEBUG_AUTH = false;
 
 // Debug logging helper
 const logDebug = (message: string, ...args: any[]) => {
