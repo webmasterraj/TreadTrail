@@ -17,7 +17,7 @@ export const DEFAULT_WORKOUT_PROGRAMS: WorkoutProgram[] = [
     "segments": [
       {
         "type": "recovery",
-        "duration": 120,
+        "duration": 10,
         "incline": 1,
         "audio": {
           "file": "baby-steps-segment-0.aac",
@@ -26,7 +26,7 @@ export const DEFAULT_WORKOUT_PROGRAMS: WorkoutProgram[] = [
       },
       {
         "type": "base",
-        "duration": 180,
+        "duration": 15,
         "incline": 1,
         "audio": {
           "file": "baby-steps-segment-1.aac",
@@ -35,7 +35,7 @@ export const DEFAULT_WORKOUT_PROGRAMS: WorkoutProgram[] = [
       },
       {
         "type": "run",
-        "duration": 60,
+        "duration": 15,
         "incline": 1,
         "audio": {
           "file": "baby-steps-segment-2.aac",
@@ -44,7 +44,7 @@ export const DEFAULT_WORKOUT_PROGRAMS: WorkoutProgram[] = [
       },
       {
         "type": "recovery",
-        "duration": 90,
+        "duration": 15,
         "incline": 1,
         "audio": {
           "file": "baby-steps-segment-3.aac",
