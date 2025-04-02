@@ -260,6 +260,25 @@ const WorkoutInProgressScreen: React.FC<Props> = ({ route, navigation }) => {
   //   };
   // }, []);
 
+  const resetAudio = async () => {
+    try {
+      console.log("Configuring audio session...");
+      
+      // First reset any existing audio session
+      await Audio.setAudioModeAsync({
+        allowsRecordingIOS: false,
+        playsInSilentModeIOS: false,
+        staysActiveInBackground: false,
+        interruptionModeIOS: InterruptionModeIOS.DoNotMix,
+        shouldDuckAndroid: false,
+        interruptionModeAndroid: InterruptionModeAndroid.DoNotMix,
+        playThroughEarpieceAndroid: false
+      });
+    } catch (error) {
+      console.error("Failed to reset audio session:", error);
+    }
+  }
+
   const setupAudio = async () => {
     try {
       // We don't need to explicitly request permissions for audio playback
@@ -495,49 +514,54 @@ const WorkoutInProgressScreen: React.FC<Props> = ({ route, navigation }) => {
       
       
     } catch (innerError) {
-      
+      console.log('Error playCountdown:', innerError);
+
     }
   };
 
   const playAudioSequence = async () => {
     // Play the voiceover for the next segment if it exists
     const soundKey = `segment-${currentSegmentIndex + 1}`;
-    
-    await setupAudio();
+    try {
+      await resetAudio();
+      await setupAudio();
 
-    const segment = activeWorkout.segments[currentSegmentIndex + 1];
-    const audioFile = audioFiles[segment.audio.file as string];
-    if (!audioFile) {
-      console.warn(`Audio file not found in mapping: ${segment.audio.file}`);
-      return;
-    }
-    
-    const { sound } = await Audio.Sound.createAsync(
-      audioFile,
-      { shouldPlay: true }
-    );
-
-
-    if (sound) {
-      audioPlayingRef.current = soundKey;
-      try {
-
-        await sound.playAsync();
-        
-        // Reset the reference when done playing
-        sound.setOnPlaybackStatusUpdate(async (status: AVPlaybackStatus) => {
-          if (status.isLoaded && status.didJustFinish) {
-            audioPlayingRef.current = null;
-
-            await playCountdown()
-          }
-        });
-      } catch (e) {
-        console.error("Error playing segment audio:", e);
-        audioPlayingRef.current = null;
+      const segment = activeWorkout.segments[currentSegmentIndex + 1];
+      const audioFile = audioFiles[segment.audio.file as string];
+      if (!audioFile) {
+        console.warn(`Audio file not found in mapping: ${segment.audio.file}`);
+        return;
       }
-    } else {
-      console.log(`No audio available for segment ${currentSegmentIndex + 1}`);
+      
+      const { sound } = await Audio.Sound.createAsync(
+        audioFile,
+        { shouldPlay: true }
+      );
+
+
+      if (sound) {
+        audioPlayingRef.current = soundKey;
+        try {
+
+          await sound.playAsync();
+          
+          // Reset the reference when done playing
+          sound.setOnPlaybackStatusUpdate(async (status: AVPlaybackStatus) => {
+            if (status.isLoaded && status.didJustFinish) {
+              audioPlayingRef.current = null;
+
+              await playCountdown()
+            }
+          });
+        } catch (e) {
+          console.error("Error playing segment audio:", e);
+          audioPlayingRef.current = null;
+        }
+      } else {
+        console.log(`No audio available for segment ${currentSegmentIndex + 1}`);
+      }
+    } catch (error) {
+      console.error("Error playAudioSequence :", error);
     }
   };
 
